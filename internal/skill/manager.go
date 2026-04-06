@@ -392,11 +392,21 @@ func copyFile(src, dst string) error {
 }
 
 // isLocalPath reports whether source is a local filesystem path.
+// It recognises both POSIX and Windows path conventions so that config files
+// written on one OS can be used on the other.
 func isLocalPath(source string) bool {
-	return filepath.IsAbs(source) ||
-		strings.HasPrefix(source, "./") ||
-		strings.HasPrefix(source, "../") ||
-		strings.HasPrefix(source, "~/")
+	if filepath.IsAbs(source) {
+		return true
+	}
+	// Windows drive-letter absolute path (e.g. C:\Users\foo or C:/Users/foo).
+	// filepath.IsAbs returns false for these on non-Windows hosts.
+	if len(source) >= 3 && source[1] == ':' && (source[2] == '\\' || source[2] == '/') {
+		return true
+	}
+	return strings.HasPrefix(source, "/") || // POSIX absolute on Windows host
+		strings.HasPrefix(source, "./") || strings.HasPrefix(source, `.\`) || // current-dir relative
+		strings.HasPrefix(source, "../") || strings.HasPrefix(source, `..\`) || // parent relative
+		strings.HasPrefix(source, "~/") || strings.HasPrefix(source, `~\`) // home-dir relative
 }
 
 // toCloneURL converts a GitHub shorthand (owner/repo) or any URL to a clone URL.

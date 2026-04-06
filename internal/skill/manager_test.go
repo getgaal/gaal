@@ -216,10 +216,17 @@ func TestIsLocalPath(t *testing.T) {
 		input string
 		want  bool
 	}{
+		// POSIX paths
 		{"/absolute/path", true},
 		{"./relative", true},
 		{"../parent", true},
 		{"~/home", true},
+		// Windows-style paths
+		{`C:\Users\foo`, true},
+		{`~\myskills`, true},
+		{`.\rel`, true},
+		{`..\parent`, true},
+		// Not local
 		{"owner/repo", false},
 		{"https://github.com/foo/bar", false},
 	}

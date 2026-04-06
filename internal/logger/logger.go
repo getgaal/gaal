@@ -16,15 +16,16 @@ import (
 // suitable for ingestion by log aggregators.
 //
 //	2026-04-05T16:10:30Z  INFO  sync started  config=gaal.yaml
-func Setup(level slog.Level, logFile string) error {
+func Setup(level slog.Level, logFile string) (func(), error) {
 	consoleH := NewConsoleHandler(os.Stderr, level)
 
 	var handler slog.Handler = consoleH
+	noop := func() {}
 
 	if logFile != "" {
 		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644) //nolint:gosec
 		if err != nil {
-			return fmt.Errorf("opening log file %q: %w", logFile, err)
+			return noop, fmt.Errorf("opening log file %q: %w", logFile, err)
 		}
 
 		hostname, _ := os.Hostname()
@@ -34,10 +35,17 @@ func Setup(level slog.Level, logFile string) error {
 		}).WithAttrs([]slog.Attr{slog.String("host", hostname)})
 
 		handler = &teeHandler{handlers: []slog.Handler{consoleH, jsonH}}
+		slog.SetDefault(slog.New(handler))
+		// Return a teardown that closes the file and resets slog.
+		// Required on Windows where open file handles prevent TempDir cleanup.
+		return func() {
+			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+			_ = f.Close()
+		}, nil
 	}
 
 	slog.SetDefault(slog.New(handler))
-	return nil
+	return noop, nil
 }
 
 // teeHandler fans out records to multiple handlers.

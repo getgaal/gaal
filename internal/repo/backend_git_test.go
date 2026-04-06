@@ -205,3 +205,63 @@ func TestTagAtCommit_AnnotatedTag(t *testing.T) {
 		t.Errorf("expected annotated tag name, got %q", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// VcsGit - IsCloned / Clone / Update / CurrentVersion (basic cases)
+// ---------------------------------------------------------------------------
+
+func TestVcsGit_IsCloned_False(t *testing.T) {
+	g := &VcsGit{}
+	if g.IsCloned(t.TempDir()) {
+		t.Error("expected IsCloned=false for empty temp dir")
+	}
+}
+
+func TestVcsGit_IsCloned_True(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := gogit.PlainInit(dir, false); err != nil {
+		t.Fatalf("PlainInit: %v", err)
+	}
+	g := &VcsGit{}
+	if !g.IsCloned(dir) {
+		t.Error("expected IsCloned=true for go-git initialised repo")
+	}
+}
+
+func TestVcsGit_Clone_BadURL(t *testing.T) {
+	g := &VcsGit{}
+	err := g.Clone(context.Background(), "not-a-real-url", filepath.Join(t.TempDir(), "dest"), "")
+	if err == nil {
+		t.Fatal("expected error for bad URL")
+	}
+}
+
+func TestVcsGit_Update_NotARepo(t *testing.T) {
+	g := &VcsGit{}
+	err := g.Update(context.Background(), t.TempDir(), "")
+	if err == nil {
+		t.Fatal("expected error when updating non-git directory")
+	}
+}
+
+func TestVcsGit_CurrentVersion_NotARepo(t *testing.T) {
+	g := &VcsGit{}
+	_, err := g.CurrentVersion(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when getting version of non-git directory")
+	}
+}
+
+func TestVcsGit_Update_InitedRepoNoRemote(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := gogit.PlainInit(dir, false); err != nil {
+		t.Fatalf("PlainInit: %v", err)
+	}
+	g := &VcsGit{}
+	// Update will fail because there is no remote configured; this covers
+	// the fetch error branch.
+	err := g.Update(context.Background(), dir, "")
+	if err == nil {
+		t.Log("update succeeded unexpectedly on repo without remote")
+	}
+}

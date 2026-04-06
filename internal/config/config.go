@@ -203,7 +203,10 @@ func (c *Config) expandPaths(baseDir string) {
 		if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
 			return filepath.Join(home, p[2:])
 		}
-		if filepath.IsAbs(p) {
+		// filepath.IsAbs("/posix/path") returns false on Windows;
+		// handle POSIX-style absolute paths explicitly so cross-platform
+		// config files (e.g. written on Linux, used on Windows) are preserved.
+		if filepath.IsAbs(p) || strings.HasPrefix(p, "/") {
 			return p
 		}
 		return filepath.Join(baseDir, p)
@@ -219,10 +222,10 @@ func (c *Config) expandPaths(baseDir string) {
 	// GitHub shorthand: exactly one forward-slash (owner/repo), no scheme, not a local path.
 	isGitHubShorthand := func(s string) bool {
 		if isRemote(s) ||
-			strings.HasPrefix(s, "./") || strings.HasPrefix(s, `./`) ||
-			strings.HasPrefix(s, "../") || strings.HasPrefix(s, `.\`) ||
+			strings.HasPrefix(s, "./") || strings.HasPrefix(s, `.\`) ||
+			strings.HasPrefix(s, "../") || strings.HasPrefix(s, `..\`) ||
 			strings.HasPrefix(s, "~/") || strings.HasPrefix(s, `~\`) ||
-			filepath.IsAbs(s) {
+			strings.HasPrefix(s, "/") || filepath.IsAbs(s) {
 			return false
 		}
 		parts := strings.Split(s, "/")

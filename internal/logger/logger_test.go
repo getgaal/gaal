@@ -158,16 +158,22 @@ func TestTeeHandler_WithGroup(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSetup_NoLogFile(t *testing.T) {
-	if err := Setup(slog.LevelInfo, ""); err != nil {
+	_, err := Setup(slog.LevelInfo, "")
+	if err != nil {
 		t.Fatalf("Setup without log file: %v", err)
 	}
 }
 
 func TestSetup_WithLogFile(t *testing.T) {
 	logFile := filepath.Join(t.TempDir(), "test.log")
-	if err := Setup(slog.LevelDebug, logFile); err != nil {
+	teardown, err := Setup(slog.LevelDebug, logFile)
+	if err != nil {
 		t.Fatalf("Setup with log file: %v", err)
 	}
+	// Teardown closes the file handle before t.TempDir cleanup runs.
+	// Required on Windows where open handles prevent directory removal.
+	t.Cleanup(teardown)
+
 	// Emit a record so the file is written.
 	slog.Info("setup test")
 
@@ -177,7 +183,7 @@ func TestSetup_WithLogFile(t *testing.T) {
 }
 
 func TestSetup_InvalidLogFile(t *testing.T) {
-	err := Setup(slog.LevelInfo, "/no/such/directory/test.log")
+	_, err := Setup(slog.LevelInfo, "/no/such/directory/test.log")
 	if err == nil {
 		t.Fatal("expected error for invalid log file path")
 	}

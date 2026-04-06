@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/spf13/cobra"
 
@@ -87,10 +88,16 @@ func applyOptions() (engine.Options, error) {
 		}
 	}
 
-	// Redirect $HOME so that os.UserHomeDir() and all ~/... expansions
-	// (including inside config.Load) point into the sandbox.
+	// Redirect $HOME / $USERPROFILE so that os.UserHomeDir() and all ~/...
+	// expansions (including inside config.Load) point into the sandbox.
+	// On Windows, os.UserHomeDir() reads USERPROFILE first, so both must be set.
 	if err := os.Setenv("HOME", sandboxDir); err != nil {
 		return engine.Options{}, fmt.Errorf("setting sandbox HOME: %w", err)
+	}
+	if runtime.GOOS == "windows" {
+		if err := os.Setenv("USERPROFILE", sandboxDir); err != nil {
+			return engine.Options{}, fmt.Errorf("setting sandbox USERPROFILE: %w", err)
+		}
 	}
 
 	slog.Info("sandbox mode active", "home", sandboxDir, "workspace", workDir)
@@ -105,5 +112,6 @@ func setupLogger() error {
 	if verbose {
 		level = slog.LevelDebug
 	}
-	return logger.Setup(level, logFile)
+	_, err := logger.Setup(level, logFile)
+	return err
 }
