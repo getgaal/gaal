@@ -1,0 +1,8 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "go": true,
+    "echo": true,
+    "make": true,
+    "cd": true
+  }
+}

@@ -1,0 +1,458 @@
+package skill
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"gaal/internal/config"
+)
+
+// buildSkillDir creates a directory with a SKILL.md file and returns the root.
+func buildSkillDir(t *testing.T, name, description string) string {
+	t.Helper()
+	root := t.TempDir()
+	skillDir := filepath.Join(root, name)
+	os.MkdirAll(skillDir, 0o755)
+	content := "---\nname: " + name + "\ndescription: " + description + "\n---\n# " + name + "\n"
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644)
+	return root
+}
+
+// ---------------------------------------------------------------------------
+// parseSkillMeta
+// ---------------------------------------------------------------------------
+
+func TestParseSkillMeta_WithFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "SKILL.md")
+	os.WriteFile(p, []byte("---\nname: my-skill\ndescription: A test skill\n---\n# Body\n"), 0o644)
+
+	meta, err := parseSkillMeta(p)
+	if err != nil {
+		t.Fatalf("parseSkillMeta: %v", err)
+	}
+	if meta.Name != "my-skill" {
+		t.Errorf("got Name=%q, want my-skill", meta.Name)
+	}
+	if meta.Description != "A test skill" {
+		t.Errorf("got Description=%q, want 'A test skill'", meta.Description)
+	}
+}
+
+func TestParseSkillMeta_NoFrontmatter_FallsBackToDirName(t *testing.T) {
+	// Place SKILL.md inside a named directory so the fallback picks up the name.
+	dir := filepath.Join(t.TempDir(), "my-fallback-skill")
+	os.MkdirAll(dir, 0o755)
+	p := filepath.Join(dir, "SKILL.md")
+	os.WriteFile(p, []byte("# No frontmatter here\n"), 0o644)
+
+	meta, err := parseSkillMeta(p)
+	if err != nil {
+		t.Fatalf("parseSkillMeta: %v", err)
+	}
+	if meta.Name != "my-fallback-skill" {
+		t.Errorf("expected fallback name 'my-fallback-skill', got %q", meta.Name)
+	}
+}
+
+func TestParseSkillMeta_MissingFile(t *testing.T) {
+	_, err := parseSkillMeta("/no/such/SKILL.md")
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// discoverSkills
+// ---------------------------------------------------------------------------
+
+func TestDiscoverSkills_RootContainsSkill(t *testing.T) {
+	root := t.TempDir()
+	// Place skill in a subdirectory of root — standard discovery location.
+	skillDir := filepath.Join(root, "my-tool")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-tool\n---\n"), 0o644)
+
+	skills, err := discoverSkills(root)
+	if err != nil {
+		t.Fatalf("discoverSkills: %v", err)
+	}
+	if len(skills) == 0 {
+		t.Error("expected at least one skill")
+	}
+}
+
+func TestDiscoverSkills_EmptyRoot(t *testing.T) {
+	root := t.TempDir()
+	skills, err := discoverSkills(root)
+	if err != nil {
+		t.Fatalf("discoverSkills: %v", err)
+	}
+	if len(skills) != 0 {
+		t.Errorf("expected 0 skills in empty dir, got %d", len(skills))
+	}
+}
+
+func TestDiscoverSkills_NoDuplicates(t *testing.T) {
+	// Same skill referenced via multiple discovery dirs should not be duplicated.
+	root := t.TempDir()
+	skillDir := filepath.Join(root, "cool-skill")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: cool-skill\n---\n"), 0o644)
+
+	skills, err := discoverSkills(root)
+	if err != nil {
+		t.Fatalf("discoverSkills: %v", err)
+	}
+
+	seen := map[string]int{}
+	for _, sk := range skills {
+		seen[sk.Dir]++
+	}
+	for dir, count := range seen {
+		if count > 1 {
+			t.Errorf("skill dir %q discovered %d times", dir, count)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// filterSkills
+// ---------------------------------------------------------------------------
+
+func TestFilterSkills_EmptySelect_ReturnsAll(t *testing.T) {
+	all := []SkillMeta{{Name: "a"}, {Name: "b"}, {Name: "c"}}
+	got := filterSkills(all, nil)
+	if len(got) != 3 {
+		t.Errorf("expected 3, got %d", len(got))
+	}
+}
+
+func TestFilterSkills_Select_Subset(t *testing.T) {
+	all := []SkillMeta{{Name: "a"}, {Name: "b"}, {Name: "c"}}
+	got := filterSkills(all, []string{"a", "c"})
+	if len(got) != 2 {
+		t.Errorf("expected 2, got %d", len(got))
+	}
+}
+
+func TestFilterSkills_Select_NoMatch(t *testing.T) {
+	all := []SkillMeta{{Name: "a"}, {Name: "b"}}
+	got := filterSkills(all, []string{"z"})
+	if len(got) != 0 {
+		t.Errorf("expected 0, got %d", len(got))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// installSkill
+// ---------------------------------------------------------------------------
+
+func TestInstallSkill_CopiesFiles(t *testing.T) {
+	src := t.TempDir()
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("# skill"), 0o644)
+	os.WriteFile(filepath.Join(src, "helper.sh"), []byte("#!/bin/sh"), 0o755)
+
+	dst := filepath.Join(t.TempDir(), "installed-skill")
+	if err := installSkill(src, dst); err != nil {
+		t.Fatalf("installSkill: %v", err)
+	}
+
+	for _, name := range []string{"SKILL.md", "helper.sh"} {
+		if _, err := os.Stat(filepath.Join(dst, name)); err != nil {
+			t.Errorf("expected file %q in dst: %v", name, err)
+		}
+	}
+}
+
+func TestInstallSkill_CreatesNestedDirs(t *testing.T) {
+	src := t.TempDir()
+	subDir := filepath.Join(src, "sub")
+	os.MkdirAll(subDir, 0o755)
+	os.WriteFile(filepath.Join(subDir, "file.txt"), []byte("nested"), 0o644)
+
+	dst := filepath.Join(t.TempDir(), "dest")
+	if err := installSkill(src, dst); err != nil {
+		t.Fatalf("installSkill nested: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dst, "sub", "file.txt")); err != nil {
+		t.Error("expected nested file to exist in dst")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Manager.detectInstalledAgents (project scope)
+// ---------------------------------------------------------------------------
+
+func TestDetectInstalledAgents_ProjectScope(t *testing.T) {
+	workDir := t.TempDir()
+
+	// Create the parent config dir for one known agent (claude-code uses .claude/).
+	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
+
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
+	found := m.detectInstalledAgents(false)
+
+	hadAgent := false
+	for _, name := range found {
+		if name == "claude-code" {
+			hadAgent = true
+		}
+	}
+	if !hadAgent {
+		t.Errorf("expected claude-code to be detected when .claude/ exists; found: %v", found)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// isLocalPath
+// ---------------------------------------------------------------------------
+
+func TestIsLocalPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"/absolute/path", true},
+		{"./relative", true},
+		{"../parent", true},
+		{"~/home", true},
+		{"owner/repo", false},
+		{"https://github.com/foo/bar", false},
+	}
+	for _, tc := range tests {
+		got := isLocalPath(tc.input)
+		if got != tc.want {
+			t.Errorf("isLocalPath(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// gitVCS methods
+// ---------------------------------------------------------------------------
+
+func TestGitVCS_isCloned_True(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
+	g := gitVCS{}
+	if !g.isCloned(dir) {
+		t.Error("expected isCloned=true when .git dir exists")
+	}
+}
+
+func TestGitVCS_isCloned_False(t *testing.T) {
+	g := gitVCS{}
+	if g.isCloned(t.TempDir()) {
+		t.Error("expected isCloned=false when no .git dir")
+	}
+}
+
+func TestGitVCS_clone_MissingBinary(t *testing.T) {
+	t.Setenv("PATH", "")
+	g := gitVCS{}
+	err := g.clone(context.Background(), "https://github.com/x/y", filepath.Join(t.TempDir(), "dest"))
+	if err == nil {
+		t.Fatal("expected error when git binary not in PATH")
+	}
+}
+
+func TestGitVCS_update_MissingBinary(t *testing.T) {
+	t.Setenv("PATH", "")
+	g := gitVCS{}
+	err := g.update(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when git binary not in PATH")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Manager.Status
+// ---------------------------------------------------------------------------
+
+func TestManager_Status_UnknownAgent(t *testing.T) {
+	sourceDir := t.TempDir()
+	skills := []config.SkillConfig{
+		{Source: sourceDir, Agents: []string{"unknown-agent-xyz"}},
+	}
+	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())
+	statuses := m.Status(context.Background())
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].Err == nil {
+		t.Error("expected error status for unknown agent")
+	}
+}
+
+func TestManager_Status_SourceNotCached(t *testing.T) {
+	// Non-local source that has never been downloaded.
+	skills := []config.SkillConfig{
+		{Source: "owner/never-downloaded-repo", Agents: []string{"claude-code"}},
+	}
+	workDir := t.TempDir()
+	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
+	statuses := m.Status(context.Background())
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].Err == nil {
+		t.Error("expected 'source not cached yet' error")
+	}
+}
+
+func TestManager_Status_InstalledAndMissing(t *testing.T) {
+	// Source with two skills.
+	sourceDir := t.TempDir()
+	for _, name := range []string{"skill-a", "skill-b"} {
+		d := filepath.Join(sourceDir, name)
+		os.MkdirAll(d, 0o755)
+		os.WriteFile(filepath.Join(d, "SKILL.md"), []byte("---\nname: "+name+"\n---\n"), 0o644)
+	}
+
+	// Simulate workDir with .claude skills dir, only skill-a installed.
+	workDir := t.TempDir()
+	claudeSkillsDir := filepath.Join(workDir, ".claude", "skills")
+	os.MkdirAll(filepath.Join(claudeSkillsDir, "skill-a"), 0o755) // installed
+
+	skills := []config.SkillConfig{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
+	}
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
+	statuses := m.Status(context.Background())
+
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status entry, got %d", len(statuses))
+	}
+	st := statuses[0]
+	if st.Err != nil {
+		t.Fatalf("unexpected error: %v", st.Err)
+	}
+
+	hasInstalled := false
+	for _, n := range st.Installed {
+		if n == "skill-a" {
+			hasInstalled = true
+		}
+	}
+	if !hasInstalled {
+		t.Errorf("expected skill-a in Installed, got: %v", st.Installed)
+	}
+
+	hasMissing := false
+	for _, n := range st.Missing {
+		if n == "skill-b" {
+			hasMissing = true
+		}
+	}
+	if !hasMissing {
+		t.Errorf("expected skill-b in Missing, got: %v", st.Missing)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Manager.syncOne with unknown agent (warn + skip branch)
+// ---------------------------------------------------------------------------
+
+func TestManager_Sync_UnknownAgent_SkipsWithWarn(t *testing.T) {
+	sourceDir := t.TempDir()
+	skillDir := filepath.Join(sourceDir, "my-skill")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-skill\n---\n"), 0o644)
+
+	skills := []config.SkillConfig{
+		{Source: sourceDir, Agents: []string{"unknown-agent-xyz"}},
+	}
+	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())
+	// Should not error — unknown agent is warned and skipped.
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync with unknown agent should succeed: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// discoverSkills — deduplication via seen map
+// ---------------------------------------------------------------------------
+
+func TestDiscoverSkills_Deduplication(t *testing.T) {
+	// The seen map prevents the same skillDir from being returned twice.
+	// We trigger this by temporarily adding a second scan of the same base dir.
+	root := t.TempDir()
+	d := filepath.Join(root, "dup-skill")
+	os.MkdirAll(d, 0o755)
+	os.WriteFile(filepath.Join(d, "SKILL.md"), []byte("---\nname: dup-skill\n---\n"), 0o644)
+
+	orig := skillDiscoveryDirs
+	t.Cleanup(func() { skillDiscoveryDirs = orig })
+	// Add "." twice so the same skillDir is encountered in two iterations.
+	skillDiscoveryDirs = []string{".", "."}
+
+	skills, err := discoverSkills(root)
+	if err != nil {
+		t.Fatalf("discoverSkills: %v", err)
+	}
+	count := 0
+	for _, sk := range skills {
+		if sk.Name == "dup-skill" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected dup-skill to appear once after dedup, got %d", count)
+	}
+}
+
+func TestDiscoverSkills_RootSKILLmd(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "SKILL.md"), []byte("---\nname: root-skill\n---\n"), 0o644)
+	skills, err := discoverSkills(root)
+	if err != nil {
+		t.Fatalf("discoverSkills: %v", err)
+	}
+	found := false
+	for _, sk := range skills {
+		if sk.Name == "root-skill" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected root-skill from root SKILL.md; got %v", skills)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Manager.detectInstalledAgents — global scope
+// ---------------------------------------------------------------------------
+
+func TestDetectInstalledAgents_GlobalScope(t *testing.T) {
+	// In global mode the home dir is the check target.
+	// Claude global scope uses "~/.claude/skills" → parent is ~/.claude.
+	home := t.TempDir()
+	os.MkdirAll(filepath.Join(home, ".claude"), 0o755)
+	m := NewManager(nil, t.TempDir(), home, t.TempDir())
+	found := m.detectInstalledAgents(true)
+	hadAgent := false
+	for _, name := range found {
+		if name == "claude-code" {
+			hadAgent = true
+		}
+	}
+	if !hadAgent {
+		t.Errorf("expected claude-code detected in global mode when ~/.claude/ exists; found: %v", found)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// toCloneURL — ssh:// prefix unchanged
+// ---------------------------------------------------------------------------
+
+func TestToCloneURL_SSH_Schema_Unchanged(t *testing.T) {
+	url := "ssh://git@internal.corp/team/repo.git"
+	if got := toCloneURL(url); got != url {
+		t.Errorf("ssh:// URL should be unchanged, got %q", got)
+	}
+}

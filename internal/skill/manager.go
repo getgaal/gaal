@@ -1,0 +1,463 @@
+package skill
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"gaal/internal/config"
+	"gaal/internal/runner"
+)
+
+// skillDiscoveryDirs lists the subdirectories to search for SKILL.md files
+// within a fetched source repository (mirrors skills.sh discovery logic).
+var skillDiscoveryDirs = []string{
+	".",
+	"skills",
+	"skills/.curated",
+	"skills/.experimental",
+	"skills/.system",
+	".agents/skills",
+	".augment/skills",
+	".claude/skills",
+	".continue/skills",
+	".cursor/skills",
+	".factory/skills",
+	".goose/skills",
+	".kiro/skills",
+	".openhands/skills",
+	".roo/skills",
+	".trae/skills",
+	".windsurf/skills",
+}
+
+// SkillMeta holds the parsed frontmatter of a SKILL.md file.
+type SkillMeta struct {
+	Name        string
+	Description string
+	Dir         string // absolute path to the skill directory
+}
+
+// Status describes the installation state of a skill configuration entry.
+type Status struct {
+	Source    string
+	AgentName string
+	Global    bool
+	Installed []string // names of installed skills
+	Missing   []string // names of skills not yet installed
+	Err       error
+}
+
+// Manager handles skill installation and updates.
+type Manager struct {
+	skills   []config.SkillConfig
+	cacheDir string // root of the local skill cache
+	home     string // expanded user home directory
+	workDir  string // project working directory (for project-scoped installs)
+}
+
+// NewManager creates a new skill manager.
+// cacheDir is where remote sources are cloned/downloaded (e.g. ~/.cache/gaal/skills).
+func NewManager(skills []config.SkillConfig, cacheDir, home, workDir string) *Manager {
+	return &Manager{
+		skills:   skills,
+		cacheDir: cacheDir,
+		home:     home,
+		workDir:  workDir,
+	}
+}
+
+// Sync installs or updates every skill in the configuration.
+func (m *Manager) Sync(ctx context.Context) error {
+	for _, sc := range m.skills {
+		if err := m.syncOne(ctx, sc); err != nil {
+			return fmt.Errorf("skill %q: %w", sc.Source, err)
+		}
+	}
+	return nil
+}
+
+func (m *Manager) syncOne(ctx context.Context, sc config.SkillConfig) error {
+	slog.DebugContext(ctx, "syncing skill source", "source", sc.Source, "global", sc.Global)
+	// 1. Resolve the source to a local directory.
+	sourceDir, err := m.resolveSource(ctx, sc.Source)
+	if err != nil {
+		return fmt.Errorf("resolving source: %w", err)
+	}
+
+	// 2. Discover available skills in the source.
+	available, err := discoverSkills(sourceDir)
+	if err != nil {
+		return fmt.Errorf("discovering skills: %w", err)
+	}
+
+	// 3. Filter by the "select" list.
+	selected := filterSkills(available, sc.Select)
+	if len(selected) == 0 {
+		slog.Warn("no skills found in source", "source", sc.Source)
+		return nil
+	}
+
+	// 4. Determine target agents.
+	agents := m.resolveAgents(sc)
+	slog.DebugContext(ctx, "resolved agents", "source", sc.Source, "agents", agents)
+
+	// 5. Install each skill to each agent.
+	for _, agent := range agents {
+		skillsDir, ok := SkillDir(agent, sc.Global, m.home)
+		if !ok {
+			slog.Warn("unknown agent, skipping", "agent", agent)
+			continue
+		}
+
+		// Project-relative path needs workDir prefix.
+		if !sc.Global && !filepath.IsAbs(skillsDir) {
+			skillsDir = filepath.Join(m.workDir, skillsDir)
+		}
+
+		for _, sk := range selected {
+			dest := filepath.Join(skillsDir, filepath.Base(sk.Dir))
+			if err := installSkill(sk.Dir, dest); err != nil {
+				return fmt.Errorf("installing skill %q to agent %q: %w", sk.Name, agent, err)
+			}
+			slog.Info("installed skill", "name", sk.Name, "agent", agent, "dest", dest)
+		}
+	}
+
+	return nil
+}
+
+// resolveSource ensures the source is available locally and returns its path.
+func (m *Manager) resolveSource(ctx context.Context, source string) (string, error) {
+	if isLocalPath(source) {
+		return source, nil
+	}
+
+	cloneURL := toCloneURL(source)
+	cacheKey := urlToCacheKey(cloneURL)
+	localPath := filepath.Join(m.cacheDir, cacheKey)
+
+	git := gitVCS{}
+
+	if !git.isCloned(localPath) {
+		slog.Info("cloning skill source", "url", cloneURL, "path", localPath)
+		if err := git.clone(ctx, cloneURL, localPath); err != nil {
+			return "", fmt.Errorf("cloning %s: %w", cloneURL, err)
+		}
+	} else {
+		slog.Info("updating skill source", "path", localPath)
+		if err := git.update(ctx, localPath); err != nil {
+			slog.Warn("could not update skill source", "path", localPath, "err", err)
+		}
+	}
+
+	return localPath, nil
+}
+
+// resolveAgents returns the list of agents to install to, expanding "*".
+func (m *Manager) resolveAgents(sc config.SkillConfig) []string {
+	if len(sc.Agents) == 0 || (len(sc.Agents) == 1 && sc.Agents[0] == "*") {
+		return m.detectInstalledAgents(sc.Global)
+	}
+	return sc.Agents
+}
+
+// detectInstalledAgents returns agents whose config directory is present.
+func (m *Manager) detectInstalledAgents(global bool) []string {
+	slog.Debug("detecting installed agents", "global", global)
+	var found []string
+	for name := range knownAgents {
+		dir, ok := SkillDir(name, global, m.home)
+		if !ok {
+			continue
+		}
+		// For project scope check by parent dir; for global, check home existence.
+		checkDir := dir
+		if !global && !filepath.IsAbs(dir) {
+			checkDir = filepath.Join(m.workDir, filepath.Dir(dir))
+		} else {
+			checkDir = filepath.Dir(expandHome(dir, m.home))
+		}
+		if _, err := os.Stat(checkDir); err == nil {
+			slog.Debug("agent detected", "name", name, "dir", checkDir)
+			found = append(found, name)
+		}
+	}
+	return found
+}
+
+// Status returns the installation status for every skill config.
+func (m *Manager) Status(ctx context.Context) []Status {
+	statuses := make([]Status, 0, len(m.skills))
+
+	for _, sc := range m.skills {
+		agents := m.resolveAgents(sc)
+		for _, agent := range agents {
+			st := Status{Source: sc.Source, AgentName: agent, Global: sc.Global}
+
+			skillsDir, ok := SkillDir(agent, sc.Global, m.home)
+			if !ok {
+				st.Err = fmt.Errorf("unknown agent %q", agent)
+				statuses = append(statuses, st)
+				continue
+			}
+			if !sc.Global && !filepath.IsAbs(skillsDir) {
+				skillsDir = filepath.Join(m.workDir, skillsDir)
+			}
+
+			// Resolve local source (may not be downloaded yet).
+			sourceDir, err := cachedSourcePath(m.cacheDir, sc.Source)
+			if err != nil || sourceDir == "" {
+				st.Err = fmt.Errorf("source not cached yet")
+				statuses = append(statuses, st)
+				continue
+			}
+
+			available, _ := discoverSkills(sourceDir)
+			selected := filterSkills(available, sc.Select)
+
+			for _, sk := range selected {
+				dest := filepath.Join(skillsDir, filepath.Base(sk.Dir))
+				if _, err := os.Stat(dest); err == nil {
+					st.Installed = append(st.Installed, sk.Name)
+				} else {
+					st.Missing = append(st.Missing, sk.Name)
+				}
+			}
+
+			statuses = append(statuses, st)
+		}
+	}
+
+	return statuses
+}
+
+// discoverSkills finds all SKILL.md files under root using standard locations.
+func discoverSkills(root string) ([]SkillMeta, error) {
+	slog.Debug("discovering skills", "root", root)
+	seen := map[string]struct{}{}
+	var skills []SkillMeta
+
+	for _, subdir := range skillDiscoveryDirs {
+		base := filepath.Join(root, subdir)
+		entries, err := os.ReadDir(base)
+		if err != nil {
+			continue
+		}
+
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			skillDir := filepath.Join(base, e.Name())
+			mdPath := filepath.Join(skillDir, "SKILL.md")
+			if _, err := os.Stat(mdPath); err != nil {
+				continue
+			}
+			if _, ok := seen[skillDir]; ok {
+				continue
+			}
+			seen[skillDir] = struct{}{}
+
+			meta, err := parseSkillMeta(mdPath)
+			if err != nil {
+				slog.Warn("skipping invalid SKILL.md", "path", mdPath, "err", err)
+				continue
+			}
+			meta.Dir = skillDir
+			skills = append(skills, meta)
+		}
+	}
+
+	// Also check if root itself contains SKILL.md.
+	rootMD := filepath.Join(root, "SKILL.md")
+	if _, err := os.Stat(rootMD); err == nil {
+		if _, ok := seen[root]; !ok {
+			meta, err := parseSkillMeta(rootMD)
+			if err == nil {
+				meta.Dir = root
+				skills = append(skills, meta)
+			}
+		}
+	}
+
+	return skills, nil
+}
+
+// parseSkillMeta reads the YAML frontmatter from a SKILL.md file.
+func parseSkillMeta(path string) (SkillMeta, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return SkillMeta{}, err
+	}
+	defer f.Close()
+
+	var meta SkillMeta
+	scanner := bufio.NewScanner(f)
+
+	// Look for --- ... --- frontmatter block.
+	inFrontmatter := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "---" {
+			if !inFrontmatter {
+				inFrontmatter = true
+				continue
+			}
+			break
+		}
+		if !inFrontmatter {
+			continue
+		}
+
+		if k, v, ok := strings.Cut(line, ":"); ok {
+			k = strings.TrimSpace(k)
+			v = strings.TrimSpace(v)
+			switch k {
+			case "name":
+				meta.Name = v
+			case "description":
+				meta.Description = v
+			}
+		}
+	}
+
+	if meta.Name == "" {
+		// Derive name from the directory name.
+		meta.Name = filepath.Base(filepath.Dir(path))
+	}
+
+	return meta, nil
+}
+
+// filterSkills returns the skills whose names match the select list.
+// An empty select list means "all".
+func filterSkills(all []SkillMeta, selectNames []string) []SkillMeta {
+	if len(selectNames) == 0 {
+		return all
+	}
+	set := make(map[string]struct{}, len(selectNames))
+	for _, n := range selectNames {
+		set[n] = struct{}{}
+	}
+	var out []SkillMeta
+	for _, sk := range all {
+		if _, ok := set[sk.Name]; ok {
+			out = append(out, sk)
+		}
+	}
+	return out
+}
+
+// installSkill copies the skill directory content from src to dst.
+func installSkill(src, dst string) error {
+	slog.Debug("installing skill", "src", src, "dst", dst)
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return fmt.Errorf("creating skill directory: %w", err)
+	}
+
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, path)
+		target := filepath.Join(dst, rel)
+
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+
+		return copyFile(path, target)
+	})
+}
+
+// copyFile copies a single file from src to dst.
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+
+	fi, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(dst, data, fi.Mode())
+}
+
+// isLocalPath reports whether source is a local filesystem path.
+func isLocalPath(source string) bool {
+	return filepath.IsAbs(source) ||
+		strings.HasPrefix(source, "./") ||
+		strings.HasPrefix(source, "../") ||
+		strings.HasPrefix(source, "~/")
+}
+
+// toCloneURL converts a GitHub shorthand (owner/repo) or any URL to a clone URL.
+func toCloneURL(source string) string {
+	if strings.HasPrefix(source, "http://") ||
+		strings.HasPrefix(source, "https://") ||
+		strings.HasPrefix(source, "git@") ||
+		strings.HasPrefix(source, "ssh://") {
+		return source
+	}
+	// GitHub shorthand: owner/repo
+	parts := strings.SplitN(source, "/", 2)
+	if len(parts) == 2 {
+		return "https://github.com/" + source
+	}
+	return source
+}
+
+// urlToCacheKey converts a URL to a safe filesystem path component.
+func urlToCacheKey(url string) string {
+	r := strings.NewReplacer(
+		"https://", "",
+		"http://", "",
+		"git@", "",
+		":", "/",
+		".git", "",
+	)
+	return filepath.Clean(r.Replace(url))
+}
+
+// cachedSourcePath returns the local cache path for a source without cloning.
+func cachedSourcePath(cacheDir, source string) (string, error) {
+	if isLocalPath(source) {
+		return source, nil
+	}
+	cloneURL := toCloneURL(source)
+	cacheKey := urlToCacheKey(cloneURL)
+	path := filepath.Join(cacheDir, cacheKey)
+	if _, err := os.Stat(path); err != nil {
+		return "", nil // not yet cached
+	}
+	return path, nil
+}
+
+// gitVCS is a minimal git client used only by the skill manager to avoid an
+// import cycle with the repo package.
+type gitVCS struct{}
+
+func (g gitVCS) isCloned(path string) bool {
+	_, err := os.Stat(filepath.Join(path, ".git"))
+	return err == nil
+}
+
+func (g gitVCS) clone(ctx context.Context, url, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	label := "cloning skill " + url
+	return runner.Run(ctx, label, "", "git", "clone", "--depth=1", "--recurse-submodules", url, path)
+}
+
+func (g gitVCS) update(ctx context.Context, path string) error {
+	return runner.Run(ctx, "updating skill cache "+filepath.Base(path), path, "git", "pull", "--ff-only")
+}

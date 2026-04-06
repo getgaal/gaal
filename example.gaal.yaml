@@ -1,0 +1,125 @@
+# gaal.yaml — example configuration
+#
+# Run once:    gaal sync
+# Run as service (every 10 min): gaal --service --interval 10m
+# Show status: gaal status
+
+# ─────────────────────────────────────────────────────────────────────────────
+# repositories
+#
+# Compatible with the vcstool export format.
+# Keys are local paths (relative or absolute).
+# Supported types: git, hg, svn, bzr, tar, zip
+# ─────────────────────────────────────────────────────────────────────────────
+repositories:
+  src/gaal:
+    type: git
+    url: https://github.com/example/gaal.git
+    version: main
+
+  src/tools/my-python-lib:
+    type: git
+    url: https://github.com/example/my-python-lib.git
+    version: v2.1.0          # pin to a tag
+
+  src/legacy/old-tool:
+    type: svn
+    url: https://svn.example.com/repos/old-tool/trunk
+    version: "1234"          # SVN revision (optional)
+
+  src/data/dataset:
+    type: tar
+    url: https://example.com/releases/dataset-2024.tar.gz
+    version: dataset-2024    # strip this prefix during extraction
+
+# ─────────────────────────────────────────────────────────────────────────────
+# skills
+#
+# Install SKILL.md collections for your local coding agents.
+# Sources:
+#   - GitHub shorthand:  owner/repo
+#   - Full URL:          https://github.com/owner/repo
+#   - Git SSH:           git@github.com:owner/repo.git
+#   - Local path:        ./path/to/skills  or  ~/my-skills
+#
+# agents: list agent names, or ["*"] to auto-detect installed agents.
+# global: true  → install to ~/.<agent>/skills/  (user-wide)
+#         false → install to ./<agent-dir>/skills/ (project-local, default)
+# select: specific skill names to install (empty = all skills in the repo)
+# ─────────────────────────────────────────────────────────────────────────────
+skills:
+  # Install all skills from vercel-labs/agent-skills to all detected agents.
+  - source: vercel-labs/agent-skills
+    agents: ["*"]
+    global: false
+
+  # Install only two specific skills to claude-code and github-copilot.
+  - source: anthropics/skills
+    agents:
+      - claude-code
+      - github-copilot
+    select:
+      - frontend-design
+      - skill-creator
+    global: false
+
+  # Install from a full URL globally (available across all projects).
+  - source: https://github.com/microsoft/github-copilot-for-azure
+    agents:
+      - github-copilot
+    global: true
+
+  # Install from a local directory.
+  - source: ./company-skills
+    agents:
+      - claude-code
+      - cursor
+    global: false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# mcps
+#
+# Manage MCP (Model Context Protocol) server configuration entries.
+# Each entry is upserted into the target JSON file under "mcpServers".
+#
+# source: URL to a remote JSON file containing an mcpServers document.
+# inline: define the server entry directly in this file.
+# target: path to the JSON config file to merge into.
+#         Common targets:
+#           ~/.config/claude/claude_desktop_config.json   (Claude Desktop)
+#           ~/.vscode/settings.json                       (VS Code)
+# ─────────────────────────────────────────────────────────────────────────────
+mcps:
+  # Inline definition — filesystem MCP server.
+  - name: filesystem
+    target: ~/.config/claude/claude_desktop_config.json
+    inline:
+      command: uvx
+      args:
+        - mcp-server-filesystem
+        - /home/user/projects
+      env: {}
+
+  # Inline definition — git MCP server.
+  - name: git
+    target: ~/.config/claude/claude_desktop_config.json
+    inline:
+      command: uvx
+      args:
+        - mcp-server-git
+        - --repository
+        - /home/user/projects/gaal
+
+  # Remote source — download and merge an mcpServers document.
+  - name: github
+    source: https://raw.githubusercontent.com/github/mcp-servers/main/config.json
+    target: ~/.config/claude/claude_desktop_config.json
+
+  # VS Code MCP server configuration.
+  - name: sequential-thinking
+    target: ~/.vscode/settings.json
+    inline:
+      command: npx
+      args:
+        - -y
+        - "@modelcontextprotocol/server-sequential-thinking"

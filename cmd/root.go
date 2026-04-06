@@ -1,0 +1,109 @@
+package cmd
+
+import (
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+
+	"github.com/spf13/cobra"
+
+	"gaal/internal/engine"
+	"gaal/internal/logger"
+)
+
+var (
+	cfgFile    string
+	verbose    bool
+	noBanner   bool
+	sandboxDir string
+	logFile    string
+
+	// engineOpts is populated by PersistentPreRunE and shared by all sub-commands.
+	engineOpts engine.Options
+)
+
+var rootCmd = &cobra.Command{
+	Use:   "gaal",
+	Short: "Multi-protocol local repository and skill/MCP manager",
+	Long: `gaal maintains a local base of multi-protocol repositories,
+installs agent skills (SKILL.md collections) and manages MCP server
+configurations.
+
+Run once (one-shot mode) or continuously as a service with --service.`,
+	SilenceUsage: true,
+	// PersistentPreRunE runs before every sub-command (sync, status, …) and
+	// before RunE on the root command itself. It is the single place where the
+	// logger, banner and sandbox are initialised so no sub-command needs to repeat it.
+	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+		if !noBanner {
+			printBanner()
+		}
+		if err := setupLogger(); err != nil {
+			return err
+		}
+		opts, err := applyOptions()
+		if err != nil {
+			return err
+		}
+		engineOpts = opts
+		return nil
+	},
+	// No RunE: invoking gaal without a sub-command prints the banner (via
+	// PersistentPreRunE) then lists the available commands.
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return cmd.Help()
+	},
+}
+
+// Execute is the entry-point called by main.
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "gaal.yaml", "configuration file path")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable debug logging")
+	rootCmd.PersistentFlags().BoolVar(&noBanner, "no-banner", false, "suppress the ASCII-art banner")
+	rootCmd.PersistentFlags().StringVar(&sandboxDir, "sandbox", "", "redirect all writes to this directory (safe for tests)")
+	rootCmd.PersistentFlags().StringVar(&logFile, "log-file", "", "write structured JSON logs to this file (in addition to console)")
+}
+
+// applyOptions builds engine.Options, applying sandbox mode when requested.
+// When --sandbox is set, $HOME is redirected to the sandbox directory so that
+// all ~/... path expansions (config loading, skill dirs, MCP targets) stay
+// inside the sandbox. Nothing outside the sandbox directory is touched.
+func applyOptions() (engine.Options, error) {
+	if sandboxDir == "" {
+		return engine.Options{}, nil
+	}
+
+	workDir := filepath.Join(sandboxDir, "workspace")
+	for _, d := range []string{sandboxDir, workDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return engine.Options{}, fmt.Errorf("creating sandbox directory %q: %w", d, err)
+		}
+	}
+
+	// Redirect $HOME so that os.UserHomeDir() and all ~/... expansions
+	// (including inside config.Load) point into the sandbox.
+	if err := os.Setenv("HOME", sandboxDir); err != nil {
+		return engine.Options{}, fmt.Errorf("setting sandbox HOME: %w", err)
+	}
+
+	slog.Info("sandbox mode active", "home", sandboxDir, "workspace", workDir)
+	return engine.Options{WorkDir: workDir}, nil
+}
+
+// setupLogger initialises the global logger using the package-level flags.
+// Console output is always active (colored when attached to a TTY).
+// When --log-file is set, a JSON handler is added that writes to that file.
+func setupLogger() error {
+	level := slog.LevelInfo
+	if verbose {
+		level = slog.LevelDebug
+	}
+	return logger.Setup(level, logFile)
+}

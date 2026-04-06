@@ -1,0 +1,67 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "gaal: sync (sandbox)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": [
+        "--config", "${workspaceFolder}/example.gaal.yaml",
+        "--sandbox", "${workspaceFolder}/.sandbox",
+        "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
+        "--verbose",
+        "sync"
+      ],
+      "env": {},
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "gaal: status (sandbox)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": [
+        "--config", "${workspaceFolder}/example.gaal.yaml",
+        "--sandbox", "${workspaceFolder}/.sandbox",
+        "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
+        "--verbose",
+        "status"
+      ],
+      "env": {},
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "gaal: service (sandbox, 30s)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": [
+        "--config", "${workspaceFolder}/example.gaal.yaml",
+        "--sandbox", "${workspaceFolder}/.sandbox",
+        "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
+        "--verbose",
+        "--service",
+        "--interval", "30s"
+      ],
+      "env": {},
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "gaal: version",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": ["version"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}
