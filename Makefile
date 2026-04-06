@@ -7,7 +7,12 @@ LDFLAGS       := -ldflags "-X gaal/cmd.Version=$(VERSION) -X gaal/cmd.BuildTime=
 # Sandbox directory — override with: make sandbox SANDBOX=/my/dir
 SANDBOX  ?= $(shell mktemp -d /tmp/gaal-test-XXXXXX)
 
-.PHONY: all build run run-service test coverage lint clean tidy sandbox sandbox-service sandbox-status
+# Cross-compilation — override with: make build-cross GOOS=linux GOARCH=arm64
+GOOS      ?= $(shell go env GOOS)
+GOARCH    ?= $(shell go env GOARCH)
+BIN_CROSS ?= dist/gaal-$(GOOS)-$(GOARCH)
+
+.PHONY: all build build-cross run run-service test test-race coverage coverage-ci lint clean tidy sandbox sandbox-service sandbox-status
 
 all: build
 
@@ -46,6 +51,10 @@ sandbox-status: build
 test:
 	go test ./...
 
+## test-race: run unit tests with race detector (used in CI)
+test-race:
+	go test -race -timeout 5m ./...
+
 ## coverage: run tests with coverage — generates all reports in report/
 ##   report/coverage.html          — standard go tool cover (default)
 ##   report/coverage-golang.html   — gocov-html, golang theme
@@ -66,13 +75,36 @@ coverage:
 	@echo "  coverage-kit.html      (gocov-html — kit theme)"
 	@echo "  coverage-treemap.svg   (go-cover-treemap)"
 
-## lint: run go vet
+## lint: check formatting (gofmt) and run static analysis (go vet)
 lint:
+	@UNFORMATTED=$$(gofmt -l .); \
+	if [ -n "$$UNFORMATTED" ]; then \
+	  echo "The following files are not gofmt formatted:"; \
+	  echo "$$UNFORMATTED"; \
+	  exit 1; \
+	fi
 	go vet ./...
 
 ## tidy: tidy dependencies
 tidy:
 	go mod tidy
+
+## coverage-ci: run tests with coverage for CI (no external tools required)
+##   report/coverage.out          — raw coverage profile
+##   report/coverage-summary.txt  — per-function summary
+##   report/coverage.html         — HTML report
+coverage-ci:
+	@mkdir -p report
+	go test -race -coverprofile=report/coverage.out -covermode=atomic ./internal/...
+	go tool cover -func=report/coverage.out | tee report/coverage-summary.txt
+	go tool cover -html=report/coverage.out -o report/coverage.html
+
+## build-cross: cross-compile for a target platform
+##   Override GOOS, GOARCH and optionally BIN_CROSS, e.g.:
+##   make build-cross GOOS=linux GOARCH=arm64
+build-cross:
+	@mkdir -p dist
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BIN_CROSS) .
 
 ## clean: remove build artefacts
 clean:
