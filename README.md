@@ -171,4 +171,11 @@ go install github.com/gmg-inc/gaal-lite@latest
 
 ## License
 
-MIT
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+
+Copyright (C) 2026 @Theosakamg / @gmoigneu / @gregqualls .
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See the [LICENSE](LICENSE) file for the full text.
