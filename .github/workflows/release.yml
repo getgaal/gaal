@@ -40,9 +40,9 @@ jobs:
           - { goos: windows, goarch: amd64, ext: .exe }
           - { goos: windows, goarch: arm64, ext: .exe }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -56,7 +56,7 @@ jobs:
           make build-cross
           BIN_CROSS=dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: gaal-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -70,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: binaries
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: gaal-*
           merge-multiple: true
