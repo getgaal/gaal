@@ -4,6 +4,8 @@ name: CI
 # Also exposed as a reusable workflow so release.yml can call it.
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_call:
 
 permissions:
@@ -37,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('["ubuntu-latest", "macos-latest", "windows-latest"]') || fromJson('["ubuntu-latest", "macos-latest"]') }}
     steps:
       - uses: actions/checkout@v6
 
@@ -48,6 +50,14 @@ jobs:
 
       - name: Build
         run: make build
+
+      - name: Upload binary
+        if: github.event_name == 'push' || github.event_name == 'workflow_call'
+        uses: actions/upload-artifact@v7
+        with:
+          name: gaal-${{ matrix.os }}
+          path: dist/
+          retention-days: 7
 
   # ──────────────────────────────────────────────────────────────────────────
   # Test: unit tests with race detector on Linux, macOS, and Windows
@@ -60,7 +70,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('["ubuntu-latest", "macos-latest", "windows-latest"]') || fromJson('["ubuntu-latest", "macos-latest"]') }}
     steps:
       - uses: actions/checkout@v6
 
