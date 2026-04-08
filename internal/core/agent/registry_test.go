@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -87,7 +88,7 @@ func TestSkillDir_GlobalScope(t *testing.T) {
 	if strings.HasPrefix(dir, "~") {
 		t.Errorf("expected ~ to be expanded, got %q", dir)
 	}
-	if !strings.HasPrefix(dir, home) {
+	if !strings.HasPrefix(filepath.ToSlash(dir), filepath.ToSlash(home)) {
 		t.Errorf("expected dir to start with home %q, got %q", home, dir)
 	}
 }
@@ -108,7 +109,7 @@ func TestMCPConfigPath_Known(t *testing.T) {
 	if strings.HasPrefix(path, "~") {
 		t.Errorf("expected ~ to be expanded, got %q", path)
 	}
-	if !strings.HasPrefix(path, home) {
+	if !strings.HasPrefix(filepath.ToSlash(path), filepath.ToSlash(home)) {
 		t.Errorf("expected path to start with home %q, got %q", home, path)
 	}
 }
@@ -152,13 +153,13 @@ func TestAllAgents_HaveNonEmptySkillDirs(t *testing.T) {
 func TestExpandHome_POSIX(t *testing.T) {
 	home := "/home/alice"
 	cases := []struct{ input, want string }{
-		{"~/foo/bar", home + "/foo/bar"},
+		{"~/foo/bar", filepath.Join(home, "foo/bar")},
 		{"/absolute/path", "/absolute/path"},
 		{"relative/path", "relative/path"},
 	}
 	for _, tc := range cases {
 		got := agent.ExpandHome(tc.input, home)
-		if got != tc.want {
+		if filepath.ToSlash(got) != filepath.ToSlash(tc.want) {
 			t.Errorf("ExpandHome(%q, %q) = %q, want %q", tc.input, home, got, tc.want)
 		}
 	}
