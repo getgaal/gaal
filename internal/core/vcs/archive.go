@@ -1,4 +1,4 @@
-package repo
+package vcs
 
 import (
 	"archive/tar"
@@ -56,6 +56,12 @@ func (a *VcsArchive) IsCloned(path string) bool {
 
 func (a *VcsArchive) CurrentVersion(_ context.Context, _ string) (string, error) {
 	return "archive", nil
+}
+
+// HasChanges always returns false for archives: extracted files carry no VCS
+// metadata, so change detection is not possible.
+func (a *VcsArchive) HasChanges(_ context.Context, _ string) (bool, error) {
+	return false, nil
 }
 
 // fetchURL performs a GET request and returns the response body.

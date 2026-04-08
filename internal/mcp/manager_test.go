@@ -267,3 +267,115 @@ func TestManager_Status_InvalidJSON(t *testing.T) {
 		t.Error("expected error status for invalid JSON target")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// serverEntryEqual
+// ---------------------------------------------------------------------------
+
+func TestServerEntryEqual_Identical(t *testing.T) {
+	a := serverEntry{Command: "node", Args: []string{"server.js"}, Env: map[string]string{"PORT": "8080"}}
+	b := serverEntry{Command: "node", Args: []string{"server.js"}, Env: map[string]string{"PORT": "8080"}}
+	if !serverEntryEqual(a, b) {
+		t.Error("expected equal entries to be reported as equal")
+	}
+}
+
+func TestServerEntryEqual_DifferentCommand(t *testing.T) {
+	a := serverEntry{Command: "node"}
+	b := serverEntry{Command: "python"}
+	if serverEntryEqual(a, b) {
+		t.Error("expected different commands to be reported as not equal")
+	}
+}
+
+func TestServerEntryEqual_DifferentArgs(t *testing.T) {
+	a := serverEntry{Command: "cmd", Args: []string{"--a"}}
+	b := serverEntry{Command: "cmd", Args: []string{"--b"}}
+	if serverEntryEqual(a, b) {
+		t.Error("expected different args to be reported as not equal")
+	}
+}
+
+func TestServerEntryEqual_DifferentEnv(t *testing.T) {
+	a := serverEntry{Command: "cmd", Env: map[string]string{"K": "v1"}}
+	b := serverEntry{Command: "cmd", Env: map[string]string{"K": "v2"}}
+	if serverEntryEqual(a, b) {
+		t.Error("expected different env to be reported as not equal")
+	}
+}
+
+func TestServerEntryEqual_NilVsEmpty(t *testing.T) {
+	a := serverEntry{Command: "cmd", Args: nil}
+	b := serverEntry{Command: "cmd", Args: []string{}}
+	if !serverEntryEqual(a, b) {
+		t.Error("expected nil and empty slice to be treated as equal")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Manager.Status — Dirty detection for inline MCP
+// ---------------------------------------------------------------------------
+
+func TestManager_Status_DirtyInline(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "mcp.json")
+	// Store a different command than what is configured.
+	os.WriteFile(target, []byte(`{"mcpServers":{"srv":{"command":"old-cmd"}}}`), 0o644)
+
+	mcps := []config.MCPConfig{
+		{
+			Name:   "srv",
+			Target: target,
+			Inline: &config.MCPInlineConfig{Command: "new-cmd"},
+		},
+	}
+	m := NewManager(mcps)
+	statuses := m.Status(context.Background())
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if !statuses[0].Present {
+		t.Error("expected Present=true")
+	}
+	if !statuses[0].Dirty {
+		t.Error("expected Dirty=true when stored command differs from configured")
+	}
+}
+
+func TestManager_Status_CleanInline(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "mcp.json")
+	os.WriteFile(target, []byte(`{"mcpServers":{"srv":{"command":"node","args":["server.js"]}}}`), 0o644)
+
+	mcps := []config.MCPConfig{
+		{
+			Name:   "srv",
+			Target: target,
+			Inline: &config.MCPInlineConfig{Command: "node", Args: []string{"server.js"}},
+		},
+	}
+	m := NewManager(mcps)
+	statuses := m.Status(context.Background())
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].Dirty {
+		t.Error("expected Dirty=false when stored and configured entries are identical")
+	}
+}
+
+func TestManager_Status_SourceNoInline_NoDirtyCheck(t *testing.T) {
+	// For source-based MCPs (no Inline), Dirty should always be false at status time.
+	target := filepath.Join(t.TempDir(), "mcp.json")
+	os.WriteFile(target, []byte(`{"mcpServers":{"srv":{"command":"something"}}}`), 0o644)
+
+	mcps := []config.MCPConfig{
+		{Name: "srv", Target: target, Source: "https://example.com/mcp.json"},
+	}
+	m := NewManager(mcps)
+	statuses := m.Status(context.Background())
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].Dirty {
+		t.Error("expected Dirty=false for source-based MCP (no inline check)")
+	}
+}

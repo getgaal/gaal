@@ -169,6 +169,40 @@ func TestManager_Status_Empty(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// resolveSource — local git repos are updated on sync
+// ---------------------------------------------------------------------------
+
+func TestResolveSource_LocalNonGit_ReturnedAsIs(t *testing.T) {
+	// A plain directory (no .git) must be returned without any git operation.
+	src := t.TempDir()
+	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir())
+	got, err := m.resolveSource(context.Background(), src)
+	if err != nil {
+		t.Fatalf("resolveSource: %v", err)
+	}
+	if got != src {
+		t.Errorf("expected path %q, got %q", src, got)
+	}
+}
+
+func TestResolveSource_LocalGit_UpdateAttempted(t *testing.T) {
+	// A local directory that contains a .git folder: update is attempted.
+	// Since there is no real remote the fetch will fail; resolveSource must
+	// still return the path (the failure is only a warning).
+	src := t.TempDir()
+	os.MkdirAll(filepath.Join(src, ".git"), 0o755)
+	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir())
+	// The git binary must be present; skip on machines without git in PATH.
+	got, err := m.resolveSource(context.Background(), src)
+	if err != nil {
+		t.Fatalf("resolveSource should not fail for a local git dir: %v", err)
+	}
+	if got != src {
+		t.Errorf("expected path %q unchanged, got %q", src, got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Manager.resolveSource — pre-cached remote source (update branch)
 // ---------------------------------------------------------------------------
 
@@ -207,13 +241,13 @@ func TestManager_Sync_PreCachedRemoteSource(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestManager_Sync_CloneError(t *testing.T) {
-	t.Setenv("PATH", "")
+	// Use a URL that will fail immediately (connection refused on localhost:1).
 	skills := []config.SkillConfig{
-		{Source: "owner/not-yet-cloned", Agents: []string{"claude-code"}},
+		{Source: "http://localhost:1/not-a-repo.git", Agents: []string{"claude-code"}},
 	}
 	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())
 	err := m.Sync(context.Background())
 	if err == nil {
-		t.Fatal("expected error when git clone fails (no binary)")
+		t.Fatal("expected error when git clone fails (unreachable host)")
 	}
 }

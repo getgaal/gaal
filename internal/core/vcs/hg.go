@@ -1,4 +1,4 @@
-package repo
+package vcs
 
 import (
 	"context"
@@ -61,4 +61,17 @@ func (m *VcsMercurial) CurrentVersion(ctx context.Context, path string) (string,
 	}
 	out, err := cmdOutput(ctx, path, "hg", "id", "-i")
 	return strings.TrimSpace(out), err
+}
+
+// HasChanges reports whether the working directory has local modifications.
+func (m *VcsMercurial) HasChanges(ctx context.Context, path string) (bool, error) {
+	if err := requireBinary("hg"); err != nil {
+		return false, err
+	}
+	slog.DebugContext(ctx, "checking for local changes", "path", shortPath(path))
+	out, err := cmdOutput(ctx, path, "hg", "status", "-mard")
+	if err != nil {
+		return false, fmt.Errorf("hg status: %w", err)
+	}
+	return strings.TrimSpace(out) != "", nil
 }

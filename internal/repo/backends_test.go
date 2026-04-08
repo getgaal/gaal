@@ -2,9 +2,6 @@ package repo
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"gaal/internal/config"
@@ -96,21 +93,20 @@ func TestManager_Status_CurrentVersionError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Fake-binary helper for subprocess backends (hg / svn / bzr)
+// Manager.Status - Dirty propagation
 // ---------------------------------------------------------------------------
 
-// makeFakeBin writes a minimal executable named `name` that executes `script`
-// and returns the directory path. The caller must add that dir to PATH.
-// On Windows a .bat wrapper is used because shell scripts are not executable.
-func makeFakeBin(t *testing.T, name, script string) string {
-	t.Helper()
-	binDir := t.TempDir()
-	if runtime.GOOS == "windows" {
-		bin := filepath.Join(binDir, name+".bat")
-		os.WriteFile(bin, []byte("@echo off\n"+script+"\n"), 0o755)
-	} else {
-		bin := filepath.Join(binDir, name)
-		os.WriteFile(bin, []byte("#!/bin/sh\n"+script+"\n"), 0o755)
+func TestManager_Status_DirtyFalse_Archive(t *testing.T) {
+	existing := t.TempDir()
+	repos := map[string]config.RepoConfig{
+		existing: {Type: "tar", URL: "https://example.com/x.tar.gz"},
 	}
-	return binDir
+	m := NewManager(repos)
+	statuses := m.Status(context.Background())
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].Dirty {
+		t.Error("expected Dirty=false for archive backend")
+	}
 }

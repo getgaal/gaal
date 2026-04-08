@@ -1,4 +1,4 @@
-package repo
+package vcs
 
 import (
 	"context"
@@ -20,6 +20,12 @@ type VCS interface {
 	// CurrentVersion returns a human-readable description of the working
 	// copy's current state (tag, branch, commit hash, revision, …).
 	CurrentVersion(ctx context.Context, path string) (string, error)
+
+	// HasChanges reports whether the working copy at path contains local
+	// modifications (tracked files added, deleted, or modified). Untracked
+	// files are ignored for VCS types that support the distinction.
+	// Returns false when the working copy is clean (immutable state intact).
+	HasChanges(ctx context.Context, path string) (bool, error)
 }
 
 // Compile-time assertions: if any struct stops satisfying VCS, the build fails
@@ -48,4 +54,14 @@ func New(vcsType string) (VCS, error) {
 	default:
 		return nil, fmt.Errorf("unsupported VCS type: %q", vcsType)
 	}
+}
+
+// NewShallow is like New but creates a shallow-clone variant of the backend
+// when the type supports it (currently git only). Suitable for skill caches:
+// clones with depth=1 and updates with hard-reset to origin HEAD.
+func NewShallow(vcsType string) (VCS, error) {
+	if vcsType == "git" {
+		return &VcsGit{Shallow: true}, nil
+	}
+	return New(vcsType)
 }

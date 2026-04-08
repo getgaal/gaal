@@ -1,4 +1,4 @@
-package repo
+package vcs
 
 import (
 	"context"
@@ -56,4 +56,17 @@ func (s *VcsSVN) CurrentVersion(ctx context.Context, path string) (string, error
 	}
 	out, err := cmdOutput(ctx, path, "svnversion", ".")
 	return strings.TrimSpace(out), err
+}
+
+// HasChanges reports whether the working copy has local modifications.
+func (s *VcsSVN) HasChanges(ctx context.Context, path string) (bool, error) {
+	if err := requireBinary("svn"); err != nil {
+		return false, err
+	}
+	slog.DebugContext(ctx, "checking for local changes", "path", shortPath(path))
+	out, err := cmdOutput(ctx, path, "svn", "status", "--depth", "infinity", "-q")
+	if err != nil {
+		return false, fmt.Errorf("svn status: %w", err)
+	}
+	return strings.TrimSpace(out) != "", nil
 }

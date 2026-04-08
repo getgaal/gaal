@@ -239,44 +239,6 @@ func TestIsLocalPath(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// gitVCS methods
-// ---------------------------------------------------------------------------
-
-func TestGitVCS_isCloned_True(t *testing.T) {
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, ".git"), 0o755)
-	g := gitVCS{}
-	if !g.isCloned(dir) {
-		t.Error("expected isCloned=true when .git dir exists")
-	}
-}
-
-func TestGitVCS_isCloned_False(t *testing.T) {
-	g := gitVCS{}
-	if g.isCloned(t.TempDir()) {
-		t.Error("expected isCloned=false when no .git dir")
-	}
-}
-
-func TestGitVCS_clone_MissingBinary(t *testing.T) {
-	t.Setenv("PATH", "")
-	g := gitVCS{}
-	err := g.clone(context.Background(), "https://github.com/x/y", filepath.Join(t.TempDir(), "dest"))
-	if err == nil {
-		t.Fatal("expected error when git binary not in PATH")
-	}
-}
-
-func TestGitVCS_update_MissingBinary(t *testing.T) {
-	t.Setenv("PATH", "")
-	g := gitVCS{}
-	err := g.update(context.Background(), t.TempDir())
-	if err == nil {
-		t.Fatal("expected error when git binary not in PATH")
-	}
-}
-
-// ---------------------------------------------------------------------------
 // Manager.Status
 // ---------------------------------------------------------------------------
 
@@ -386,17 +348,13 @@ func TestManager_Sync_UnknownAgent_SkipsWithWarn(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDiscoverSkills_Deduplication(t *testing.T) {
-	// The seen map prevents the same skillDir from being returned twice.
-	// We trigger this by temporarily adding a second scan of the same base dir.
+	// The seen map prevents the same skillDir from being returned twice even
+	// if buildDiscoveryDirs would list overlapping subdirectories.
+	// Verify by placing a skill at the root "." which is always in the list.
 	root := t.TempDir()
 	d := filepath.Join(root, "dup-skill")
 	os.MkdirAll(d, 0o755)
 	os.WriteFile(filepath.Join(d, "SKILL.md"), []byte("---\nname: dup-skill\n---\n"), 0o644)
-
-	orig := skillDiscoveryDirs
-	t.Cleanup(func() { skillDiscoveryDirs = orig })
-	// Add "." twice so the same skillDir is encountered in two iterations.
-	skillDiscoveryDirs = []string{".", "."}
 
 	skills, err := discoverSkills(root)
 	if err != nil {
@@ -461,5 +419,120 @@ func TestToCloneURL_SSH_Schema_Unchanged(t *testing.T) {
 	url := "ssh://git@internal.corp/team/repo.git"
 	if got := toCloneURL(url); got != url {
 		t.Errorf("ssh:// URL should be unchanged, got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// skillDirModified
+// ---------------------------------------------------------------------------
+
+func TestSkillDirModified_Clean(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+	content := []byte("# SKILL\n")
+	os.WriteFile(filepath.Join(src, "SKILL.md"), content, 0o644)
+	os.WriteFile(filepath.Join(dst, "SKILL.md"), content, 0o644)
+
+	if skillDirModified(src, dst) {
+		t.Error("expected skillDirModified=false when content is identical")
+	}
+}
+
+func TestSkillDirModified_Modified(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("original"), 0o644)
+	os.WriteFile(filepath.Join(dst, "SKILL.md"), []byte("changed"), 0o644)
+
+	if !skillDirModified(src, dst) {
+		t.Error("expected skillDirModified=true when file content differs")
+	}
+}
+
+func TestSkillDirModified_MissingDstFile(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("content"), 0o644)
+	// dst is empty — file absent
+
+	if !skillDirModified(src, dst) {
+		t.Error("expected skillDirModified=true when destination file is missing")
+	}
+}
+
+func TestSkillDirModified_EmptySrc(t *testing.T) {
+	if skillDirModified(t.TempDir(), t.TempDir()) {
+		t.Error("expected skillDirModified=false when source is empty")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Manager.Status — Modified propagation
+// ---------------------------------------------------------------------------
+
+func TestManager_Status_ModifiedSkill(t *testing.T) {
+	// Source has skill-a with SKILL.md = "original".
+	sourceDir := t.TempDir()
+	skillSrc := filepath.Join(sourceDir, "skill-a")
+	os.MkdirAll(skillSrc, 0o755)
+	os.WriteFile(filepath.Join(skillSrc, "SKILL.md"), []byte("original"), 0o644)
+
+	// Installed copy has been modified by the user.
+	workDir := t.TempDir()
+	claudeSkillsDir := filepath.Join(workDir, ".claude", "skills")
+	skillDst := filepath.Join(claudeSkillsDir, "skill-a")
+	os.MkdirAll(skillDst, 0o755)
+	os.WriteFile(filepath.Join(skillDst, "SKILL.md"), []byte("user modified"), 0o644)
+
+	skills := []config.SkillConfig{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
+	}
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
+	statuses := m.Status(context.Background())
+
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	st := statuses[0]
+	if st.Err != nil {
+		t.Fatalf("unexpected error: %v", st.Err)
+	}
+	hasModified := false
+	for _, n := range st.Modified {
+		if n == "skill-a" {
+			hasModified = true
+		}
+	}
+	if !hasModified {
+		t.Errorf("expected skill-a in Modified, got: %v", st.Modified)
+	}
+}
+
+func TestManager_Status_CleanSkill(t *testing.T) {
+	// Source and destination are identical — Modified should be empty.
+	sourceDir := t.TempDir()
+	content := []byte("---\nname: skill-clean\n---\n# body\n")
+	skillSrc := filepath.Join(sourceDir, "skill-clean")
+	os.MkdirAll(skillSrc, 0o755)
+	os.WriteFile(filepath.Join(skillSrc, "SKILL.md"), content, 0o644)
+
+	workDir := t.TempDir()
+	claudeSkillsDir := filepath.Join(workDir, ".claude", "skills")
+	skillDst := filepath.Join(claudeSkillsDir, "skill-clean")
+	os.MkdirAll(skillDst, 0o755)
+	os.WriteFile(filepath.Join(skillDst, "SKILL.md"), content, 0o644)
+
+	skills := []config.SkillConfig{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
+	}
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
+	statuses := m.Status(context.Background())
+
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	st := statuses[0]
+	if len(st.Modified) != 0 {
+		t.Errorf("expected Modified empty for clean skill, got: %v", st.Modified)
 	}
 }

@@ -1,71 +1,22 @@
 package skill
 
-import (
-	"path/filepath"
-	"strings"
-)
+import "gaal/internal/core/agent"
 
-// AgentInfo holds the install path details for a coding agent.
-type AgentInfo struct {
-	// ProjectDir is the skills directory relative to the project root.
-	ProjectDir string
-	// GlobalDir is the skills directory in the user's home directory.
-	GlobalDir string
-}
-
-// knownAgents is the registry of all supported coding agents and their skill
-// directories (project-scoped, then global). Global paths use the ~ prefix
-// which is expanded at runtime.
-var knownAgents = map[string]AgentInfo{
-	"amp":            {".agents/skills", "~/.config/agents/skills"},
-	"antigravity":    {".agents/skills", "~/.gemini/antigravity/skills"},
-	"augment":        {".augment/skills", "~/.augment/skills"},
-	"claude-code":    {".claude/skills", "~/.claude/skills"},
-	"cline":          {".agents/skills", "~/.agents/skills"},
-	"codex":          {".agents/skills", "~/.codex/skills"},
-	"continue":       {".continue/skills", "~/.continue/skills"},
-	"cursor":         {".agents/skills", "~/.cursor/skills"},
-	"gemini-cli":     {".agents/skills", "~/.gemini/skills"},
-	"github-copilot": {".agents/skills", "~/.copilot/skills"},
-	"goose":          {".goose/skills", "~/.config/goose/skills"},
-	"kilo":           {".kilocode/skills", "~/.kilocode/skills"},
-	"kiro-cli":       {".kiro/skills", "~/.kiro/skills"},
-	"opencode":       {".agents/skills", "~/.config/opencode/skills"},
-	"openhands":      {".openhands/skills", "~/.openhands/skills"},
-	"roo":            {".roo/skills", "~/.roo/skills"},
-	"trae":           {".trae/skills", "~/.trae/skills"},
-	"windsurf":       {".windsurf/skills", "~/.codeium/windsurf/skills"},
-	"warp":           {".agents/skills", "~/.agents/skills"},
-	"zencoder":       {".zencoder/skills", "~/.zencoder/skills"},
-}
+// AgentInfo is a type alias for agent.Info, kept for backward compatibility
+// within this package.
+type AgentInfo = agent.Info
 
 // AgentNames returns all supported agent identifiers.
-func AgentNames() []string {
-	names := make([]string, 0, len(knownAgents))
-	for k := range knownAgents {
-		names = append(names, k)
-	}
-	return names
-}
+func AgentNames() []string { return agent.Names() }
 
 // SkillDir returns the target skills directory for the given agent.
-// If global is true the user-home directory is returned.
+// If global is true the user-home directory is returned (~ expanded).
 func SkillDir(agentName string, global bool, home string) (string, bool) {
-	info, ok := knownAgents[agentName]
-	if !ok {
-		return "", false
-	}
-	if global {
-		dir := expandHome(info.GlobalDir, home)
-		return dir, true
-	}
-	return info.ProjectDir, true
+	return agent.SkillDir(agentName, global, home)
 }
 
-func expandHome(p, home string) string {
-	// Accept both ~/ (POSIX) and ~\ (Windows) as home-relative prefixes.
-	if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
-		return filepath.Join(home, p[2:])
-	}
-	return p
-}
+// expandHome expands a leading ~/ or ~\ to the provided home directory.
+func expandHome(p, home string) string { return agent.ExpandHome(p, home) }
+
+// Lookup returns the Info for a registered agent name.
+func Lookup(name string) (AgentInfo, bool) { return agent.Lookup(name) }

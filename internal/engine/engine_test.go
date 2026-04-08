@@ -75,7 +75,7 @@ func TestStatus_EmptyConfig(t *testing.T) {
 	origStdout := os.Stdout
 	os.Stdout = w
 
-	statusErr := e.Status(context.Background())
+	statusErr := e.Status(context.Background(), FormatTable)
 
 	w.Close()
 	os.Stdout = origStdout
@@ -139,7 +139,7 @@ func TestStatus_WithRepos(t *testing.T) {
 	}
 	origStdout := os.Stdout
 	os.Stdout = w
-	statusErr := e.Status(context.Background())
+	statusErr := e.Status(context.Background(), FormatTable)
 	w.Close()
 	os.Stdout = origStdout
 	r.Close()
@@ -166,7 +166,7 @@ func TestStatus_WithMCPs(t *testing.T) {
 	}
 	origStdout := os.Stdout
 	os.Stdout = w
-	e.Status(context.Background())
+	e.Status(context.Background(), FormatTable)
 	w.Close()
 	os.Stdout = origStdout
 	r.Close()
@@ -231,7 +231,7 @@ func TestStatus_WithRepoError(t *testing.T) {
 	r, w, _ := os.Pipe()
 	origStdout := os.Stdout
 	os.Stdout = w
-	statusErr := e.Status(context.Background())
+	statusErr := e.Status(context.Background(), FormatTable)
 	w.Close()
 	os.Stdout = origStdout
 	r.Close()
@@ -251,7 +251,7 @@ func TestStatus_WithSkillError(t *testing.T) {
 	r, w, _ := os.Pipe()
 	origStdout := os.Stdout
 	os.Stdout = w
-	statusErr := e.Status(context.Background())
+	statusErr := e.Status(context.Background(), FormatTable)
 	w.Close()
 	os.Stdout = origStdout
 	r.Close()

@@ -32,6 +32,7 @@ type Status struct {
 	Name    string
 	Target  string
 	Present bool
+	Dirty   bool // true when stored config differs from the configured inline entry
 	Err     error
 }
 
@@ -198,7 +199,17 @@ func (m *Manager) Status(_ context.Context) []Status {
 		if serversRaw, ok := raw["mcpServers"]; ok {
 			var servers map[string]serverEntry
 			if err := json.Unmarshal(serversRaw, &servers); err == nil {
-				_, st.Present = servers[mc.Name]
+				stored, found := servers[mc.Name]
+				st.Present = found
+				// For inline configs we can detect divergence without I/O.
+				if found && mc.Inline != nil {
+					want := serverEntry{
+						Command: mc.Inline.Command,
+						Args:    mc.Inline.Args,
+						Env:     mc.Inline.Env,
+					}
+					st.Dirty = !serverEntryEqual(stored, want)
+				}
 			}
 		}
 
@@ -206,4 +217,29 @@ func (m *Manager) Status(_ context.Context) []Status {
 	}
 
 	return statuses
+}
+
+// serverEntryEqual reports whether two serverEntry values are semantically equal.
+// Nil and empty slices/maps are treated as equivalent.
+func serverEntryEqual(a, b serverEntry) bool {
+	if a.Command != b.Command {
+		return false
+	}
+	if len(a.Args) != len(b.Args) {
+		return false
+	}
+	for i := range a.Args {
+		if a.Args[i] != b.Args[i] {
+			return false
+		}
+	}
+	if len(a.Env) != len(b.Env) {
+		return false
+	}
+	for k, v := range a.Env {
+		if b.Env[k] != v {
+			return false
+		}
+	}
+	return true
 }
