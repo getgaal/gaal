@@ -1,0 +1,122 @@
+# Built-in agent registry.
+# Each entry maps an agent identifier to its file-system layout.
+#
+# Fields:
+#   project_skills_dir  – skills directory relative to the project root (must be relative, no "..")
+#   global_skills_dir   – skills directory under the user home directory (~/ prefix required)
+#   mcp_config_file     – path to the agent's MCP server config file (~/ prefix, empty if unsupported)
+#
+# Custom agents can be added by creating a file at:
+#   $XDG_CONFIG_HOME/gaal/agents.yaml   (Linux)
+#   ~/Library/Application Support/gaal/agents.yaml  (macOS)
+#   %AppData%\gaal\agents.yaml          (Windows)
+# Custom entries extend the built-in list. They cannot override built-in entries.
+
+# YAML anchors for shared path literals.
+# The "defaults" mapping is ignored by the struct decoder (only "agents" is mapped).
+defaults:
+  project_skills_dir: &psd .agents/skills           # shared convention (~half of agents)
+  global_agents_skills: &gas ~/.agents/skills        # cline, warp
+  vscode_mcp_config: &vmc ~/.vscode/settings.json    # cline, github-copilot, roo
+
+agents:
+  amp:
+    project_skills_dir: *psd
+    global_skills_dir: ~/.config/agents/skills
+    mcp_config_file: ~/.config/amp/settings.json
+
+  antigravity:
+    project_skills_dir: *psd
+    global_skills_dir: ~/.gemini/antigravity/skills
+    mcp_config_file: ""
+
+  augment:
+    project_skills_dir: .augment/skills
+    global_skills_dir: ~/.augment/skills
+    mcp_config_file: ~/.augment/settings.json
+
+  claude-code:
+    project_skills_dir: .claude/skills
+    global_skills_dir: ~/.claude/skills
+    mcp_config_file: ~/.config/claude/claude_desktop_config.json
+
+  cline:
+    project_skills_dir: *psd
+    global_skills_dir: *gas
+    mcp_config_file: *vmc
+
+  codex:
+    project_skills_dir: *psd
+    global_skills_dir: ~/.codex/skills
+    mcp_config_file: ~/.codex/mcp.json
+
+  continue:
+    project_skills_dir: .continue/skills
+    global_skills_dir: ~/.continue/skills
+    mcp_config_file: ~/.continue/config.json
+
+  cursor:
+    project_skills_dir: *psd
+    global_skills_dir: ~/.cursor/skills
+    mcp_config_file: ~/.cursor/mcp.json
+
+  gemini-cli:
+    project_skills_dir: *psd
+    global_skills_dir: ~/.gemini/skills
+    mcp_config_file: ~/.gemini/settings.json
+
+  github-copilot:
+    # https://code.visualstudio.com/docs/copilot/customization/agent-skills#_create-a-skill
+    project_skills_dir: *psd
+    global_skills_dir: ~/.copilot/skills
+    mcp_config_file: *vmc
+
+  goose:
+    project_skills_dir: .goose/skills
+    global_skills_dir: ~/.config/goose/skills
+    mcp_config_file: ~/.config/goose/config.yaml
+
+  kilo:
+    project_skills_dir: .kilocode/skills
+    global_skills_dir: ~/.kilocode/skills
+    mcp_config_file: ~/.kilocode/mcp.json
+
+  kiro-cli:
+    project_skills_dir: .kiro/skills
+    global_skills_dir: ~/.kiro/skills
+    mcp_config_file: ~/.kiro/settings/mcp.json
+
+  opencode:
+    project_skills_dir: *psd
+    global_skills_dir: ~/.config/opencode/skills
+    mcp_config_file: ~/.config/opencode/config.json
+
+  openhands:
+    project_skills_dir: .openhands/skills
+    global_skills_dir: ~/.openhands/skills
+    mcp_config_file: ~/.openhands/config.json
+
+  roo:
+    project_skills_dir: .roo/skills
+    global_skills_dir: ~/.roo/skills
+    mcp_config_file: *vmc
+
+  trae:
+    project_skills_dir: .trae/skills
+    global_skills_dir: ~/.trae/skills
+    mcp_config_file: ~/.trae/mcp.json
+
+  warp:
+    project_skills_dir: *psd
+    global_skills_dir: *gas
+    mcp_config_file: ~/.warp/launch_configurations/mcp.json
+
+  windsurf:
+    project_skills_dir: .windsurf/skills
+    global_skills_dir: ~/.codeium/windsurf/skills
+    mcp_config_file: ~/.codeium/windsurf/mcp_settings.json
+
+  zencoder:
+    project_skills_dir: .zencoder/skills
+    global_skills_dir: ~/.zencoder/skills
+    mcp_config_file: ~/.zencoder/mcp.json

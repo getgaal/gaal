@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 // captureStdout redirects os.Stdout to an os.Pipe for the duration of fn,
 // then restores it and returns everything that was written.
+// The pipe is drained concurrently to prevent blocking when output is large.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	r, w, err := os.Pipe()
@@ -23,14 +25,18 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	orig := os.Stdout
 	os.Stdout = w
+
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		buf.ReadFrom(r) //nolint:errcheck
+	}()
+
 	fn()
 	w.Close()
 	os.Stdout = orig
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatal(err)
-	}
+	<-done
 	r.Close()
 	return buf.String()
 }
@@ -40,7 +46,7 @@ func captureStdout(t *testing.T, fn func()) string {
 func TestInfo_UnknownPackage(t *testing.T) {
 	e := New(&config.Config{})
 	out := captureStdout(t, func() {
-		err := e.Info(context.Background(), "unknown", "")
+		err := e.Info(context.Background(), "unknown", "", FormatTable)
 		if err == nil {
 			t.Error("expected error for unknown package type")
 		}
@@ -50,16 +56,77 @@ func TestInfo_UnknownPackage(t *testing.T) {
 
 func TestInfo_UnknownPackage_Error(t *testing.T) {
 	e := New(&config.Config{})
-	err := e.Info(context.Background(), "foo", "")
+	err := e.Info(context.Background(), "foo", "", FormatTable)
 	if err == nil || !strings.Contains(err.Error(), "unknown package type") {
 		t.Errorf("expected 'unknown package type' error, got: %v", err)
+	}
+}
+
+func TestInfo_JSON_Agent(t *testing.T) {
+	e := New(&config.Config{})
+	out := captureStdout(t, func() {
+		if err := e.Info(context.Background(), "agent", "", FormatJSON); err != nil {
+			t.Errorf("Info agent json: %v", err)
+		}
+	})
+	var result struct {
+		Agents []AgentEntry `json:"agents"`
+	}
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON output: %v\noutput: %s", err, out)
+	}
+	if len(result.Agents) == 0 {
+		t.Error("expected at least one agent in JSON output")
+	}
+}
+
+func TestInfo_JSON_Agent_Filter(t *testing.T) {
+	e := New(&config.Config{})
+	out := captureStdout(t, func() {
+		if err := e.Info(context.Background(), "agent", "cursor", FormatJSON); err != nil {
+			t.Errorf("Info agent json filter: %v", err)
+		}
+	})
+	var result struct {
+		Agents []AgentEntry `json:"agents"`
+	}
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	for _, a := range result.Agents {
+		if !strings.Contains(a.Name, "cursor") {
+			t.Errorf("expected only cursor agents, got %q", a.Name)
+		}
+	}
+}
+
+func TestInfo_JSON_Repo_Empty(t *testing.T) {
+	e := New(&config.Config{})
+	out := captureStdout(t, func() {
+		if err := e.Info(context.Background(), "repo", "", FormatJSON); err != nil {
+			t.Errorf("Info repo json: %v", err)
+		}
+	})
+	var result struct {
+		Repositories []RepoEntry `json:"repositories"`
+	}
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\noutput: %s", err, out)
+	}
+}
+
+func TestInfo_JSON_UnknownPackage(t *testing.T) {
+	e := New(&config.Config{})
+	err := e.Info(context.Background(), "bad", "", FormatJSON)
+	if err == nil || !strings.Contains(err.Error(), "unknown package type") {
+		t.Errorf("expected 'unknown package type' error in JSON mode, got: %v", err)
 	}
 }
 
 func TestInfo_Repo_Empty(t *testing.T) {
 	e := New(&config.Config{})
 	out := captureStdout(t, func() {
-		if err := e.Info(context.Background(), "repo", ""); err != nil {
+		if err := e.Info(context.Background(), "repo", "", FormatTable); err != nil {
 			t.Errorf("Info repo empty: %v", err)
 		}
 	})
@@ -71,7 +138,7 @@ func TestInfo_Repo_Empty(t *testing.T) {
 func TestInfo_Skill_Empty(t *testing.T) {
 	e := New(&config.Config{})
 	out := captureStdout(t, func() {
-		if err := e.Info(context.Background(), "skill", ""); err != nil {
+		if err := e.Info(context.Background(), "skill", "", FormatTable); err != nil {
 			t.Errorf("Info skill empty: %v", err)
 		}
 	})
@@ -83,7 +150,7 @@ func TestInfo_Skill_Empty(t *testing.T) {
 func TestInfo_MCP_Empty(t *testing.T) {
 	e := New(&config.Config{})
 	out := captureStdout(t, func() {
-		if err := e.Info(context.Background(), "mcp", ""); err != nil {
+		if err := e.Info(context.Background(), "mcp", "", FormatTable); err != nil {
 			t.Errorf("Info mcp empty: %v", err)
 		}
 	})
@@ -432,6 +499,103 @@ func TestPadRight_ANSIString_PaddedCorrectly(t *testing.T) {
 	got := padRight(coloured, 10)
 	if visibleLen(got) != 10 {
 		t.Errorf("padRight ANSI: visible len = %d, want 10", visibleLen(got))
+	}
+}
+
+// ── renderAgentInfo ───────────────────────────────────────────────────────────
+
+func TestRenderAgentInfo_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	// Empty entries with no filter → "no agents registered"
+	if err := renderAgentInfo(&buf, []AgentEntry{}, ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "Supported Agents") {
+		t.Error("expected section header 'Supported Agents'")
+	}
+}
+
+func TestRenderAgentInfo_EmptyWithFilter(t *testing.T) {
+	var buf bytes.Buffer
+	if err := renderAgentInfo(&buf, []AgentEntry{}, "no-match"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "no agent matches") {
+		t.Error("expected 'no agent matches' message")
+	}
+}
+
+func TestRenderAgentInfo_ContainsKnownAgents(t *testing.T) {
+	// Use a realistic list from agent.List() via collectAgents().
+	entries := collectAgents()
+	var buf bytes.Buffer
+	if err := renderAgentInfo(&buf, entries, ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := pterm.RemoveColorFromString(buf.String())
+	// Several well-known agents must appear.
+	for _, want := range []string{"cursor", "claude-code", "github-copilot"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected agent %q in output", want)
+		}
+	}
+}
+
+func TestRenderAgentInfo_Filter(t *testing.T) {
+	entries := collectAgents()
+	var buf bytes.Buffer
+	if err := renderAgentInfo(&buf, entries, "cursor"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := pterm.RemoveColorFromString(buf.String())
+	if !strings.Contains(out, "cursor") {
+		t.Error("expected 'cursor' in filtered output")
+	}
+	// A completely different agent must NOT appear.
+	if strings.Contains(out, "claude-code") {
+		t.Error("expected 'claude-code' to be filtered out")
+	}
+}
+
+func TestRenderAgentInfo_NoMCPShownAsDash(t *testing.T) {
+	entries := []AgentEntry{
+		{Name: "testagent", ProjectSkillsDir: ".agents/skills", GlobalSkillsDir: "~/.agents/skills", MCPConfigFile: ""},
+	}
+	var buf bytes.Buffer
+	if err := renderAgentInfo(&buf, entries, ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := pterm.RemoveColorFromString(buf.String())
+	if !strings.Contains(out, "not supported") {
+		t.Error("expected 'not supported' for empty MCPConfigFile")
+	}
+}
+
+func TestInfo_Agent_NoFilter(t *testing.T) {
+	e := New(&config.Config{})
+	out := captureStdout(t, func() {
+		if err := e.Info(context.Background(), "agent", "", FormatTable); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	clean := pterm.RemoveColorFromString(out)
+	if !strings.Contains(clean, "Supported Agents") {
+		t.Error("expected 'Supported Agents' section header")
+	}
+}
+
+func TestInfo_Agent_Filter(t *testing.T) {
+	e := New(&config.Config{})
+	out := captureStdout(t, func() {
+		if err := e.Info(context.Background(), "agent", "goose", FormatTable); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	clean := pterm.RemoveColorFromString(out)
+	if !strings.Contains(clean, "goose") {
+		t.Error("expected 'goose' in filtered agent output")
 	}
 }
 

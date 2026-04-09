@@ -3,6 +3,26 @@
     "go": true,
     "echo": true,
     "make": true,
-    "cd": true
-  }
+    "cd": true,
+    "grep": true,
+    "ls": true,
+    "cat": true,
+    "pwd": true,
+    "mkdir": true,
+    "cp": true,
+    "mv": true,
+    "touch": true,
+    "head": true,
+    "tail": true,
+    "find": true,
+    "xargs": true,
+    "which": true,
+    "unset": true,
+    "alias": true,
+    "unalias": true,
+    "source": true,
+    "history": true,
+    "clear": true,
+  },
+  "makefile.configureOnOpen": false
 }

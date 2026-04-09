@@ -164,3 +164,38 @@ func TestExpandHome_POSIX(t *testing.T) {
 		}
 	}
 }
+
+func TestList_NonEmpty(t *testing.T) {
+	list := agent.List()
+	if len(list) == 0 {
+		t.Fatal("expected at least one entry from List()")
+	}
+}
+
+func TestList_LengthMatchesNames(t *testing.T) {
+	if got, want := len(agent.List()), len(agent.Names()); got != want {
+		t.Errorf("List() length = %d, Names() length = %d", got, want)
+	}
+}
+
+func TestList_Sorted(t *testing.T) {
+	list := agent.List()
+	for i := 1; i < len(list); i++ {
+		if list[i].Name < list[i-1].Name {
+			t.Errorf("List() not sorted: %q before %q", list[i-1].Name, list[i].Name)
+		}
+	}
+}
+
+func TestList_InfoMatchesLookup(t *testing.T) {
+	for _, e := range agent.List() {
+		info, ok := agent.Lookup(e.Name)
+		if !ok {
+			t.Errorf("List() entry %q not found by Lookup", e.Name)
+			continue
+		}
+		if e.Info != info {
+			t.Errorf("List() entry %q Info mismatch: got %+v, want %+v", e.Name, e.Info, info)
+		}
+	}
+}

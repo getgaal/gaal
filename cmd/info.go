@@ -11,7 +11,7 @@ import (
 )
 
 var infoCmd = &cobra.Command{
-	Use:   "info <repo|skill|mcp> [name]",
+	Use:   "info <repo|skill|mcp|agent> [name]",
 	Short: "Show detailed spec and state for a package type",
 	Long: `Displays a full information card for every entry of the given package type, combining the configuration spec with the current runtime state.
 
@@ -21,15 +21,18 @@ Package types:
   repo   — repository URL, type, configured version vs current HEAD, dirty flag
   skill  — source, target agents, scope, selection filter, per-agent installation tree
   mcp    — server name, target file, inline definition, merge flag, dirty detection
+  agent  — supported coding agent, skill directory paths, MCP config path, builtin vs user
 
 Examples:
   gaal info skill
   gaal info skill vercel-labs/agent-skills
   gaal info repo workspace/myrepo
-  gaal info mcp claude`,
+  gaal info mcp claude
+  gaal info agent
+  gaal info agent cursor`,
 	SilenceUsage: true,
 	Args:         cobra.RangeArgs(1, 2),
-	ValidArgs:    []string{"repo", "skill", "mcp"},
+	ValidArgs:    []string{"repo", "skill", "mcp", "agent"},
 	RunE:         runInfo,
 }
 
@@ -50,5 +53,5 @@ func runInfo(_ *cobra.Command, args []string) error {
 	}
 
 	return engine.NewWithOptions(cfg, engineOpts).
-		Info(context.Background(), pkg, filter)
+		Info(context.Background(), pkg, filter, engine.OutputFormat(outputFormat))
 }

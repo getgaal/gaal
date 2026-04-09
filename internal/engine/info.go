@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,14 +13,16 @@ import (
 	"github.com/pterm/pterm"
 
 	"gaal/internal/config"
+	"gaal/internal/core/agent"
 )
 
-// Info renders a detailed pterm view for the given package type.
-// pkg must be one of "repo", "skill", or "mcp".
+// Info renders a detailed view for the given package type.
+// pkg must be one of "repo", "skill", "mcp", or "agent".
 // filter is an optional name/source substring; if non-empty only matching
 // entries are shown. Matching is case-insensitive.
-func (e *Engine) Info(ctx context.Context, pkg, filter string) error {
-	slog.DebugContext(ctx, "info requested", "package", pkg, "filter", filter)
+// format controls the output: FormatTable (pterm) or FormatJSON.
+func (e *Engine) Info(ctx context.Context, pkg, filter string, format OutputFormat) error {
+	slog.DebugContext(ctx, "info requested", "package", pkg, "filter", filter, "format", format)
 
 	report, err := e.Collect(ctx)
 	if err != nil {
@@ -28,6 +31,10 @@ func (e *Engine) Info(ctx context.Context, pkg, filter string) error {
 
 	w := os.Stdout
 
+	if format == FormatJSON {
+		return renderInfoJSON(w, pkg, filter, report)
+	}
+
 	switch pkg {
 	case "repo":
 		return renderRepoInfo(w, e.cfg.Repositories, report.Repositories, filter)
@@ -35,9 +42,64 @@ func (e *Engine) Info(ctx context.Context, pkg, filter string) error {
 		return renderSkillInfo(w, e.cfg.Skills, report.Skills, filter)
 	case "mcp":
 		return renderMCPInfo(w, e.cfg.MCPs, report.MCPs, filter)
+	case "agent":
+		return renderAgentInfo(w, report.Agents, filter)
 	default:
-		return fmt.Errorf("unknown package type %q (want: repo, skill, mcp)", pkg)
+		return fmt.Errorf("unknown package type %q (want: repo, skill, mcp, agent)", pkg)
 	}
+}
+
+// renderInfoJSON serialises only the section of the report matching pkg,
+// after applying the optional filter, as indented JSON.
+func renderInfoJSON(w io.Writer, pkg, filter string, report *StatusReport) error {
+	var payload any
+	switch pkg {
+	case "repo":
+		filtered := make([]RepoEntry, 0)
+		for _, e := range report.Repositories {
+			if matchFilter(e.Path, filter) {
+				filtered = append(filtered, e)
+			}
+		}
+		payload = struct {
+			Repositories []RepoEntry `json:"repositories"`
+		}{filtered}
+	case "skill":
+		filtered := make([]SkillEntry, 0)
+		for _, e := range report.Skills {
+			if matchFilter(e.Source, filter) {
+				filtered = append(filtered, e)
+			}
+		}
+		payload = struct {
+			Skills []SkillEntry `json:"skills"`
+		}{filtered}
+	case "mcp":
+		filtered := make([]MCPEntry, 0)
+		for _, e := range report.MCPs {
+			if matchFilter(e.Name, filter) {
+				filtered = append(filtered, e)
+			}
+		}
+		payload = struct {
+			MCPs []MCPEntry `json:"mcps"`
+		}{filtered}
+	case "agent":
+		filtered := make([]AgentEntry, 0)
+		for _, e := range report.Agents {
+			if matchFilter(e.Name, filter) {
+				filtered = append(filtered, e)
+			}
+		}
+		payload = struct {
+			Agents []AgentEntry `json:"agents"`
+		}{filtered}
+	default:
+		return fmt.Errorf("unknown package type %q (want: repo, skill, mcp, agent)", pkg)
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(payload)
 }
 
 // infoSection writes a styled section header directly to w.
@@ -297,6 +359,64 @@ func buildSkillTree(e SkillEntry) []string {
 		lines = append(lines, prefix+it.label)
 	}
 	return lines
+}
+
+// renderAgentInfo prints a detailed card for each registered agent.
+func renderAgentInfo(w io.Writer, entries []AgentEntry, filter string) error {
+	slog.Debug("rendering agent info", "count", len(entries), "filter", filter)
+
+	// Apply filter.
+	filtered := make([]AgentEntry, 0, len(entries))
+	for _, e := range entries {
+		if matchFilter(e.Name, filter) {
+			filtered = append(filtered, e)
+		}
+	}
+
+	if len(filtered) == 0 {
+		infoSection(w, "Supported Agents", 0, pterm.FgYellow)
+		if filter != "" {
+			fmt.Fprintln(w, pterm.FgYellow.Sprintf("  no agent matches %q", filter))
+		} else {
+			fmt.Fprintln(w, pterm.FgDarkGray.Sprint("  no agents registered"))
+		}
+		return nil
+	}
+
+	infoSection(w, "Supported Agents", len(filtered), pterm.FgYellow)
+
+	// Source tag: builtin vs user-defined
+	builtinSet := make(map[string]struct{}, len(agent.Names()))
+	for _, n := range agent.Names() {
+		builtinSet[n] = struct{}{}
+	}
+
+	cards := make([]infoCard, 0, len(filtered))
+	for _, e := range entries {
+		if !matchFilter(e.Name, filter) {
+			continue
+		}
+		lines := []string{
+			kvLine("Project", pterm.FgCyan.Sprint(e.ProjectSkillsDir)),
+			kvLine("Global", pterm.FgCyan.Sprint(e.GlobalSkillsDir)),
+		}
+		if e.MCPConfigFile != "" {
+			lines = append(lines, kvLine("MCP cfg", pterm.FgGreen.Sprint(e.MCPConfigFile)))
+		} else {
+			lines = append(lines, kvLine("MCP cfg", pterm.FgDarkGray.Sprint("not supported")))
+		}
+
+		source := pterm.FgGreen.Sprint("builtin")
+		if _, ok := builtinSet[e.Name]; !ok {
+			source = pterm.FgCyan.Sprint("user")
+		}
+		lines = append(lines, kvLine("Source", source))
+
+		title := fmt.Sprintf(" %s ", pterm.NewStyle(pterm.Bold).Sprint(e.Name))
+		cards = append(cards, infoCard{title: title, lines: lines})
+	}
+	infoBoxes(w, cards)
+	return nil
 }
 
 // renderMCPInfo prints a detailed card for each MCP config entry.

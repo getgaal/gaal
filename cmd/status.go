@@ -10,8 +10,6 @@ import (
 	"gaal/internal/engine"
 )
 
-var statusOutputFormat string
-
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show the current status of repositories, skills and MCP configs",
@@ -24,8 +22,6 @@ their target configuration files.`,
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
-	statusCmd.Flags().StringVarP(&statusOutputFormat, "output", "o", "table",
-		`Output format: table, json`)
 }
 
 func runStatus(_ *cobra.Command, _ []string) error {
@@ -35,5 +31,5 @@ func runStatus(_ *cobra.Command, _ []string) error {
 	}
 
 	return engine.NewWithOptions(cfg, engineOpts).
-		Status(context.Background(), engine.OutputFormat(statusOutputFormat))
+		Status(context.Background(), engine.OutputFormat(outputFormat))
 }

@@ -93,6 +93,9 @@ func (tr *tableRenderer) Render(w io.Writer, r *StatusReport) error {
 	if err := tr.mcpTable(w, r.MCPs, termW); err != nil {
 		return err
 	}
+	if err := tr.agentTable(w, r.Agents, termW); err != nil {
+		return err
+	}
 	fmt.Fprintln(w)
 	return nil
 }
@@ -265,6 +268,30 @@ func (tr *tableRenderer) mcpTable(w io.Writer, entries []MCPEntry, termW int) er
 			e.Name,
 			statusCell(e.Status, e.Error),
 			target,
+		})
+	}
+	return tr.ptermTable(w, data)
+}
+
+func (tr *tableRenderer) agentTable(w io.Writer, entries []AgentEntry, termW int) error {
+	tr.section(w, "Supported Agents", len(entries))
+	// Fixed: AGENT(20) = 20; 3 variable path columns share the rest.
+	vw := varColWidth(termW, 4, 3, 20)
+	if vw < 14 {
+		vw = 14
+	}
+
+	data := pterm.TableData{{"AGENT", "PROJECT SKILLS DIR", "GLOBAL SKILLS DIR", "MCP CONFIG"}}
+	for _, e := range entries {
+		mcpCfg := e.MCPConfigFile
+		if mcpCfg == "" {
+			mcpCfg = "—"
+		}
+		data = append(data, []string{
+			e.Name,
+			trunc(e.ProjectSkillsDir, vw),
+			trunc(e.GlobalSkillsDir, vw),
+			trunc(mcpCfg, vw),
 		})
 	}
 	return tr.ptermTable(w, data)

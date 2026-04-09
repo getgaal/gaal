@@ -14,11 +14,12 @@ import (
 )
 
 var (
-	cfgFile    string
-	verbose    bool
-	noBanner   bool
-	sandboxDir string
-	logFile    string
+	cfgFile      string
+	verbose      bool
+	noBanner     bool
+	sandboxDir   string
+	logFile      string
+	outputFormat string
 
 	// engineOpts is populated by PersistentPreRunE and shared by all sub-commands.
 	engineOpts engine.Options
@@ -37,7 +38,7 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 	// before RunE on the root command itself. It is the single place where the
 	// logger, banner and sandbox are initialised so no sub-command needs to repeat it.
 	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
-		if !noBanner {
+		if !noBanner && outputFormat != "json" {
 			printBanner()
 		}
 		if err := setupLogger(); err != nil {
@@ -70,6 +71,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&noBanner, "no-banner", false, "suppress the ASCII-art banner")
 	rootCmd.PersistentFlags().StringVar(&sandboxDir, "sandbox", "", "redirect all writes to this directory (safe for tests)")
 	rootCmd.PersistentFlags().StringVar(&logFile, "log-file", "", "write structured JSON logs to this file (in addition to console)")
+	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "output format: table, json")
 }
 
 // applyOptions builds engine.Options, applying sandbox mode when requested.

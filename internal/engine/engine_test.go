@@ -259,3 +259,38 @@ func TestStatus_WithSkillError(t *testing.T) {
 		t.Fatalf("Status should not error even with skill error entries: %v", statusErr)
 	}
 }
+
+func TestCollect_IncludesAgents(t *testing.T) {
+	cfg := &config.Config{}
+	e := New(cfg)
+	report, err := e.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect returned error: %v", err)
+	}
+	if len(report.Agents) == 0 {
+		t.Fatal("expected at least one agent entry in status report")
+	}
+	// All entries must have non-empty Name and ProjectSkillsDir.
+	for _, a := range report.Agents {
+		if a.Name == "" {
+			t.Error("agent entry has empty Name")
+		}
+		if a.ProjectSkillsDir == "" {
+			t.Errorf("agent %q: empty ProjectSkillsDir", a.Name)
+		}
+	}
+}
+
+func TestCollect_AgentsSorted(t *testing.T) {
+	cfg := &config.Config{}
+	e := New(cfg)
+	report, err := e.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect returned error: %v", err)
+	}
+	for i := 1; i < len(report.Agents); i++ {
+		if report.Agents[i].Name < report.Agents[i-1].Name {
+			t.Errorf("agents not sorted: %q before %q", report.Agents[i-1].Name, report.Agents[i].Name)
+		}
+	}
+}

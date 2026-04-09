@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"gaal/internal/core/agent"
 	"gaal/internal/mcp"
 	"gaal/internal/repo"
 	"gaal/internal/skill"
@@ -45,6 +46,14 @@ type SkillEntry struct {
 	Error     string     `json:"error,omitempty"`
 }
 
+// AgentEntry holds the registry information for a supported agent.
+type AgentEntry struct {
+	Name             string `json:"name"`
+	ProjectSkillsDir string `json:"project_skills_dir"`
+	GlobalSkillsDir  string `json:"global_skills_dir"`
+	MCPConfigFile    string `json:"mcp_config_file,omitempty"`
+}
+
 // MCPEntry holds the status of a single MCP server entry.
 type MCPEntry struct {
 	Name   string     `json:"name"`
@@ -59,6 +68,7 @@ type StatusReport struct {
 	Repositories []RepoEntry  `json:"repositories"`
 	Skills       []SkillEntry `json:"skills"`
 	MCPs         []MCPEntry   `json:"mcps"`
+	Agents       []AgentEntry `json:"agents"`
 }
 
 // Collect gathers the current status of all resources without side effects.
@@ -68,6 +78,7 @@ func (e *Engine) Collect(ctx context.Context) (*StatusReport, error) {
 		Repositories: collectRepos(e.repos.Status(ctx)),
 		Skills:       collectSkills(e.skills.Status(ctx)),
 		MCPs:         collectMCPs(e.mcps.Status(ctx)),
+		Agents:       collectAgents(),
 	}, nil
 }
 
@@ -139,6 +150,20 @@ func collectMCPs(stats []mcp.Status) []MCPEntry {
 			e.Status = StatusAbsent
 		}
 		entries = append(entries, e)
+	}
+	return entries
+}
+
+func collectAgents() []AgentEntry {
+	list := agent.List()
+	entries := make([]AgentEntry, len(list))
+	for i, a := range list {
+		entries[i] = AgentEntry{
+			Name:             a.Name,
+			ProjectSkillsDir: a.Info.ProjectSkillsDir,
+			GlobalSkillsDir:  a.Info.GlobalSkillsDir,
+			MCPConfigFile:    a.Info.MCPConfigFile,
+		}
 	}
 	return entries
 }
