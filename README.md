@@ -81,6 +81,61 @@ gaal status
 
 Prints the current state of every repository, skill, and MCP entry.
 
+### Detailed info
+
+```bash
+gaal info <repo|skill|mcp|agent> [name]
+```
+
+Shows a full information card for every entry of the given package type, combining the configuration spec with the current runtime state.
+
+```bash
+gaal info skill                          # all skill entries
+gaal info skill vercel-labs/agent-skills # filter by source (substring, case-insensitive)
+gaal info repo workspace/myrepo
+gaal info mcp claude
+gaal info agent                          # list all registered agents
+gaal info agent cursor
+```
+
+### Generate the JSON Schema
+
+```bash
+gaal schema
+```
+
+Prints the JSON Schema (draft-07) that describes the full structure of a `gaal.yaml`
+configuration file. Useful for IDE validation, documentation, and LLM JSON mode.
+
+```bash
+gaal schema -f schema.json   # write to a file
+```
+
+**VS Code:** the workspace `settings.json` already maps `schema.json` to every
+`*.gaal.yaml` file — run `gaal schema -f schema.json` once and YAML
+auto-completion / inline validation activate automatically.
+
+**GoLand / IntelliJ:** go to _Languages & Frameworks → Schemas and DTDs →
+JSON Schema Mappings_, add `schema.json` and associate it with your `gaal.yaml` files.
+
+---
+
+### Output format
+
+Both `status` and `info` support the `-o` / `--output` flag:
+
+```bash
+gaal status -o json        # machine-readable JSON
+gaal info repo -o json
+```
+
+| Format | Description |
+|--------|-------------|
+| `table` | Human-friendly coloured tables (default) |
+| `json`  | Structured JSON, suitable for scripting / CI |
+
+When `--output json` is set the ASCII banner is automatically suppressed.
+
 ### Sandbox mode (safe for CI / testing)
 
 ```bash
@@ -127,6 +182,28 @@ gaal merges up to three configuration files in order:
 | 2 | `~/.config/gaal/config.yaml` (user) |
 | 3 — highest | `gaal.yaml` in CWD, or `--config` path |
 
+### Agent registry customization
+
+gaal ships with a built-in registry of supported coding agents (claude-code, github-copilot, cursor, windsurf, …). You can extend it with your own agent definitions by creating a file at:
+
+| OS | Path |
+|----|------|
+| Linux | `$XDG_CONFIG_HOME/gaal/agents.yaml` (defaults to `~/.config/gaal/agents.yaml`) |
+| macOS | `~/Library/Application Support/gaal/agents.yaml` |
+| Windows | `%AppData%\gaal\agents.yaml` |
+
+Custom entries **extend** the built-in list — they cannot override built-in entries. Each entry follows the same format as the built-in registry:
+
+```yaml
+agents:
+  my-agent:
+    project_skills_dir: .my-agent/skills   # relative path, no ".."
+    global_skills_dir: ~/.my-agent/skills  # must start with ~/
+    mcp_config_file: ~/.my-agent/mcp.json  # empty string if unsupported
+```
+
+Use `gaal info agent` to list all registered agents (built-in + custom) and verify your additions.
+
 ---
 
 ## Development
@@ -145,7 +222,7 @@ See [`docs/architecture.md`](docs/architecture.md) for a full description of the
 
 ## Install from source
 
-**Prerequisites:** Go 1.22+
+**Prerequisites:** Go 1.26+
 
 ```bash
 git clone https://github.com/gmg-inc/gaal-lite.git

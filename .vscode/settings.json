@@ -24,5 +24,8 @@
     "history": true,
     "clear": true,
   },
-  "makefile.configureOnOpen": false
+  "makefile.configureOnOpen": false,
+  "yaml.schemas": {
+    "./schema.json": ["gaal.yaml", "*.gaal.yaml", ".gaal.yaml"]
+  }
 }
