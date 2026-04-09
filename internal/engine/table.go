@@ -145,10 +145,15 @@ func (tr *tableRenderer) ptermTable(w io.Writer, data pterm.TableData) error {
 	}
 
 	// Use a non-styled line to locate │ rune positions.
-	// Prefer the first data row (index 1) to avoid ANSI in the header.
+	// Prefer the first data row (index 1) to avoid ANSI in the header,
+	// but fall back to the header when there are no data rows (empty table):
+	// pterm renders an empty string for the data row, giving rowWidth = 0.
 	refLine := lines[0]
-	if len(lines) > 1 {
-		refLine = lines[1]
+	for _, candidate := range lines[1:] {
+		if strings.ContainsRune(pterm.RemoveColorFromString(candidate), '│') {
+			refLine = candidate
+			break
+		}
 	}
 	cleanRef := []rune(pterm.RemoveColorFromString(refLine))
 	rowWidth := len(cleanRef)
@@ -166,6 +171,10 @@ func (tr *tableRenderer) ptermTable(w io.Writer, data pterm.TableData) error {
 
 	fmt.Fprintln(w, top)
 	for i, line := range lines {
+		// pterm injects an empty string when there are no data rows — skip it.
+		if i > 0 && strings.TrimSpace(pterm.RemoveColorFromString(line)) == "" {
+			continue
+		}
 		fmt.Fprintf(w, "│%s│\n", line)
 		if i == 0 {
 			fmt.Fprintln(w, headerSep)
