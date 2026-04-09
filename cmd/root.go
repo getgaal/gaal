@@ -37,7 +37,13 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 	// PersistentPreRunE runs before every sub-command (sync, status, …) and
 	// before RunE on the root command itself. It is the single place where the
 	// logger, banner and sandbox are initialised so no sub-command needs to repeat it.
-	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		// The built-in `completion` sub-commands produce pure shell script on stdout.
+		// Any extra output (banner, logs) would corrupt the script and make it
+		// unsourceable, so we skip all initialisation for them.
+		if cmd.HasParent() && cmd.Parent().Name() == "completion" {
+			return nil
+		}
 		if !noBanner && outputFormat != "json" {
 			printBanner()
 		}

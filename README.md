@@ -168,6 +168,42 @@ gaal --verbose sync
 gaal --log-file /var/log/gaal.json sync
 ```
 
+### Shell completion
+
+gaal generates completion scripts for **bash**, **zsh**, **fish**, and **PowerShell**.
+
+**Bash — current session**
+```bash
+source <(gaal completion bash)
+```
+
+**Bash — permanent** (add to `~/.bashrc`)
+```bash
+gaal completion bash > ~/.local/share/bash-completion/completions/gaal
+```
+
+**Zsh — current session**
+```zsh
+source <(gaal completion zsh)
+```
+
+**Zsh — permanent**
+```zsh
+gaal completion zsh > "${fpath[1]}/_gaal"
+```
+
+**Fish**
+```fish
+gaal completion fish | source
+# or permanently:
+gaal completion fish > ~/.config/fish/completions/gaal.fish
+```
+
+**PowerShell**
+```powershell
+gaal completion powershell | Out-String | Invoke-Expression
+```
+
 ---
 
 ## Configuration reference

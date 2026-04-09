@@ -1,4 +1,5 @@
-BIN           := dist/gaal
+DIST_DIR      := dist
+BIN           := $(DIST_DIR)/gaal
 GOBIN         := $(shell go env GOPATH)/bin
 VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME    := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -10,7 +11,7 @@ SANDBOX  ?= $(shell mktemp -d /tmp/gaal-test-XXXXXX)
 # Cross-compilation — override with: make build-cross GOOS=linux GOARCH=arm64
 GOOS      ?= $(shell go env GOOS)
 GOARCH    ?= $(shell go env GOARCH)
-BIN_CROSS ?= dist/gaal-$(GOOS)-$(GOARCH)
+BIN_CROSS ?= $(DIST_DIR)/gaal-$(GOOS)-$(GOARCH)
 
 .PHONY: all build build-cross run run-service test test-race coverage coverage-ci lint clean tidy sandbox sandbox-service sandbox-status
 
@@ -18,8 +19,9 @@ all: build
 
 ## build: compile the binary
 build:
-	@mkdir -p dist
+	@mkdir -p $(DIST_DIR)
 	go build $(LDFLAGS) -o $(BIN) .
+	$(BIN) schema -f $(DIST_DIR)/schema.json
 
 ## run: sync once with the example config (uses real HOME)
 run: build
@@ -79,9 +81,9 @@ coverage:
 lint:
 	@UNFORMATTED=$$(gofmt -l .); \
 	if [ -n "$$UNFORMATTED" ]; then \
-	  echo "The following files are not gofmt formatted:"; \
-	  echo "$$UNFORMATTED"; \
-	  exit 1; \
+		echo "The following files are not gofmt formatted:"; \
+		echo "$$UNFORMATTED"; \
+		exit 1; \
 	fi
 	go vet ./...
 

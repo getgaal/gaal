@@ -26,6 +26,6 @@
   },
   "makefile.configureOnOpen": false,
   "yaml.schemas": {
-    "./schema.json": ["gaal.yaml", "*.gaal.yaml", ".gaal.yaml"]
+    "./dist/schema.json": ["gaal.yaml", "*.gaal.yaml", ".gaal.yaml"]
   }
 }
