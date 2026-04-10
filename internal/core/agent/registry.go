@@ -13,23 +13,44 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Info describes the file-system layout for a coding agent: where skills are
-// installed and where the MCP server configuration file lives.
+// Info describes the file-system layout for a coding agent.
+//
+// Fields ending in *Dir are managed by "gaal sync" (install targets).
+// Fields ending in *Search are scanned by "gaal audit" (discovery only).
 type Info struct {
 	// ProjectSkillsDir is the skills directory relative to the project root.
+	// Managed by gaal sync.
 	ProjectSkillsDir string
 	// GlobalSkillsDir is the skills directory under the user home directory (~).
+	// Managed by gaal sync.
 	GlobalSkillsDir string
-	// MCPConfigFile is the path to the agent's MCP server configuration file,
-	// relative to the user home directory (~). Empty when unknown or unsupported.
-	MCPConfigFile string
+	// ProjectMCPConfigFile is the path to the agent's MCP server configuration
+	// file, relative to the user home directory (~). Empty when unsupported.
+	// Managed by gaal sync.
+	ProjectMCPConfigFile string
+
+	// ProjectSkillsSearch is the list of project-relative directories to scan
+	// for SKILL.md files during "gaal audit". Scanned at 1 level deep.
+	// When empty, ProjectSkillsDir is used as the sole search path.
+	ProjectSkillsSearch []string
+	// GlobalSkillsSearch is the list of home-relative directories (~/ prefix)
+	// to scan for SKILL.md files during "gaal audit". Scanned at 1 level deep.
+	// When empty, GlobalSkillsDir is used as the sole search path.
+	GlobalSkillsSearch []string
+	// PmSkillsSearch is the list of home-relative directories (~/ prefix)
+	// installed by the agent's package manager. Scanned recursively for
+	// sub-trees containing a "skills/" folder with SKILL.md files.
+	PmSkillsSearch []string
 }
 
 // agentEntry is the YAML-decodable shape for a single agent.
 type agentEntry struct {
-	ProjectSkillsDir string `yaml:"project_skills_dir"`
-	GlobalSkillsDir  string `yaml:"global_skills_dir"`
-	MCPConfigFile    string `yaml:"mcp_config_file"`
+	ProjectSkillsDir     string   `yaml:"project_skills_dir"`
+	GlobalSkillsDir      string   `yaml:"global_skills_dir"`
+	ProjectMCPConfigFile string   `yaml:"project_mcp_config_file"`
+	ProjectSkillsSearch  []string `yaml:"project_skills_search"`
+	GlobalSkillsSearch   []string `yaml:"global_skills_search"`
+	PmSkillsSearch       []string `yaml:"pm_skills_search"`
 }
 
 // agentsFile is the top-level structure of agents.yaml.
@@ -87,9 +108,12 @@ func loadInto(data []byte, dst map[string]Info, allowOverride bool) error {
 			return fmt.Errorf("duplicate agent name %q", name)
 		}
 		dst[name] = Info{
-			ProjectSkillsDir: e.ProjectSkillsDir,
-			GlobalSkillsDir:  e.GlobalSkillsDir,
-			MCPConfigFile:    e.MCPConfigFile,
+			ProjectSkillsDir:     e.ProjectSkillsDir,
+			GlobalSkillsDir:      e.GlobalSkillsDir,
+			ProjectMCPConfigFile: e.ProjectMCPConfigFile,
+			ProjectSkillsSearch:  e.ProjectSkillsSearch,
+			GlobalSkillsSearch:   e.GlobalSkillsSearch,
+			PmSkillsSearch:       e.PmSkillsSearch,
 		}
 	}
 	return nil
@@ -97,8 +121,10 @@ func loadInto(data []byte, dst map[string]Info, allowOverride bool) error {
 
 // validateEntry enforces security constraints on agent path fields:
 //   - project_skills_dir must be relative and contain no ".." segments
+//   - project_skills_search entries must be relative and contain no ".." segments
 //   - global_skills_dir must start with "~/" or "~\" (home-relative)
-//   - mcp_config_file must be empty OR start with "~/" or "~\"
+//   - project_mcp_config_file must be empty OR start with "~/" or "~\"
+//   - global_skills_search and pm_skills_search entries must start with "~/" or "~\"
 func validateEntry(name string, e agentEntry) error {
 	slog.Debug("validating agent entry", "name", name)
 
@@ -111,10 +137,28 @@ func validateEntry(name string, e agentEntry) error {
 	if !strings.HasPrefix(e.GlobalSkillsDir, "~/") && !strings.HasPrefix(e.GlobalSkillsDir, `~\`) {
 		return fmt.Errorf("agent %q: global_skills_dir must start with '~/', got %q", name, e.GlobalSkillsDir)
 	}
-	if e.MCPConfigFile != "" &&
-		!strings.HasPrefix(e.MCPConfigFile, "~/") &&
-		!strings.HasPrefix(e.MCPConfigFile, `~\`) {
-		return fmt.Errorf("agent %q: mcp_config_file must be empty or start with '~/', got %q", name, e.MCPConfigFile)
+	if e.ProjectMCPConfigFile != "" &&
+		!strings.HasPrefix(e.ProjectMCPConfigFile, "~/") &&
+		!strings.HasPrefix(e.ProjectMCPConfigFile, `~\`) {
+		return fmt.Errorf("agent %q: project_mcp_config_file must be empty or start with '~/', got %q", name, e.ProjectMCPConfigFile)
+	}
+	for _, d := range e.ProjectSkillsSearch {
+		if filepath.IsAbs(d) {
+			return fmt.Errorf("agent %q: project_skills_search entry must be relative, got %q", name, d)
+		}
+		if containsDotDot(d) {
+			return fmt.Errorf("agent %q: project_skills_search entry must not contain '..', got %q", name, d)
+		}
+	}
+	for _, d := range e.GlobalSkillsSearch {
+		if !strings.HasPrefix(d, "~/") && !strings.HasPrefix(d, `~\`) {
+			return fmt.Errorf("agent %q: global_skills_search entry must start with '~/', got %q", name, d)
+		}
+	}
+	for _, d := range e.PmSkillsSearch {
+		if !strings.HasPrefix(d, "~/") && !strings.HasPrefix(d, `~\`) {
+			return fmt.Errorf("agent %q: pm_skills_search entry must start with '~/', got %q", name, d)
+		}
 	}
 	return nil
 }
@@ -183,14 +227,65 @@ func SkillDir(name string, global bool, home string) (string, bool) {
 	return info.ProjectSkillsDir, true
 }
 
-// MCPConfigPath returns the absolute path to the agent's MCP configuration
+// ProjectMCPConfigPath returns the absolute path to the agent's MCP configuration
 // file (home expanded). Returns ("", false) when not known for this agent.
-func MCPConfigPath(name, home string) (string, bool) {
+func ProjectMCPConfigPath(name, home string) (string, bool) {
 	info, ok := registry[name]
-	if !ok || info.MCPConfigFile == "" {
+	if !ok || info.ProjectMCPConfigFile == "" {
 		return "", false
 	}
-	return ExpandHome(info.MCPConfigFile, home), true
+	return ExpandHome(info.ProjectMCPConfigFile, home), true
+}
+
+// ExpandedProjectSkillsSearch returns the list of project-relative dirs to scan
+// for skills during audit. Falls back to ProjectSkillsDir when the list is empty.
+func ExpandedProjectSkillsSearch(name string) []string {
+	slog.Debug("resolving project skills search dirs", "agent", name)
+	info, ok := registry[name]
+	if !ok {
+		return nil
+	}
+	if len(info.ProjectSkillsSearch) > 0 {
+		return info.ProjectSkillsSearch
+	}
+	if info.ProjectSkillsDir != "" {
+		return []string{info.ProjectSkillsDir}
+	}
+	return nil
+}
+
+// ExpandedGlobalSkillsSearch returns the list of absolute home-expanded dirs to
+// scan for skills during audit. Falls back to GlobalSkillsDir when the list is empty.
+func ExpandedGlobalSkillsSearch(name, home string) []string {
+	slog.Debug("resolving global skills search dirs", "agent", name)
+	info, ok := registry[name]
+	if !ok {
+		return nil
+	}
+	src := info.GlobalSkillsSearch
+	if len(src) == 0 && info.GlobalSkillsDir != "" {
+		src = []string{info.GlobalSkillsDir}
+	}
+	out := make([]string, 0, len(src))
+	for _, d := range src {
+		out = append(out, ExpandHome(d, home))
+	}
+	return out
+}
+
+// ExpandedPmSkillsSearch returns the list of absolute home-expanded package-manager
+// dirs to scan recursively for skills during audit.
+func ExpandedPmSkillsSearch(name, home string) []string {
+	slog.Debug("resolving pm skills search dirs", "agent", name)
+	info, ok := registry[name]
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(info.PmSkillsSearch))
+	for _, d := range info.PmSkillsSearch {
+		out = append(out, ExpandHome(d, home))
+	}
+	return out
 }
 
 // ExpandHome expands a leading ~/ or ~\ to the provided home directory.

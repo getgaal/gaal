@@ -15,7 +15,7 @@ agents:
   my-agent:
     project_skills_dir: .my/skills
     global_skills_dir: ~/.my/skills
-    mcp_config_file: ~/.my/mcp.json
+    project_mcp_config_file: ~/.my/mcp.json
 `)
 	if err := loadInto(data, dst, false); err != nil {
 		t.Fatalf("loadInto valid YAML: %v", err)
@@ -30,8 +30,8 @@ agents:
 	if info.GlobalSkillsDir != "~/.my/skills" {
 		t.Errorf("GlobalSkillsDir: got %q, want ~/.my/skills", info.GlobalSkillsDir)
 	}
-	if info.MCPConfigFile != "~/.my/mcp.json" {
-		t.Errorf("MCPConfigFile: got %q, want ~/.my/mcp.json", info.MCPConfigFile)
+	if info.ProjectMCPConfigFile != "~/.my/mcp.json" {
+		t.Errorf("ProjectMCPConfigFile: got %q, want ~/.my/mcp.json", info.ProjectMCPConfigFile)
 	}
 }
 
@@ -42,14 +42,14 @@ agents:
   no-mcp:
     project_skills_dir: .agents/skills
     global_skills_dir: ~/.agents/skills
-    mcp_config_file: ""
+    project_mcp_config_file: ""
 `)
 	if err := loadInto(data, dst, false); err != nil {
-		t.Fatalf("loadInto empty mcp_config_file: %v", err)
+		t.Fatalf("loadInto empty project_mcp_config_file: %v", err)
 	}
 	info := dst["no-mcp"]
-	if info.MCPConfigFile != "" {
-		t.Errorf("expected empty MCPConfigFile, got %q", info.MCPConfigFile)
+	if info.ProjectMCPConfigFile != "" {
+		t.Errorf("expected empty ProjectMCPConfigFile, got %q", info.ProjectMCPConfigFile)
 	}
 }
 
@@ -69,7 +69,7 @@ agents:
   existing:
     project_skills_dir: .other/skills
     global_skills_dir: ~/.other/skills
-    mcp_config_file: ""
+    project_mcp_config_file: ""
 `)
 	if err := loadInto(data, dst, false); err == nil {
 		t.Error("expected error for duplicate agent without allowOverride")
@@ -85,7 +85,7 @@ agents:
   existing:
     project_skills_dir: .new/skills
     global_skills_dir: ~/.new/skills
-    mcp_config_file: ""
+    project_mcp_config_file: ""
 `)
 	if err := loadInto(data, dst, true); err != nil {
 		t.Fatalf("loadInto with allowOverride: %v", err)
@@ -99,9 +99,9 @@ agents:
 
 func TestValidateEntry_Valid(t *testing.T) {
 	e := agentEntry{
-		ProjectSkillsDir: ".foo/skills",
-		GlobalSkillsDir:  "~/.foo/skills",
-		MCPConfigFile:    "~/.foo/mcp.json",
+		ProjectSkillsDir:     ".foo/skills",
+		GlobalSkillsDir:      "~/.foo/skills",
+		ProjectMCPConfigFile: "~/.foo/mcp.json",
 	}
 	if err := validateEntry("foo", e); err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -110,9 +110,9 @@ func TestValidateEntry_Valid(t *testing.T) {
 
 func TestValidateEntry_AbsoluteProjectDir_Rejected(t *testing.T) {
 	e := agentEntry{
-		ProjectSkillsDir: "/absolute/skills",
-		GlobalSkillsDir:  "~/.foo/skills",
-		MCPConfigFile:    "",
+		ProjectSkillsDir:     "/absolute/skills",
+		GlobalSkillsDir:      "~/.foo/skills",
+		ProjectMCPConfigFile: "",
 	}
 	if err := validateEntry("foo", e); err == nil {
 		t.Error("expected error for absolute project_skills_dir")
@@ -121,9 +121,9 @@ func TestValidateEntry_AbsoluteProjectDir_Rejected(t *testing.T) {
 
 func TestValidateEntry_DotDotInProjectDir_Rejected(t *testing.T) {
 	e := agentEntry{
-		ProjectSkillsDir: "../escape/skills",
-		GlobalSkillsDir:  "~/.foo/skills",
-		MCPConfigFile:    "",
+		ProjectSkillsDir:     "../escape/skills",
+		GlobalSkillsDir:      "~/.foo/skills",
+		ProjectMCPConfigFile: "",
 	}
 	if err := validateEntry("foo", e); err == nil {
 		t.Error("expected error for '..' in project_skills_dir")
@@ -132,9 +132,9 @@ func TestValidateEntry_DotDotInProjectDir_Rejected(t *testing.T) {
 
 func TestValidateEntry_GlobalDirWithoutTilde_Rejected(t *testing.T) {
 	e := agentEntry{
-		ProjectSkillsDir: ".foo/skills",
-		GlobalSkillsDir:  "/home/user/.foo/skills", // absolute, not ~/
-		MCPConfigFile:    "",
+		ProjectSkillsDir:     ".foo/skills",
+		GlobalSkillsDir:      "/home/user/.foo/skills", // absolute, not ~/
+		ProjectMCPConfigFile: "",
 	}
 	if err := validateEntry("foo", e); err == nil {
 		t.Error("expected error for global_skills_dir without ~/")
@@ -143,12 +143,12 @@ func TestValidateEntry_GlobalDirWithoutTilde_Rejected(t *testing.T) {
 
 func TestValidateEntry_MCPConfigWithoutTilde_Rejected(t *testing.T) {
 	e := agentEntry{
-		ProjectSkillsDir: ".foo/skills",
-		GlobalSkillsDir:  "~/.foo/skills",
-		MCPConfigFile:    "/absolute/mcp.json",
+		ProjectSkillsDir:     ".foo/skills",
+		GlobalSkillsDir:      "~/.foo/skills",
+		ProjectMCPConfigFile: "/absolute/mcp.json",
 	}
 	if err := validateEntry("foo", e); err == nil {
-		t.Error("expected error for mcp_config_file without ~/")
+		t.Error("expected error for project_mcp_config_file without ~/")
 	}
 }
 

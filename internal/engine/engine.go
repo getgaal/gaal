@@ -23,10 +23,12 @@ type Options struct {
 
 // Engine orchestrates repository, skill and MCP synchronisation.
 type Engine struct {
-	cfg    *config.Config
-	repos  *repo.Manager
-	skills *skill.Manager
-	mcps   *mcp.Manager
+	cfg     *config.Config
+	repos   *repo.Manager
+	skills  *skill.Manager
+	mcps    *mcp.Manager
+	home    string
+	workDir string
 }
 
 // New creates an Engine from the given configuration using default directories.
@@ -54,10 +56,12 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 	slog.Debug("engine initialised", "home", home, "workDir", workDir, "cacheDir", cacheDir)
 
 	return &Engine{
-		cfg:    cfg,
-		repos:  repo.NewManager(cfg.Repositories),
-		skills: skill.NewManager(cfg.Skills, cacheDir, home, workDir),
-		mcps:   mcp.NewManager(cfg.MCPs),
+		cfg:     cfg,
+		repos:   repo.NewManager(cfg.Repositories),
+		skills:  skill.NewManager(cfg.Skills, cacheDir, home, workDir),
+		mcps:    mcp.NewManager(cfg.MCPs),
+		home:    home,
+		workDir: workDir,
 	}
 }
 

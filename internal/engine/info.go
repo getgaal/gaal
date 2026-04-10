@@ -400,8 +400,8 @@ func renderAgentInfo(w io.Writer, entries []AgentEntry, filter string) error {
 			kvLine("Project", pterm.FgCyan.Sprint(e.ProjectSkillsDir)),
 			kvLine("Global", pterm.FgCyan.Sprint(e.GlobalSkillsDir)),
 		}
-		if e.MCPConfigFile != "" {
-			lines = append(lines, kvLine("MCP cfg", pterm.FgGreen.Sprint(e.MCPConfigFile)))
+		if e.ProjectMCPConfigFile != "" {
+			lines = append(lines, kvLine("MCP cfg", pterm.FgGreen.Sprint(e.ProjectMCPConfigFile)))
 		} else {
 			lines = append(lines, kvLine("MCP cfg", pterm.FgDarkGray.Sprint("not supported")))
 		}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"gaal/internal/config"
 )
@@ -242,4 +243,40 @@ func serverEntryEqual(a, b serverEntry) bool {
 		}
 	}
 	return true
+}
+
+// ListServers reads the given MCP config file and returns a sorted list of
+// server names found in the "mcpServers" object. Returns nil, nil when the
+// file does not exist (the agent is simply not installed on this machine).
+func ListServers(configFile string) ([]string, error) {
+	slog.Debug("listing mcp servers", "file", configFile)
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading %s: %w", configFile, err)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", configFile, err)
+	}
+
+	serversRaw, ok := raw["mcpServers"]
+	if !ok {
+		return nil, nil
+	}
+
+	var servers map[string]json.RawMessage
+	if err := json.Unmarshal(serversRaw, &servers); err != nil {
+		return nil, fmt.Errorf("parsing mcpServers in %s: %w", configFile, err)
+	}
+
+	names := make([]string, 0, len(servers))
+	for name := range servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
 }

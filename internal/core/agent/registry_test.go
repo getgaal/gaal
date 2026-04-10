@@ -49,8 +49,8 @@ func TestLookup_Known(t *testing.T) {
 	if info.GlobalSkillsDir == "" {
 		t.Error("expected non-empty GlobalSkillsDir")
 	}
-	if info.MCPConfigFile == "" {
-		t.Error("expected non-empty MCPConfigFile for claude-code")
+	if info.ProjectMCPConfigFile == "" {
+		t.Error("expected non-empty ProjectMCPConfigFile for claude-code")
 	}
 }
 
@@ -102,9 +102,9 @@ func TestSkillDir_Unknown(t *testing.T) {
 
 func TestMCPConfigPath_Known(t *testing.T) {
 	home := "/home/testuser"
-	path, ok := agent.MCPConfigPath("claude-code", home)
+	path, ok := agent.ProjectMCPConfigPath("claude-code", home)
 	if !ok {
-		t.Fatal("expected MCPConfigPath to return ok=true for claude-code")
+		t.Fatal("expected ProjectMCPConfigPath to return ok=true for claude-code")
 	}
 	if strings.HasPrefix(path, "~") {
 		t.Errorf("expected ~ to be expanded, got %q", path)
@@ -115,17 +115,17 @@ func TestMCPConfigPath_Known(t *testing.T) {
 }
 
 func TestMCPConfigPath_Unknown(t *testing.T) {
-	_, ok := agent.MCPConfigPath("no-such-agent", "/home/user")
+	_, ok := agent.ProjectMCPConfigPath("no-such-agent", "/home/user")
 	if ok {
 		t.Error("expected ok=false for unknown agent")
 	}
 }
 
 func TestMCPConfigPath_EmptyWhenNotSet(t *testing.T) {
-	// antigravity has an empty MCPConfigFile.
-	_, ok := agent.MCPConfigPath("antigravity", "/home/user")
+	// antigravity has an empty project_mcp_config_file.
+	_, ok := agent.ProjectMCPConfigPath("antigravity", "/home/user")
 	if ok {
-		t.Error("expected ok=false for agent with empty MCPConfigFile")
+		t.Error("expected ok=false for agent with empty ProjectMCPConfigFile")
 	}
 }
 
@@ -194,7 +194,9 @@ func TestList_InfoMatchesLookup(t *testing.T) {
 			t.Errorf("List() entry %q not found by Lookup", e.Name)
 			continue
 		}
-		if e.Info != info {
+		if e.Info.ProjectSkillsDir != info.ProjectSkillsDir ||
+			e.Info.GlobalSkillsDir != info.GlobalSkillsDir ||
+			e.Info.ProjectMCPConfigFile != info.ProjectMCPConfigFile {
 			t.Errorf("List() entry %q Info mismatch: got %+v, want %+v", e.Name, e.Info, info)
 		}
 	}

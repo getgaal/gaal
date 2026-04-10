@@ -48,10 +48,10 @@ type SkillEntry struct {
 
 // AgentEntry holds the registry information for a supported agent.
 type AgentEntry struct {
-	Name             string `json:"name"`
-	ProjectSkillsDir string `json:"project_skills_dir"`
-	GlobalSkillsDir  string `json:"global_skills_dir"`
-	MCPConfigFile    string `json:"mcp_config_file,omitempty"`
+	Name                 string `json:"name"`
+	ProjectSkillsDir     string `json:"project_skills_dir"`
+	GlobalSkillsDir      string `json:"global_skills_dir"`
+	ProjectMCPConfigFile string `json:"project_mcp_config_file,omitempty"`
 }
 
 // MCPEntry holds the status of a single MCP server entry.
@@ -159,10 +159,10 @@ func collectAgents() []AgentEntry {
 	entries := make([]AgentEntry, len(list))
 	for i, a := range list {
 		entries[i] = AgentEntry{
-			Name:             a.Name,
-			ProjectSkillsDir: a.Info.ProjectSkillsDir,
-			GlobalSkillsDir:  a.Info.GlobalSkillsDir,
-			MCPConfigFile:    a.Info.MCPConfigFile,
+			Name:                 a.Name,
+			ProjectSkillsDir:     a.Info.ProjectSkillsDir,
+			GlobalSkillsDir:      a.Info.GlobalSkillsDir,
+			ProjectMCPConfigFile: a.Info.ProjectMCPConfigFile,
 		}
 	}
 	return entries

@@ -1,7 +1,6 @@
 package skill
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -334,49 +333,13 @@ func discoverSkills(root string) ([]SkillMeta, error) {
 }
 
 // parseSkillMeta reads the YAML frontmatter from a SKILL.md file.
+// Delegates to the exported ParseSkillMeta helper in scan.go.
 func parseSkillMeta(path string) (SkillMeta, error) {
-	f, err := os.Open(path)
+	name, desc, err := ParseSkillMeta(path)
 	if err != nil {
 		return SkillMeta{}, err
 	}
-	defer f.Close()
-
-	var meta SkillMeta
-	scanner := bufio.NewScanner(f)
-
-	// Look for --- ... --- frontmatter block.
-	inFrontmatter := false
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "---" {
-			if !inFrontmatter {
-				inFrontmatter = true
-				continue
-			}
-			break
-		}
-		if !inFrontmatter {
-			continue
-		}
-
-		if k, v, ok := strings.Cut(line, ":"); ok {
-			k = strings.TrimSpace(k)
-			v = strings.TrimSpace(v)
-			switch k {
-			case "name":
-				meta.Name = v
-			case "description":
-				meta.Description = v
-			}
-		}
-	}
-
-	if meta.Name == "" {
-		// Derive name from the directory name.
-		meta.Name = filepath.Base(filepath.Dir(path))
-	}
-
-	return meta, nil
+	return SkillMeta{Name: name, Description: desc}, nil
 }
 
 // filterSkills returns the skills whose names match the select list.

@@ -561,7 +561,7 @@ func TestRenderAgentInfo_Filter(t *testing.T) {
 
 func TestRenderAgentInfo_NoMCPShownAsDash(t *testing.T) {
 	entries := []AgentEntry{
-		{Name: "testagent", ProjectSkillsDir: ".agents/skills", GlobalSkillsDir: "~/.agents/skills", MCPConfigFile: ""},
+		{Name: "testagent", ProjectSkillsDir: ".agents/skills", GlobalSkillsDir: "~/.agents/skills", ProjectMCPConfigFile: ""},
 	}
 	var buf bytes.Buffer
 	if err := renderAgentInfo(&buf, entries, ""); err != nil {
@@ -569,7 +569,7 @@ func TestRenderAgentInfo_NoMCPShownAsDash(t *testing.T) {
 	}
 	out := pterm.RemoveColorFromString(buf.String())
 	if !strings.Contains(out, "not supported") {
-		t.Error("expected 'not supported' for empty MCPConfigFile")
+		t.Error("expected 'not supported' for empty ProjectMCPConfigFile")
 	}
 }
 

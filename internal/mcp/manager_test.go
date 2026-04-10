@@ -379,3 +379,64 @@ func TestManager_Status_SourceNoInline_NoDirtyCheck(t *testing.T) {
 		t.Error("expected Dirty=false for source-based MCP (no inline check)")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ListServers
+// ---------------------------------------------------------------------------
+
+func TestListServers_FileNotExist(t *testing.T) {
+	names, err := ListServers("/no/such/file.json")
+	if err != nil {
+		t.Fatalf("expected nil error for missing file, got %v", err)
+	}
+	if names != nil {
+		t.Errorf("expected nil slice for missing file, got %v", names)
+	}
+}
+
+func TestListServers_ValidFile(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "mcp.json")
+	content := `{"mcpServers":{"server-b":{},"server-a":{},"server-c":{}}}`
+	if err := os.WriteFile(f, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	names, err := ListServers(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(names) != 3 {
+		t.Fatalf("expected 3 servers, got %d: %v", len(names), names)
+	}
+	// Must be sorted.
+	if names[0] != "server-a" || names[1] != "server-b" || names[2] != "server-c" {
+		t.Errorf("unexpected order: %v", names)
+	}
+}
+
+func TestListServers_NoMCPServersKey(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(f, []byte(`{"other":"value"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	names, err := ListServers(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if names != nil {
+		t.Errorf("expected nil when no mcpServers key, got %v", names)
+	}
+}
+
+func TestListServers_InvalidJSON(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(f, []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ListServers(f)
+	if err == nil {
+		t.Error("expected error for invalid JSON, got nil")
+	}
+}

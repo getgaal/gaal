@@ -290,9 +290,9 @@ func (tr *tableRenderer) agentTable(w io.Writer, entries []AgentEntry, termW int
 		vw = 14
 	}
 
-	data := pterm.TableData{{"AGENT", "PROJECT SKILLS DIR", "GLOBAL SKILLS DIR", "MCP CONFIG"}}
+	data := pterm.TableData{{"AGENT", "PROJECT SKILLS DIR", "GLOBAL SKILLS DIR", "PROJECT MCP CONFIG"}}
 	for _, e := range entries {
-		mcpCfg := e.MCPConfigFile
+		mcpCfg := e.ProjectMCPConfigFile
 		if mcpCfg == "" {
 			mcpCfg = "—"
 		}

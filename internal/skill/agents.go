@@ -20,3 +20,9 @@ func expandHome(p, home string) string { return agent.ExpandHome(p, home) }
 
 // Lookup returns the Info for a registered agent name.
 func Lookup(name string) (AgentInfo, bool) { return agent.Lookup(name) }
+
+// ProjectMCPConfigPath returns the absolute path to the agent's project MCP
+// configuration file (home expanded). Returns ("", false) when not supported.
+func ProjectMCPConfigPath(agentName, home string) (string, bool) {
+	return agent.ProjectMCPConfigPath(agentName, home)
+}
