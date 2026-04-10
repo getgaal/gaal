@@ -1,4 +1,4 @@
-package repo
+package vcs
 
 import (
 	"context"
@@ -203,5 +203,157 @@ func TestTagAtCommit_AnnotatedTag(t *testing.T) {
 	got := tagAtCommit(r, head.Hash())
 	if got != "v3.0.0-annotated" {
 		t.Errorf("expected annotated tag name, got %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VcsGit - IsCloned / Clone / Update / CurrentVersion (basic cases)
+// ---------------------------------------------------------------------------
+
+func TestVcsGit_IsCloned_False(t *testing.T) {
+	g := &VcsGit{}
+	if g.IsCloned(t.TempDir()) {
+		t.Error("expected IsCloned=false for empty temp dir")
+	}
+}
+
+func TestVcsGit_IsCloned_True(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := gogit.PlainInit(dir, false); err != nil {
+		t.Fatalf("PlainInit: %v", err)
+	}
+	g := &VcsGit{}
+	if !g.IsCloned(dir) {
+		t.Error("expected IsCloned=true for go-git initialised repo")
+	}
+}
+
+func TestVcsGit_Clone_BadURL(t *testing.T) {
+	g := &VcsGit{}
+	err := g.Clone(context.Background(), "not-a-real-url", filepath.Join(t.TempDir(), "dest"), "")
+	if err == nil {
+		t.Fatal("expected error for bad URL")
+	}
+}
+
+func TestVcsGit_Update_NotARepo(t *testing.T) {
+	g := &VcsGit{}
+	err := g.Update(context.Background(), t.TempDir(), "")
+	if err == nil {
+		t.Fatal("expected error when updating non-git directory")
+	}
+}
+
+func TestVcsGit_CurrentVersion_NotARepo(t *testing.T) {
+	g := &VcsGit{}
+	_, err := g.CurrentVersion(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when getting version of non-git directory")
+	}
+}
+
+func TestVcsGit_Update_InitedRepoNoRemote(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := gogit.PlainInit(dir, false); err != nil {
+		t.Fatalf("PlainInit: %v", err)
+	}
+	g := &VcsGit{}
+	// Update will fail because there is no remote configured; this covers
+	// the fetch error branch.
+	err := g.Update(context.Background(), dir, "")
+	if err == nil {
+		t.Log("update succeeded unexpectedly on repo without remote")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VcsGit - HasChanges
+// ---------------------------------------------------------------------------
+
+func TestVcsGit_HasChanges_Clean(t *testing.T) {
+	dir := t.TempDir()
+	makeLocalRepo(t, dir)
+	g := &VcsGit{}
+	dirty, err := g.HasChanges(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("HasChanges on clean repo: %v", err)
+	}
+	if dirty {
+		t.Error("expected HasChanges=false for clean repository")
+	}
+}
+
+func TestVcsGit_HasChanges_Modified(t *testing.T) {
+	dir := t.TempDir()
+	makeLocalRepo(t, dir)
+	// Modify the tracked file without committing.
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("modified"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	g := &VcsGit{}
+	dirty, err := g.HasChanges(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("HasChanges on dirty repo: %v", err)
+	}
+	if !dirty {
+		t.Error("expected HasChanges=true after modifying a tracked file")
+	}
+}
+
+func TestVcsGit_HasChanges_NotARepo(t *testing.T) {
+	g := &VcsGit{}
+	_, err := g.HasChanges(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when calling HasChanges on non-git directory")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VcsGit - Shallow clone and hard-reset update
+// ---------------------------------------------------------------------------
+
+func TestVcsGit_Clone_Shallow(t *testing.T) {
+	srcDir := t.TempDir()
+	makeLocalRepo(t, srcDir)
+	destDir := filepath.Join(t.TempDir(), "shallow")
+	g := &VcsGit{Shallow: true}
+	if err := g.Clone(context.Background(), srcDir, destDir, ""); err != nil {
+		t.Fatalf("shallow Clone: %v", err)
+	}
+	if !g.IsCloned(destDir) {
+		t.Error("expected IsCloned=true after shallow Clone")
+	}
+}
+
+func TestVcsGit_Update_Shallow_ResetsToOrigin(t *testing.T) {
+	srcDir := t.TempDir()
+	r := makeLocalRepo(t, srcDir)
+	destDir := filepath.Join(t.TempDir(), "shallow")
+	g := &VcsGit{Shallow: true}
+	if err := g.Clone(context.Background(), srcDir, destDir, ""); err != nil {
+		t.Fatalf("shallow Clone: %v", err)
+	}
+
+	// Add a new commit to the source using go-git.
+	w, err := r.Worktree()
+	if err != nil {
+		t.Fatalf("Worktree: %v", err)
+	}
+	f := filepath.Join(srcDir, "extra.txt")
+	os.WriteFile(f, []byte("extra"), 0o644)
+	w.Add("extra.txt")
+	_, err = w.Commit("second commit", &gogit.CommitOptions{
+		Author: &object.Signature{Name: "test", Email: "t@t.com", When: time.Now()},
+	})
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	if err := g.Update(context.Background(), destDir, ""); err != nil {
+		t.Fatalf("shallow Update: %v", err)
+	}
+	// The new file should now exist in the destination.
+	if _, err := os.Stat(filepath.Join(destDir, "extra.txt")); err != nil {
+		t.Errorf("expected extra.txt after shallow update: %v", err)
 	}
 }

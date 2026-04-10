@@ -119,7 +119,7 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/go,linux,macos,windows,visualstudiocode
 
-
+schema.json
 dist/
 .sandbox/
 report/

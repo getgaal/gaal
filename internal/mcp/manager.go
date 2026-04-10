@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"gaal/internal/config"
 )
@@ -32,6 +33,7 @@ type Status struct {
 	Name    string
 	Target  string
 	Present bool
+	Dirty   bool // true when stored config differs from the configured inline entry
 	Err     error
 }
 
@@ -198,7 +200,17 @@ func (m *Manager) Status(_ context.Context) []Status {
 		if serversRaw, ok := raw["mcpServers"]; ok {
 			var servers map[string]serverEntry
 			if err := json.Unmarshal(serversRaw, &servers); err == nil {
-				_, st.Present = servers[mc.Name]
+				stored, found := servers[mc.Name]
+				st.Present = found
+				// For inline configs we can detect divergence without I/O.
+				if found && mc.Inline != nil {
+					want := serverEntry{
+						Command: mc.Inline.Command,
+						Args:    mc.Inline.Args,
+						Env:     mc.Inline.Env,
+					}
+					st.Dirty = !serverEntryEqual(stored, want)
+				}
 			}
 		}
 
@@ -206,4 +218,65 @@ func (m *Manager) Status(_ context.Context) []Status {
 	}
 
 	return statuses
+}
+
+// serverEntryEqual reports whether two serverEntry values are semantically equal.
+// Nil and empty slices/maps are treated as equivalent.
+func serverEntryEqual(a, b serverEntry) bool {
+	if a.Command != b.Command {
+		return false
+	}
+	if len(a.Args) != len(b.Args) {
+		return false
+	}
+	for i := range a.Args {
+		if a.Args[i] != b.Args[i] {
+			return false
+		}
+	}
+	if len(a.Env) != len(b.Env) {
+		return false
+	}
+	for k, v := range a.Env {
+		if b.Env[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// ListServers reads the given MCP config file and returns a sorted list of
+// server names found in the "mcpServers" object. Returns nil, nil when the
+// file does not exist (the agent is simply not installed on this machine).
+func ListServers(configFile string) ([]string, error) {
+	slog.Debug("listing mcp servers", "file", configFile)
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading %s: %w", configFile, err)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", configFile, err)
+	}
+
+	serversRaw, ok := raw["mcpServers"]
+	if !ok {
+		return nil, nil
+	}
+
+	var servers map[string]json.RawMessage
+	if err := json.Unmarshal(serversRaw, &servers); err != nil {
+		return nil, fmt.Errorf("parsing mcpServers in %s: %w", configFile, err)
+	}
+
+	names := make([]string, 0, len(servers))
+	for name := range servers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
 }

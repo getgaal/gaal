@@ -30,5 +30,6 @@ func runStatus(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	return engine.NewWithOptions(cfg, engineOpts).Status(context.Background())
+	return engine.NewWithOptions(cfg, engineOpts).
+		Status(context.Background(), engine.OutputFormat(outputFormat))
 }

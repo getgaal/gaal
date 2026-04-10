@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -17,8 +19,15 @@ var (
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
-	Run: func(_ *cobra.Command, _ []string) {
+	RunE: func(_ *cobra.Command, _ []string) error {
+		if outputFormat == "json" {
+			return json.NewEncoder(os.Stdout).Encode(struct {
+				Version   string `json:"version"`
+				BuildTime string `json:"build_time"`
+			}{Version, BuildTime})
+		}
 		fmt.Printf("gaal %s (built: %s)\n", Version, BuildTime)
+		return nil
 	},
 }
 

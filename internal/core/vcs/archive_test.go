@@ -1,4 +1,4 @@
-package repo
+package vcs
 
 import (
 	"archive/tar"
@@ -330,5 +330,16 @@ func TestFetchURL_InvalidURL(t *testing.T) {
 	_, err := fetchURL(context.Background(), "http://\x00invalid")
 	if err == nil {
 		t.Fatal("expected error for URL with invalid characters")
+	}
+}
+
+func TestVcsArchive_HasChanges_AlwaysFalse(t *testing.T) {
+	a := &VcsArchive{Format: "tar"}
+	dirty, err := a.HasChanges(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("HasChanges on archive: %v", err)
+	}
+	if dirty {
+		t.Error("expected HasChanges=false for archive backend")
 	}
 }

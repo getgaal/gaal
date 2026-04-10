@@ -23,10 +23,12 @@ type Options struct {
 
 // Engine orchestrates repository, skill and MCP synchronisation.
 type Engine struct {
-	cfg    *config.Config
-	repos  *repo.Manager
-	skills *skill.Manager
-	mcps   *mcp.Manager
+	cfg     *config.Config
+	repos   *repo.Manager
+	skills  *skill.Manager
+	mcps    *mcp.Manager
+	home    string
+	workDir string
 }
 
 // New creates an Engine from the given configuration using default directories.
@@ -54,10 +56,12 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 	slog.Debug("engine initialised", "home", home, "workDir", workDir, "cacheDir", cacheDir)
 
 	return &Engine{
-		cfg:    cfg,
-		repos:  repo.NewManager(cfg.Repositories),
-		skills: skill.NewManager(cfg.Skills, cacheDir, home, workDir),
-		mcps:   mcp.NewManager(cfg.MCPs),
+		cfg:     cfg,
+		repos:   repo.NewManager(cfg.Repositories),
+		skills:  skill.NewManager(cfg.Skills, cacheDir, home, workDir),
+		mcps:    mcp.NewManager(cfg.MCPs),
+		home:    home,
+		workDir: workDir,
 	}
 }
 
@@ -123,53 +127,20 @@ func (e *Engine) RunService(ctx context.Context, interval time.Duration) error {
 	}
 }
 
-// Status prints a human-readable status report to stdout.
-func (e *Engine) Status(ctx context.Context) error {
-	fmt.Println("=== Repositories ===")
-	for _, st := range e.repos.Status(ctx) {
-		if st.Err != nil {
-			fmt.Printf("  %-40s ERROR: %v\n", st.Path, st.Err)
-			continue
-		}
-		if !st.Cloned {
-			fmt.Printf("  %-40s [not cloned]  %s @ %s\n", st.Path, st.Type, st.URL)
-		} else {
-			fmt.Printf("  %-40s [ok]          current=%-15s want=%s\n",
-				st.Path, st.Current, orDefault(st.Version, "default"))
-		}
+// Status collects the current resource state and renders it to os.Stdout
+// using the specified format (FormatTable or FormatJSON).
+func (e *Engine) Status(ctx context.Context, format OutputFormat) error {
+	slog.DebugContext(ctx, "status requested", "format", format)
+
+	report, err := e.Collect(ctx)
+	if err != nil {
+		return err
 	}
 
-	fmt.Println()
-	fmt.Println("=== Skills ===")
-	for _, st := range e.skills.Status(ctx) {
-		if st.Err != nil {
-			fmt.Printf("  %-30s %-20s ERROR: %v\n", st.Source, st.AgentName, st.Err)
-			continue
-		}
-		fmt.Printf("  %-30s %-20s installed=%v  missing=%v\n",
-			st.Source, st.AgentName, st.Installed, st.Missing)
+	renderer, err := NewRenderer(format)
+	if err != nil {
+		return err
 	}
 
-	fmt.Println()
-	fmt.Println("=== MCP Configs ===")
-	for _, st := range e.mcps.Status(ctx) {
-		if st.Err != nil {
-			fmt.Printf("  %-25s ERROR: %v\n", st.Name, st.Err)
-			continue
-		}
-		present := "absent"
-		if st.Present {
-			present = "present"
-		}
-		fmt.Printf("  %-25s %-10s  %s\n", st.Name, present, st.Target)
-	}
-
-	return nil
-}
-
-func orDefault(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
+	return renderer.Render(os.Stdout, report)
 }

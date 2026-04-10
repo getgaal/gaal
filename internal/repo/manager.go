@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"gaal/internal/config"
+	"gaal/internal/core/vcs"
 )
 
 // Status holds the sync state of a single repository.
@@ -17,6 +18,7 @@ type Status struct {
 	Version string // configured version
 	Current string // current local version
 	Cloned  bool
+	Dirty   bool // true when local modifications are detected
 	Err     error
 }
 
@@ -65,18 +67,18 @@ func (m *Manager) Sync(ctx context.Context) error {
 
 func (m *Manager) syncOne(ctx context.Context, path string, cfg config.RepoConfig) error {
 	slog.DebugContext(ctx, "syncing repository", "path", path, "type", cfg.Type, "version", cfg.Version)
-	vcs, err := New(cfg.Type)
+	backend, err := vcs.New(cfg.Type)
 	if err != nil {
 		return err
 	}
 
-	if !vcs.IsCloned(path) {
+	if !backend.IsCloned(path) {
 		slog.Info("cloning repository", "path", path, "url", cfg.URL, "version", cfg.Version)
-		return vcs.Clone(ctx, cfg.URL, path, cfg.Version)
+		return backend.Clone(ctx, cfg.URL, path, cfg.Version)
 	}
 
 	slog.Info("updating repository", "path", path)
-	return vcs.Update(ctx, path, cfg.Version)
+	return backend.Update(ctx, path, cfg.Version)
 }
 
 // Status returns the current status of every repository.
@@ -98,7 +100,7 @@ func (m *Manager) Status(ctx context.Context) []Status {
 				Version: cfg.Version,
 			}
 
-			vcs, err := New(cfg.Type)
+			backend, err := vcs.New(cfg.Type)
 			if err != nil {
 				st.Err = err
 				mu.Lock()
@@ -107,9 +109,12 @@ func (m *Manager) Status(ctx context.Context) []Status {
 				return
 			}
 
-			st.Cloned = vcs.IsCloned(path)
+			st.Cloned = backend.IsCloned(path)
 			if st.Cloned {
-				st.Current, st.Err = vcs.CurrentVersion(ctx, path)
+				st.Current, st.Err = backend.CurrentVersion(ctx, path)
+				if st.Err == nil {
+					st.Dirty, st.Err = backend.HasChanges(ctx, path)
+				}
 			}
 
 			mu.Lock()

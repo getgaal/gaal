@@ -37,7 +37,7 @@ log.Printf("cloning %s", url)
 
 After every change run:
 
-```
+```sh
 make build
 ```
 
@@ -51,13 +51,13 @@ The build must succeed with zero errors before considering the task done.
 - Mock external I/O (filesystem, HTTP, subprocess) with interfaces or `httptest`/`os.TempDir()` — tests must not require network access or installed VCS binaries.
 - Run the full test suite to validate the implementation:
 
-```
+```sh
 make test
 ```
 
 - To measure code coverage (target ≥ 90%) and generate an HTML report:
 
-```
+```sh
 make coverage
 ```
 

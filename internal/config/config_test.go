@@ -62,19 +62,21 @@ func TestUserConfigFilePath(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestLoad_ValidMinimal(t *testing.T) {
-	p := writeYAML(t, `
+	// Use a real absolute path so expandPaths leaves the key unchanged on all platforms.
+	repoPath := filepath.ToSlash(filepath.Join(t.TempDir(), "myrepo"))
+	p := writeYAML(t, fmt.Sprintf(`
 repositories:
-  /abs/repo:
+  %s:
     type: git
     url: https://example.com/foo.git
-`)
+`, repoPath))
 	cfg, err := Load(p)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	// After expandPaths, the key stays /abs/repo (absolute, no change).
-	if _, ok := cfg.Repositories["/abs/repo"]; !ok {
-		t.Errorf("expected repository '/abs/repo', got keys: %v", repoKeys(cfg))
+	// After expandPaths, absolute paths are left unchanged.
+	if _, ok := cfg.Repositories[repoPath]; !ok {
+		t.Errorf("expected repository %q, got keys: %v", repoPath, repoKeys(cfg))
 	}
 }
 
@@ -169,18 +171,19 @@ mcps:
 // ---------------------------------------------------------------------------
 
 func TestLoadChain_OnlyWorkspace(t *testing.T) {
-	p := writeYAML(t, `
+	repoPath := filepath.ToSlash(filepath.Join(t.TempDir(), "testrepo"))
+	p := writeYAML(t, fmt.Sprintf(`
 repositories:
-  /abs/testrepo:
+  %s:
     type: git
     url: https://example.com/test.git
-`)
+`, repoPath))
 	cfg, err := LoadChain(p)
 	if err != nil {
 		t.Fatalf("LoadChain: %v", err)
 	}
-	if _, ok := cfg.Repositories["/abs/testrepo"]; !ok {
-		t.Errorf("expected /abs/testrepo in merged config, got: %v", repoKeys(cfg))
+	if _, ok := cfg.Repositories[repoPath]; !ok {
+		t.Errorf("expected %q in merged config, got: %v", repoPath, repoKeys(cfg))
 	}
 }
 
@@ -197,22 +200,24 @@ func TestLoadChain_AllMissing(t *testing.T) {
 
 func TestMergeFrom_WorkspaceWins(t *testing.T) {
 	dir := t.TempDir()
+	// Use a real absolute path that survives expandPaths on all platforms.
+	sharedPath := filepath.ToSlash(filepath.Join(dir, "shared"))
 
 	lower := filepath.Join(dir, "lower.yaml")
-	os.WriteFile(lower, []byte(`
+	os.WriteFile(lower, []byte(fmt.Sprintf(`
 repositories:
-  /abs/shared:
+  %s:
     type: git
     url: https://example.com/original.git
-`), 0o644)
+`, sharedPath)), 0o644)
 
 	higher := filepath.Join(dir, "higher.yaml")
-	os.WriteFile(higher, []byte(`
+	os.WriteFile(higher, []byte(fmt.Sprintf(`
 repositories:
-  /abs/shared:
+  %s:
     type: git
     url: https://example.com/override.git
-`), 0o644)
+`, sharedPath)), 0o644)
 
 	cfgLow, err := Load(lower)
 	if err != nil {
@@ -227,7 +232,7 @@ repositories:
 	merged.mergeFrom(cfgLow)
 	merged.mergeFrom(cfgHigh)
 
-	got := merged.Repositories["/abs/shared"].URL
+	got := merged.Repositories[sharedPath].URL
 	if got != "https://example.com/override.git" {
 		t.Errorf("wanted override URL, got %q", got)
 	}

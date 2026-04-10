@@ -1,4 +1,4 @@
-package repo
+package vcs
 
 import (
 	"context"
@@ -56,4 +56,17 @@ func (b *VcsBazaar) CurrentVersion(ctx context.Context, path string) (string, er
 	}
 	out, err := cmdOutput(ctx, path, "bzr", "revno")
 	return strings.TrimSpace(out), err
+}
+
+// HasChanges reports whether the branch has local modifications.
+func (b *VcsBazaar) HasChanges(ctx context.Context, path string) (bool, error) {
+	if err := requireBinary("bzr"); err != nil {
+		return false, err
+	}
+	slog.DebugContext(ctx, "checking for local changes", "path", shortPath(path))
+	out, err := cmdOutput(ctx, path, "bzr", "status", "-S")
+	if err != nil {
+		return false, fmt.Errorf("bzr status: %w", err)
+	}
+	return strings.TrimSpace(out) != "", nil
 }

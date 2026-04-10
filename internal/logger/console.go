@@ -120,9 +120,13 @@ func (h *ConsoleHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	merged := make([]slog.Attr, len(h.attrs)+len(attrs))
 	copy(merged, h.attrs)
 	copy(merged[len(h.attrs):], attrs)
-	clone := *h
-	clone.attrs = merged
-	return &clone
+	return &ConsoleHandler{
+		out:    h.out,
+		color:  h.color,
+		level:  h.level,
+		attrs:  merged,
+		prefix: h.prefix,
+	}
 }
 
 func (h *ConsoleHandler) WithGroup(name string) slog.Handler {
@@ -130,9 +134,13 @@ func (h *ConsoleHandler) WithGroup(name string) slog.Handler {
 	if h.prefix != "" {
 		prefix = h.prefix + "." + name
 	}
-	clone := *h
-	clone.prefix = prefix
-	return &clone
+	return &ConsoleHandler{
+		out:    h.out,
+		color:  h.color,
+		level:  h.level,
+		attrs:  h.attrs,
+		prefix: prefix,
+	}
 }
 
 // writeAttr appends a single key=value pair to buf.

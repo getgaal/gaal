@@ -10,44 +10,46 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"gaal/internal/config/schema"
 )
 
 // Config is the top-level gaal configuration.
 type Config struct {
-	Repositories map[string]RepoConfig `yaml:"repositories"`
-	Skills       []SkillConfig         `yaml:"skills"`
-	MCPs         []MCPConfig           `yaml:"mcps"`
+	Repositories map[string]RepoConfig `yaml:"repositories" json:"repositories,omitempty" jsonschema:"description=Map of workspace-relative paths to repository entries" validate:"dive"`
+	Skills       []SkillConfig         `yaml:"skills"       json:"skills,omitempty"       jsonschema:"description=Skill sources to install into agent skill directories"   validate:"dive"`
+	MCPs         []MCPConfig           `yaml:"mcps"         json:"mcps,omitempty"         jsonschema:"description=MCP server configuration entries to merge"             validate:"dive"`
 }
 
 // RepoConfig is a vcstool-compatible repository entry.
 type RepoConfig struct {
-	Type    string `yaml:"type"` // git, hg, svn, bzr, tar, zip
-	URL     string `yaml:"url"`
-	Version string `yaml:"version"` // branch, tag, commit; empty = default branch
+	Type    string `yaml:"type"    json:"type"             jsonschema:"description=VCS backend type,enum=git,enum=hg,enum=svn,enum=bzr,enum=tar,enum=zip" validate:"required,oneof=git hg svn bzr tar zip"`
+	URL     string `yaml:"url"     json:"url"              jsonschema:"description=Repository URL or local path to clone/checkout"                             validate:"required"`
+	Version string `yaml:"version" json:"version,omitempty" jsonschema:"description=Branch, tag, or commit hash; leave empty to use the default branch"`
 }
 
 // SkillConfig defines a skill source to install.
 type SkillConfig struct {
-	Source string   `yaml:"source"`           // owner/repo, URL, or local path
-	Agents []string `yaml:"agents,omitempty"` // specific agents; ["*"] = all detected
-	Global bool     `yaml:"global,omitempty"` // true = install to ~/.<agent>/skills/
-	Select []string `yaml:"select,omitempty"` // specific skill names; empty = all
+	Source string   `yaml:"source"           json:"source"           jsonschema:"description=Skill source: GitHub shorthand (owner/repo), HTTPS URL, or local path" validate:"required"`
+	Agents []string `yaml:"agents,omitempty" json:"agents,omitempty" jsonschema:"description=Target agent identifiers; use [\"*\"] to target all detected agents"`
+	Global bool     `yaml:"global,omitempty" json:"global,omitempty" jsonschema:"description=When true the skill is installed globally under ~/.<agent>/skills/ instead of the project directory"`
+	Select []string `yaml:"select,omitempty" json:"select,omitempty" jsonschema:"description=Specific skill names to include; empty list installs all skills from the source"`
 }
 
 // MCPConfig defines an MCP server configuration entry.
 type MCPConfig struct {
-	Name   string           `yaml:"name"`
-	Source string           `yaml:"source,omitempty"` // URL to download JSON config
-	Target string           `yaml:"target"`           // JSON file to merge into
-	Merge  bool             `yaml:"merge,omitempty"`  // merge into existing (default true)
-	Inline *MCPInlineConfig `yaml:"inline,omitempty"` // inline server definition
+	Name   string           `yaml:"name"             json:"name"              jsonschema:"description=Unique name identifying this MCP server entry"                validate:"required"`
+	Source string           `yaml:"source,omitempty" json:"source,omitempty"  jsonschema:"description=URL to download a remote JSON server config (mutually exclusive with inline)" validate:"required_without=Inline"`
+	Target string           `yaml:"target"           json:"target"            jsonschema:"description=Absolute or ~-relative path to the JSON file to write or merge into" validate:"required"`
+	Merge  bool             `yaml:"merge,omitempty"  json:"merge,omitempty"   jsonschema:"description=Merge server entry into existing file rather than overwriting it (default true)"`
+	Inline *MCPInlineConfig `yaml:"inline,omitempty" json:"inline,omitempty"  jsonschema:"description=Inline server definition (mutually exclusive with source)"                   validate:"omitempty"`
 }
 
 // MCPInlineConfig is an inline MCP server specification.
 type MCPInlineConfig struct {
-	Command string            `yaml:"command"`
-	Args    []string          `yaml:"args,omitempty"`
-	Env     map[string]string `yaml:"env,omitempty"`
+	Command string            `yaml:"command"        json:"command"         jsonschema:"description=Executable to launch the MCP server process" validate:"required"`
+	Args    []string          `yaml:"args,omitempty" json:"args,omitempty"  jsonschema:"description=Command-line arguments passed to the command"`
+	Env     map[string]string `yaml:"env,omitempty"  json:"env,omitempty"   jsonschema:"description=Additional environment variables injected into the server process"`
 }
 
 // Configuration file locations by priority (lowest → highest):
@@ -163,34 +165,14 @@ func (c *Config) mergeFrom(src *Config) {
 }
 
 func (c *Config) validate() error {
-	for path, repo := range c.Repositories {
-		if repo.Type == "" {
-			return fmt.Errorf("repository %q: type is required", path)
-		}
-		if repo.URL == "" {
-			return fmt.Errorf("repository %q: url is required", path)
-		}
-	}
+	slog.Debug("validating config", "repos", len(c.Repositories), "skills", len(c.Skills), "mcps", len(c.MCPs))
+	return schema.Validate(c)
+}
 
-	for i, s := range c.Skills {
-		if s.Source == "" {
-			return fmt.Errorf("skill[%d]: source is required", i)
-		}
-	}
-
-	for i, m := range c.MCPs {
-		if m.Name == "" {
-			return fmt.Errorf("mcp[%d]: name is required", i)
-		}
-		if m.Target == "" {
-			return fmt.Errorf("mcp %q: target is required", m.Name)
-		}
-		if m.Source == "" && m.Inline == nil {
-			return fmt.Errorf("mcp %q: source or inline is required", m.Name)
-		}
-	}
-
-	return nil
+// GenerateSchema returns the JSON Schema (draft-07) for the Config type.
+// The active [schema.Generator] (swappable via [schema.Set]) is used.
+func GenerateSchema() ([]byte, error) {
+	return schema.Generate(&Config{})
 }
 
 // expandPaths expands ~ and relative paths, while leaving remote URLs and
@@ -203,7 +185,10 @@ func (c *Config) expandPaths(baseDir string) {
 		if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
 			return filepath.Join(home, p[2:])
 		}
-		if filepath.IsAbs(p) {
+		// filepath.IsAbs("/posix/path") returns false on Windows;
+		// handle POSIX-style absolute paths explicitly so cross-platform
+		// config files (e.g. written on Linux, used on Windows) are preserved.
+		if filepath.IsAbs(p) || strings.HasPrefix(p, "/") {
 			return p
 		}
 		return filepath.Join(baseDir, p)
@@ -219,10 +204,10 @@ func (c *Config) expandPaths(baseDir string) {
 	// GitHub shorthand: exactly one forward-slash (owner/repo), no scheme, not a local path.
 	isGitHubShorthand := func(s string) bool {
 		if isRemote(s) ||
-			strings.HasPrefix(s, "./") || strings.HasPrefix(s, `./`) ||
-			strings.HasPrefix(s, "../") || strings.HasPrefix(s, `.\`) ||
+			strings.HasPrefix(s, "./") || strings.HasPrefix(s, `.\`) ||
+			strings.HasPrefix(s, "../") || strings.HasPrefix(s, `..\`) ||
 			strings.HasPrefix(s, "~/") || strings.HasPrefix(s, `~\`) ||
-			filepath.IsAbs(s) {
+			strings.HasPrefix(s, "/") || filepath.IsAbs(s) {
 			return false
 		}
 		parts := strings.Split(s, "/")

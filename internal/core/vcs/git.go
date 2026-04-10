@@ -1,4 +1,4 @@
-package repo
+package vcs
 
 import (
 	"context"
@@ -17,7 +17,18 @@ import (
 //
 // Authentication: HTTPS public repositories work without configuration.
 // Private repos (SSH or authenticated HTTPS) are not yet supported.
-type VcsGit struct{}
+type VcsGit struct {
+	// Shallow requests a depth-1 clone (suitable for skill caches that never
+	// need history). Update will hard-reset to origin/HEAD instead of pulling.
+	Shallow bool
+}
+
+func (g *VcsGit) depth() int {
+	if g.Shallow {
+		return 1
+	}
+	return 0
+}
 
 func (g *VcsGit) Clone(ctx context.Context, url, path, version string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -30,6 +41,7 @@ func (g *VcsGit) Clone(ctx context.Context, url, path, version string) error {
 		URL:               url,
 		RecurseSubmodules: gogit.DefaultSubmoduleRecursionDepth,
 		Tags:              gogit.AllTags,
+		Depth:             g.depth(),
 	})
 	if err != nil {
 		return fmt.Errorf("cloning %s: %w", url, err)
@@ -53,6 +65,7 @@ func (g *VcsGit) Update(ctx context.Context, path, version string) error {
 		RemoteName: "origin",
 		Tags:       gogit.AllTags,
 		Force:      true,
+		Prune:      true,
 	})
 	if fetchErr != nil && !errors.Is(fetchErr, gogit.NoErrAlreadyUpToDate) {
 		return fmt.Errorf("fetching: %w", fetchErr)
@@ -60,6 +73,12 @@ func (g *VcsGit) Update(ctx context.Context, path, version string) error {
 
 	if version != "" {
 		return checkoutVersion(r, version)
+	}
+
+	if g.Shallow {
+		// Shallow / cache mode: hard-reset to remote HEAD so force-pushes and
+		// history rewrites are always reflected.
+		return g.resetToRemoteHEAD(ctx, r)
 	}
 
 	// No pinned version: fast-forward the current tracking branch.
@@ -74,6 +93,35 @@ func (g *VcsGit) Update(ctx context.Context, path, version string) error {
 		return fmt.Errorf("pulling: %w", err)
 	}
 	return nil
+}
+
+// resetToRemoteHEAD hard-resets the working tree to the tip of origin's default
+// branch. It tries refs/remotes/origin/HEAD first, then falls back to
+// origin/main and origin/master.
+func (g *VcsGit) resetToRemoteHEAD(ctx context.Context, r *gogit.Repository) error {
+	var hash plumbing.Hash
+	var found bool
+	for _, refName := range []string{"HEAD", "main", "master"} {
+		ref, err := r.Reference(plumbing.NewRemoteReferenceName("origin", refName), true)
+		if err == nil {
+			hash = ref.Hash()
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("could not resolve origin HEAD")
+	}
+
+	w, err := r.Worktree()
+	if err != nil {
+		return err
+	}
+	slog.DebugContext(ctx, "hard-resetting to remote HEAD", "hash", hash)
+	return w.Reset(&gogit.ResetOptions{
+		Commit: hash,
+		Mode:   gogit.HardReset,
+	})
 }
 
 func (g *VcsGit) IsCloned(path string) bool {
@@ -106,6 +154,26 @@ func (g *VcsGit) CurrentVersion(_ context.Context, path string) (string, error) 
 		h = h[:8]
 	}
 	return h, nil
+}
+
+// HasChanges reports whether the working tree contains modifications to
+// tracked files (staged or unstaged). Untracked files are ignored.
+func (g *VcsGit) HasChanges(ctx context.Context, path string) (bool, error) {
+	slog.DebugContext(ctx, "checking for local changes", "path", shortPath(path))
+
+	r, err := gogit.PlainOpen(path)
+	if err != nil {
+		return false, fmt.Errorf("opening repository: %w", err)
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		return false, fmt.Errorf("reading worktree: %w", err)
+	}
+	st, err := w.Status()
+	if err != nil {
+		return false, fmt.Errorf("reading status: %w", err)
+	}
+	return !st.IsClean(), nil
 }
 
 // checkoutVersion resolves version (branch, tag, or commit hash) inside r
