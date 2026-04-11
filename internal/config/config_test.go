@@ -158,6 +158,119 @@ repositories:
 	}
 }
 
+func TestLoad_SkillAgents_FlatList(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    agents: ["*"]
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Skills) != 1 || len(cfg.Skills[0].Agents) != 1 || cfg.Skills[0].Agents[0] != "*" {
+		t.Errorf("got agents %v, want [\"*\"]", cfg.Skills[0].Agents)
+	}
+}
+
+func TestLoad_SkillAgents_Scalar(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    agents: "*"
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Skills) != 1 || len(cfg.Skills[0].Agents) != 1 || cfg.Skills[0].Agents[0] != "*" {
+		t.Errorf("got agents %v, want [\"*\"]", cfg.Skills[0].Agents)
+	}
+}
+
+func TestLoad_SkillAgents_NestedListIsFlattened(t *testing.T) {
+	// Regression for https://github.com/gmg-inc/gaal-lite/issues/13
+	// A list-of-lists is a common hand-written mistake (mentally copying the
+	// canonical `agents: ["*"]` example under a list bullet).
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    agents:
+      - ["*", "claude"]
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"*", "claude"}
+	got := cfg.Skills[0].Agents
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("agents[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestLoad_SkillAgents_MixedFlatAndNested(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    agents:
+      - claude
+      - ["codex", "cursor"]
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"claude", "codex", "cursor"}
+	got := cfg.Skills[0].Agents
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("agents[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestLoad_SkillAgents_DoubleNestedRejected(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    agents:
+      - [["*"]]
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for doubly-nested agents list")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "agents") {
+		t.Errorf("error should mention 'agents', got: %v", err)
+	}
+	if !strings.Contains(msg, "owner/repo") {
+		t.Errorf("error should name the skill source for context, got: %v", err)
+	}
+}
+
+func TestLoad_SkillAgents_MapRejected(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    agents:
+      key: value
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for map-shaped agents field")
+	}
+}
+
 func TestLoad_ValidationError_SkillNoSource(t *testing.T) {
 	p := writeYAML(t, `
 skills:
@@ -227,7 +340,13 @@ repositories:
 }
 
 func TestLoadChain_AllMissing(t *testing.T) {
-	_, err := LoadChain("/no/such/file/gaal.yaml")
+	// Isolate from the host's real global/user configs so this test passes on
+	// dev machines that happen to have a ~/.config/gaal/config.yaml.
+	empty := t.TempDir()
+	t.Setenv("HOME", empty)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(empty, "xdg"))
+
+	_, err := LoadChain(filepath.Join(empty, "no-such-workspace.yaml"))
 	if err == nil {
 		t.Fatal("expected error when no config file found")
 	}

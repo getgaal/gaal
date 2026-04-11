@@ -36,6 +36,70 @@ type SkillConfig struct {
 	Select []string `yaml:"select,omitempty" json:"select,omitempty" jsonschema:"description=Specific skill names to include; empty list installs all skills from the source"`
 }
 
+// UnmarshalYAML accepts the `agents` field in several hand-written shapes:
+//   - scalar:       `agents: "*"`
+//   - flat list:    `agents: ["*", "claude"]`
+//   - nested list:  `agents: [["*"]]` — flattened one level
+//
+// The nested form is a common mistake when users mentally copy the canonical
+// `agents: ["*"]` under a list bullet. We normalise all accepted shapes to
+// []string so downstream code doesn't need to care.
+func (s *SkillConfig) UnmarshalYAML(node *yaml.Node) error {
+	type rawSkill struct {
+		Source string    `yaml:"source"`
+		Agents yaml.Node `yaml:"agents,omitempty"`
+		Global bool      `yaml:"global,omitempty"`
+		Select []string  `yaml:"select,omitempty"`
+	}
+	var raw rawSkill
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+
+	s.Source = raw.Source
+	s.Global = raw.Global
+	s.Select = raw.Select
+
+	agents, err := decodeAgents(&raw.Agents)
+	if err != nil {
+		return fmt.Errorf("skill %q: agents: %w", raw.Source, err)
+	}
+	s.Agents = agents
+	return nil
+}
+
+// decodeAgents normalises the `agents` node into []string. See
+// [SkillConfig.UnmarshalYAML] for accepted shapes.
+func decodeAgents(n *yaml.Node) ([]string, error) {
+	if n == nil || n.Kind == 0 {
+		return nil, nil
+	}
+	switch n.Kind {
+	case yaml.ScalarNode:
+		return []string{n.Value}, nil
+	case yaml.SequenceNode:
+		out := make([]string, 0, len(n.Content))
+		for _, item := range n.Content {
+			switch item.Kind {
+			case yaml.ScalarNode:
+				out = append(out, item.Value)
+			case yaml.SequenceNode:
+				for _, inner := range item.Content {
+					if inner.Kind != yaml.ScalarNode {
+						return nil, fmt.Errorf("line %d: nesting deeper than one level is not supported", inner.Line)
+					}
+					out = append(out, inner.Value)
+				}
+			default:
+				return nil, fmt.Errorf("line %d: expected a string or list of strings", item.Line)
+			}
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("line %d: expected a string or list of strings", n.Line)
+	}
+}
+
 // MCPConfig defines an MCP server configuration entry.
 type MCPConfig struct {
 	Name   string           `yaml:"name"             json:"name"              jsonschema:"description=Unique name identifying this MCP server entry"                validate:"required"`
