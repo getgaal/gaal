@@ -113,7 +113,7 @@ In `--service` mode, `engine.RunService()` wraps `RunOnce()` in a `time.Ticker` 
 | Priority | Level | Linux | macOS | Windows |
 |----------|-------|-------|-------|---------|
 | 1 (lowest) | **Global** | `/etc/gaal/config.yaml` | `/etc/gaal/config.yaml` | `%PROGRAMDATA%\gaal\config.yaml` |
-| 2 | **User** | `$XDG_CONFIG_HOME/gaal/config.yaml` | `~/Library/Application Support/gaal/config.yaml` | `%AppData%\gaal\config.yaml` |
+| 2 | **User** | `$XDG_CONFIG_HOME/gaal/config.yaml` | `$XDG_CONFIG_HOME/gaal/config.yaml` (defaults to `~/.config/gaal/config.yaml`) | `%AppData%\gaal\config.yaml` |
 | 3 (highest) | **Workspace** | `--config` value (default `gaal.yaml` in CWD) | ← same | ← same |
 
 Missing files are silently skipped. At least one file must be present.
@@ -374,7 +374,7 @@ The agent registry is loaded from an embedded `agents.yaml` file. Custom agents 
 | OS | Path |
 |----|------|
 | Linux | `$XDG_CONFIG_HOME/gaal/agents.yaml` |
-| macOS | `~/Library/Application Support/gaal/agents.yaml` |
+| macOS | `$XDG_CONFIG_HOME/gaal/agents.yaml` (defaults to `~/.config/gaal/agents.yaml`) |
 | Windows | `%AppData%\gaal\agents.yaml` |
 
 Custom entries extend the built-in list; they cannot override built-in entries.
@@ -392,13 +392,13 @@ Custom entries extend the built-in list; they cannot override built-in entries.
 
 ## Sandbox Mode (`--sandbox <dir>`)
 
-A single primitive — `os.Setenv("HOME", sandboxDir)` — redirects all OS-standard directory lookups:
+`applyOptions()` rewrites the relevant user-directory environment variables so gaal-managed paths resolve inside the sandbox:
 
 | Lookup | Redirected to |
 |--------|--------------|
 | `os.UserHomeDir()` | `sandboxDir` |
-| `os.UserConfigDir()` | `sandboxDir/.config/` (Linux) |
-| `os.UserCacheDir()` → skill cache | `sandboxDir/.cache/gaal/skills/` (Linux) |
+| gaal user config (`userConfigDir()`) | `sandboxDir/.config/gaal/` on Linux/macOS, `%sandboxDir%\AppData\Roaming\gaal\` on Windows |
+| `os.UserCacheDir()` → skill cache | sandbox-scoped cache root (`sandboxDir/.cache/gaal/skills/` on Linux, `sandboxDir/Library/Caches/gaal/skills/` on macOS, `%sandboxDir%\AppData\Local\gaal\skills\` on Windows) |
 | `global: true` skill paths | `sandboxDir/.<agent>/skills/` |
 | MCP targets (`~/...`) | `sandboxDir/...` |
 | `WorkDir` | `sandboxDir/workspace/` |

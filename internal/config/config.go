@@ -59,7 +59,7 @@ type MCPInlineConfig struct {
 //                  Windows     : %PROGRAMDATA%\gaal\config.yaml
 //  2. User     — per-user customisation
 //                  Linux       : $XDG_CONFIG_HOME/gaal/config.yaml  (~/.config/gaal/config.yaml)
-//                  macOS       : ~/Library/Application Support/gaal/config.yaml
+//                  macOS       : $XDG_CONFIG_HOME/gaal/config.yaml  (~/.config/gaal/config.yaml)
 //                  Windows     : %AppData%\gaal\config.yaml
 //  3. Workspace — project-specific, value of the --config flag (default: gaal.yaml in CWD)
 //
@@ -80,11 +80,31 @@ func globalConfigFilePath() string {
 	return "/etc/gaal/config.yaml"
 }
 
+// userConfigDir returns the directory in which gaal stores per-user config.
+// On macOS we intentionally diverge from os.UserConfigDir() (which would return
+// ~/Library/Application Support) and prefer XDG_CONFIG_HOME when it is set,
+// otherwise ~/.config to match the conventions of other CLI tools. Linux and
+// Windows fall through to os.UserConfigDir().
+func userConfigDir() (string, error) {
+	if runtime.GOOS == "darwin" {
+		if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
+			return xdg, nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".config"), nil
+	}
+	return os.UserConfigDir()
+}
+
 // userConfigFilePath returns the per-user config path for the current OS.
-// It delegates to os.UserConfigDir() which respects XDG_CONFIG_HOME on Linux,
-// ~/Library/Application Support on macOS, and %AppData% on Windows.
+// It respects XDG_CONFIG_HOME on Linux and macOS when set, otherwise ~/.config
+// on macOS (see userConfigDir), and %AppData% on Windows.
 func userConfigFilePath() string {
-	dir, err := os.UserConfigDir()
+	slog.Debug("resolving user config file path")
+	dir, err := userConfigDir()
 	if err != nil {
 		// Fallback: XDG default.
 		home, _ := os.UserHomeDir()

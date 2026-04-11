@@ -11,7 +11,7 @@ See [docs/architecture.md](docs/architecture.md) for a full description of the p
 
 Key points:
 - `internal/engine` is the single orchestrator — add no business logic there.
-- All file-system paths must use `os.UserHomeDir()`, `os.UserConfigDir()`, and `os.UserCacheDir()` — never hardcode `~/.config/`, `%AppData%`, etc.
+- For per-user gaal config paths, go through the helpers in `internal/config` and `internal/core/agent` (which intentionally override `os.UserConfigDir()` on macOS to prefer `$XDG_CONFIG_HOME` and otherwise use `~/.config/`). For other paths, use `os.UserHomeDir()` and `os.UserCacheDir()` — never hardcode `%AppData%`, etc.
 - The `--sandbox` flag redirects `$HOME` via `os.Setenv("HOME", dir)` — all new code must honour this automatically.
 - The `--verbose` flag switches the global `slog` level to `DEBUG` — no other mechanism exists for verbosity.
 
@@ -74,5 +74,5 @@ All tests must pass before the task is considered complete.
 - Use `filepath.Join`, `filepath.IsAbs`, `filepath.ToSlash` — never string concatenation for paths.
 - `~` expansion must handle both `~/` (POSIX) and `~\` (Windows): use `expandHome(p, home)` from `internal/skill/agents.go`.
 - Global config: use `globalConfigFilePath()` from `internal/config/config.go`.
-- User config: use `os.UserConfigDir()`.
+- User config: use `userConfigFilePath()` from `internal/config/config.go`. On macOS this returns `$XDG_CONFIG_HOME/gaal/` when set, otherwise `~/.config/gaal/` — do not call `os.UserConfigDir()` directly for user-scoped gaal paths.
 - Cache: use `os.UserCacheDir()`.

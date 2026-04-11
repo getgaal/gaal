@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -217,5 +218,44 @@ agents:
 `)
 	if err := loadInto(data, dst, false); err == nil {
 		t.Error("expected error when attempting to override built-in agent")
+	}
+}
+
+// ── userAgentsPath ────────────────────────────────────────────────────────────
+
+func TestUserAgentsPath_Darwin(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only test")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	got, ok := userAgentsPath()
+	if !ok {
+		t.Fatal("userAgentsPath returned ok=false")
+	}
+	want := filepath.Join(home, ".config", "gaal", "agents.yaml")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestUserAgentsPath_DarwinUsesXDGConfigHome(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only test")
+	}
+	home := t.TempDir()
+	xdg := filepath.Join(t.TempDir(), "xdg-config")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+
+	got, ok := userAgentsPath()
+	if !ok {
+		t.Fatal("userAgentsPath returned ok=false")
+	}
+	want := filepath.Join(xdg, "gaal", "agents.yaml")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

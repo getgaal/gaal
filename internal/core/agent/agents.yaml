@@ -13,7 +13,7 @@
 #
 # Custom agents can be added by creating a file at:
 #   $XDG_CONFIG_HOME/gaal/agents.yaml   (Linux)
-#   ~/Library/Application Support/gaal/agents.yaml  (macOS)
+#   $XDG_CONFIG_HOME/gaal/agents.yaml   (macOS, defaults to ~/.config/gaal/agents.yaml)
 #   %AppData%\gaal\agents.yaml          (Windows)
 # Custom entries extend the built-in list. They cannot override built-in entries.
 
