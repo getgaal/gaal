@@ -3,7 +3,7 @@ module gaal
 go 1.26
 
 require (
-	atomicgo.dev/keyboard v0.2.9
+	atomicgo.dev/keyboard v0.2.9 // indirect
 	github.com/go-git/go-git/v5 v5.17.2
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/invopop/jsonschema v0.13.0
