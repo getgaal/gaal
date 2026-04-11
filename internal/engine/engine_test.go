@@ -234,13 +234,13 @@ func TestCollect_IncludesAgents(t *testing.T) {
 	if len(report.Agents) == 0 {
 		t.Fatal("expected at least one agent entry in status report")
 	}
-	// All entries must have non-empty Name and ProjectSkillsDir.
+	// Every entry must have a non-empty Name. ProjectSkillsDir may be
+	// empty for agents that delegate project skills to the shared
+	// "generic" convention (e.g. cline, amp, warp); audit and sync
+	// redirect those through agent.SkillDir.
 	for _, a := range report.Agents {
 		if a.Name == "" {
 			t.Error("agent entry has empty Name")
-		}
-		if a.ProjectSkillsDir == "" {
-			t.Errorf("agent %q: empty ProjectSkillsDir", a.Name)
 		}
 	}
 }

@@ -132,6 +132,67 @@ func TestAudit_TwoPass_NoProjectDuplicate(t *testing.T) {
 	}
 }
 
+// TestAudit_Generic_ProjectSkills verifies a skill in .agents/skills is
+// attributed to the `generic` agent (issue #2 — previously tagged `amp`,
+// the alphabetically first agent that co-opted the path as canonical).
+func TestAudit_Generic_ProjectSkills(t *testing.T) {
+	home := t.TempDir()
+	workDir := t.TempDir()
+	makeSkill(t, workDir, ".agents/skills", "generic-proj-skill", "Generic project skill")
+
+	out := captureStdout(t, func() {
+		if err := Audit(context.Background(), home, workDir, render.FormatJSON); err != nil {
+			t.Errorf("Audit json (generic project): %v", err)
+		}
+	})
+	var report render.AuditReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid JSON: %v\noutput: %s", err, out)
+	}
+	for _, s := range report.Skills {
+		if s.Name == "generic-proj-skill" {
+			if s.Agent != "generic" {
+				t.Errorf("expected agent=generic, got %q", s.Agent)
+			}
+			if s.Source != "project" {
+				t.Errorf("expected source=project, got %q", s.Source)
+			}
+			return
+		}
+	}
+	t.Error("'generic-proj-skill' not found in JSON skills list")
+}
+
+// TestAudit_Generic_GlobalSkills verifies a skill in ~/.agents/skills is
+// attributed to the `generic` agent (issue #2 — previously tagged `cline`).
+func TestAudit_Generic_GlobalSkills(t *testing.T) {
+	home := t.TempDir()
+	workDir := t.TempDir()
+	makeSkill(t, home, ".agents/skills", "generic-global-skill", "Generic global skill")
+
+	out := captureStdout(t, func() {
+		if err := Audit(context.Background(), home, workDir, render.FormatJSON); err != nil {
+			t.Errorf("Audit json (generic global): %v", err)
+		}
+	})
+	var report render.AuditReport
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("invalid JSON: %v\noutput: %s", err, out)
+	}
+	for _, s := range report.Skills {
+		if s.Name == "generic-global-skill" {
+			if s.Agent != "generic" {
+				t.Errorf("expected agent=generic, got %q", s.Agent)
+			}
+			if s.Source != "global" {
+				t.Errorf("expected source=global, got %q", s.Source)
+			}
+			return
+		}
+	}
+	t.Error("'generic-global-skill' not found in JSON skills list")
+}
+
 func TestAudit_TwoPass_CanonicalAgent(t *testing.T) {
 	home := t.TempDir()
 	workDir := t.TempDir()

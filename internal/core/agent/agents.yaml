@@ -20,8 +20,8 @@
 # YAML anchors for shared path literals.
 # The "defaults" mapping is ignored by the struct decoder (only "agents" is mapped).
 defaults:
-  project_skills_dir: &psd .agents/skills           # shared convention (~half of agents)
-  global_agents_skills: &gas ~/.agents/skills        # cline, warp
+  project_skills_dir: &psd .agents/skills           # owned by the "generic" built-in
+  global_agents_skills: &gas ~/.agents/skills        # owned by the "generic" built-in
   vscode_mcp_config: &vmc ~/.vscode/settings.json    # cline, github-copilot, roo
 
 # Shared search lists (anchors for re-use across agents).
@@ -39,7 +39,8 @@ search_defaults:
 
 agents:
   amp:
-    project_skills_dir: *psd
+    supports_generic_project: true
+    project_skills_dir: ""
     global_skills_dir: ~/.config/agents/skills
     project_mcp_config_file: ~/.config/amp/settings.json
     project_skills_search: *cps
@@ -51,7 +52,8 @@ agents:
     pm_skills_search: []
 
   antigravity:
-    project_skills_dir: *psd
+    supports_generic_project: true
+    project_skills_dir: ""
     global_skills_dir: ~/.gemini/antigravity/skills
     project_mcp_config_file: ""
     project_skills_search: *cps
@@ -92,15 +94,18 @@ agents:
       - ~/.claude/plugins/cache
 
   cline:
-    project_skills_dir: *psd
-    global_skills_dir: *gas
+    supports_generic_project: true
+    supports_generic_global: true
+    project_skills_dir: ""
+    global_skills_dir: ""
     project_mcp_config_file: *vmc
     project_skills_search: *cps
     global_skills_search: *cgs
     pm_skills_search: []
 
   codex:
-    project_skills_dir: *psd
+    supports_generic_project: true
+    project_skills_dir: ""
     global_skills_dir: ~/.codex/skills
     project_mcp_config_file: ~/.codex/mcp.json
     project_skills_search: *cps
@@ -126,7 +131,8 @@ agents:
     pm_skills_search: []
 
   cursor:
-    project_skills_dir: *psd
+    supports_generic_project: true
+    project_skills_dir: ""
     global_skills_dir: ~/.cursor/skills
     project_mcp_config_file: ~/.cursor/mcp.json
     project_skills_search: *cps
@@ -139,7 +145,8 @@ agents:
       - ~/.cursor/extensions
 
   gemini-cli:
-    project_skills_dir: *psd
+    supports_generic_project: true
+    project_skills_dir: ""
     global_skills_dir: ~/.gemini/skills
     project_mcp_config_file: ~/.gemini/settings.json
     project_skills_search: *cps
@@ -149,6 +156,21 @@ agents:
       - ~/.copilot/skills
     pm_skills_search:
       - ~/.gemini/extensions
+
+  generic:
+    # Shared-convention agent. Owns .agents/skills (project) and
+    # ~/.agents/skills (global) so audit attributes skills placed under
+    # these vendor-neutral paths to `generic`. Also the sync target used
+    # by any agent that sets supports_generic_project /
+    # supports_generic_global: true.
+    project_skills_dir: *psd
+    global_skills_dir: *gas
+    project_mcp_config_file: ""
+    project_skills_search:
+      - .agents/skills
+    global_skills_search:
+      - ~/.agents/skills
+    pm_skills_search: []
 
   github-copilot:
     # https://code.visualstudio.com/docs/copilot/customization/agent-skills#_create-a-skill
@@ -211,7 +233,8 @@ agents:
       - ~/.kiro/extensions
 
   opencode:
-    project_skills_dir: *psd
+    supports_generic_project: true
+    project_skills_dir: ""
     global_skills_dir: ~/.config/opencode/skills
     project_mcp_config_file: ~/.config/opencode/config.json
     project_skills_search: *cps
@@ -266,8 +289,10 @@ agents:
       - ~/.trae/extensions
 
   warp:
-    project_skills_dir: *psd
-    global_skills_dir: *gas
+    supports_generic_project: true
+    supports_generic_global: true
+    project_skills_dir: ""
+    global_skills_dir: ""
     project_mcp_config_file: ~/.warp/launch_configurations/mcp.json
     project_skills_search: *cps
     global_skills_search:

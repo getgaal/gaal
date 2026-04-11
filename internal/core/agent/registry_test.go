@@ -133,12 +133,14 @@ func TestAllAgents_HaveNonEmptySkillDirs(t *testing.T) {
 	home := "/home/testuser"
 	for _, name := range agent.Names() {
 		info, _ := agent.Lookup(name)
-		if info.ProjectSkillsDir == "" {
-			t.Errorf("agent %q: empty ProjectSkillsDir", name)
+		if info.ProjectSkillsDir == "" && !info.SupportsGenericProject {
+			t.Errorf("agent %q: empty ProjectSkillsDir without supports_generic_project", name)
 		}
-		if info.GlobalSkillsDir == "" {
-			t.Errorf("agent %q: empty GlobalSkillsDir", name)
+		if info.GlobalSkillsDir == "" && !info.SupportsGenericGlobal {
+			t.Errorf("agent %q: empty GlobalSkillsDir without supports_generic_global", name)
 		}
+		// SkillDir must always resolve to a non-empty path: flagged
+		// agents transparently redirect to generic's canonical paths.
 		projDir, ok := agent.SkillDir(name, false, home)
 		if !ok || projDir == "" {
 			t.Errorf("agent %q: SkillDir(false) returned empty or not-ok", name)
@@ -199,5 +201,111 @@ func TestList_InfoMatchesLookup(t *testing.T) {
 			e.Info.ProjectMCPConfigFile != info.ProjectMCPConfigFile {
 			t.Errorf("List() entry %q Info mismatch: got %+v, want %+v", e.Name, e.Info, info)
 		}
+	}
+}
+
+// ── Generic convention ──────────────────────────────────────────────────────
+
+func TestGenericAgentRegistered(t *testing.T) {
+	info, ok := agent.Lookup("generic")
+	if !ok {
+		t.Fatal("generic agent not registered")
+	}
+	if info.ProjectSkillsDir != ".agents/skills" {
+		t.Errorf("generic ProjectSkillsDir = %q, want .agents/skills", info.ProjectSkillsDir)
+	}
+	if info.GlobalSkillsDir != "~/.agents/skills" {
+		t.Errorf("generic GlobalSkillsDir = %q, want ~/.agents/skills", info.GlobalSkillsDir)
+	}
+	if info.SupportsGenericProject || info.SupportsGenericGlobal {
+		t.Error("generic itself must not set supports_generic_{project,global}=true")
+	}
+}
+
+func TestGenericProjectFlaggedAgents(t *testing.T) {
+	// Every agent that previously pointed its project_skills_dir at
+	// .agents/skills must now delegate to generic.
+	want := []string{"amp", "antigravity", "cline", "codex", "cursor", "gemini-cli", "opencode", "warp"}
+	for _, name := range want {
+		info, ok := agent.Lookup(name)
+		if !ok {
+			t.Errorf("agent %q not registered", name)
+			continue
+		}
+		if !info.SupportsGenericProject {
+			t.Errorf("agent %q: expected SupportsGenericProject=true", name)
+		}
+		if info.ProjectSkillsDir != "" {
+			t.Errorf("agent %q: expected empty ProjectSkillsDir, got %q", name, info.ProjectSkillsDir)
+		}
+	}
+}
+
+func TestGenericGlobalFlaggedAgents(t *testing.T) {
+	// Only cline and warp previously pointed their global_skills_dir at
+	// ~/.agents/skills.
+	want := []string{"cline", "warp"}
+	for _, name := range want {
+		info, ok := agent.Lookup(name)
+		if !ok {
+			t.Errorf("agent %q not registered", name)
+			continue
+		}
+		if !info.SupportsGenericGlobal {
+			t.Errorf("agent %q: expected SupportsGenericGlobal=true", name)
+		}
+		if info.GlobalSkillsDir != "" {
+			t.Errorf("agent %q: expected empty GlobalSkillsDir, got %q", name, info.GlobalSkillsDir)
+		}
+	}
+}
+
+func TestSkillDir_RedirectsProjectFlaggedToGeneric(t *testing.T) {
+	// amp is project-only flagged: project dir must redirect, but
+	// global dir must still resolve to amp's own canonical path.
+	home := "/tmp/fake-home"
+
+	proj, ok := agent.SkillDir("amp", false, home)
+	if !ok {
+		t.Fatal("SkillDir(amp, project) returned false")
+	}
+	if proj != ".agents/skills" {
+		t.Errorf("SkillDir(amp, project) = %q, want .agents/skills", proj)
+	}
+
+	global, ok := agent.SkillDir("amp", true, home)
+	if !ok {
+		t.Fatal("SkillDir(amp, global) returned false")
+	}
+	if global != filepath.Join(home, ".config/agents/skills") {
+		t.Errorf("SkillDir(amp, global) = %q, want amp's canonical global dir", global)
+	}
+}
+
+func TestSkillDir_RedirectsBothScopesForCline(t *testing.T) {
+	home := "/tmp/fake-home"
+
+	proj, ok := agent.SkillDir("cline", false, home)
+	if !ok {
+		t.Fatal("SkillDir(cline, project) returned false")
+	}
+	if proj != ".agents/skills" {
+		t.Errorf("SkillDir(cline, project) = %q, want .agents/skills", proj)
+	}
+
+	global, ok := agent.SkillDir("cline", true, home)
+	if !ok {
+		t.Fatal("SkillDir(cline, global) returned false")
+	}
+	if global != filepath.Join(home, ".agents/skills") {
+		t.Errorf("SkillDir(cline, global) = %q, want %q", global, filepath.Join(home, ".agents/skills"))
+	}
+
+	warpGlobal, ok := agent.SkillDir("warp", true, home)
+	if !ok {
+		t.Fatal("SkillDir(warp, global) returned false")
+	}
+	if warpGlobal != filepath.Join(home, ".agents/skills") {
+		t.Errorf("SkillDir(warp, global) = %q, want %q", warpGlobal, filepath.Join(home, ".agents/skills"))
 	}
 }

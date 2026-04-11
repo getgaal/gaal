@@ -48,6 +48,27 @@ func TestInfo_JSON_Agent(t *testing.T) {
 	if len(result.Agents) == 0 {
 		t.Error("expected at least one agent in JSON output")
 	}
+
+	for _, agent := range result.Agents {
+		if agent.Name != "cline" {
+			continue
+		}
+		if agent.ProjectSkillsDir != ".agents/skills" {
+			t.Errorf("cline project_skills_dir = %q, want .agents/skills", agent.ProjectSkillsDir)
+		}
+		if agent.GlobalSkillsDir == "" {
+			t.Fatal("cline global_skills_dir is empty")
+		}
+		if !agent.ProjectSkillsViaGeneric {
+			t.Error("cline project_skills_via_generic = false, want true")
+		}
+		if !agent.GlobalSkillsViaGeneric {
+			t.Error("cline global_skills_via_generic = false, want true")
+		}
+		return
+	}
+
+	t.Fatal("cline agent not found in JSON output")
 }
 
 func TestInfo_JSON_Agent_Filter(t *testing.T) {
