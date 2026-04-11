@@ -207,24 +207,33 @@ func (m *Manager) resolveAgents(sc config.SkillConfig) []string {
 	return sc.Agents
 }
 
-// detectInstalledAgents returns agents whose config directory is present.
+// isAgentInstalled reports whether the directory that would own the agent's
+// skills on this machine already exists. This is the single "installed?"
+// signal used by sync: we never create agent-owned directories as a side
+// effect of a sync run.
+func (m *Manager) isAgentInstalled(name string, global bool) bool {
+	dir, ok := SkillDir(name, global, m.home)
+	if !ok {
+		return false
+	}
+	checkDir := dir
+	if !global && !filepath.IsAbs(dir) {
+		checkDir = filepath.Join(m.workDir, filepath.Dir(dir))
+	} else {
+		checkDir = filepath.Dir(expandHome(dir, m.home))
+	}
+	_, err := os.Stat(checkDir)
+	return err == nil
+}
+
+// detectInstalledAgents returns every registered agent whose config-owning
+// directory is present on this machine. Used for the `agents: ["*"]` wildcard.
 func (m *Manager) detectInstalledAgents(global bool) []string {
 	slog.Debug("detecting installed agents", "global", global)
 	var found []string
 	for _, name := range AgentNames() {
-		dir, ok := SkillDir(name, global, m.home)
-		if !ok {
-			continue
-		}
-		// For project scope check by parent dir; for global, check home existence.
-		checkDir := dir
-		if !global && !filepath.IsAbs(dir) {
-			checkDir = filepath.Join(m.workDir, filepath.Dir(dir))
-		} else {
-			checkDir = filepath.Dir(expandHome(dir, m.home))
-		}
-		if _, err := os.Stat(checkDir); err == nil {
-			slog.Debug("agent detected", "name", name, "dir", checkDir)
+		if m.isAgentInstalled(name, global) {
+			slog.Debug("agent detected", "name", name, "global", global)
 			found = append(found, name)
 		}
 	}
