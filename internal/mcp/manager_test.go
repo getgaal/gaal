@@ -80,14 +80,21 @@ func TestMergeIntoTarget_UpsertExistingEntry(t *testing.T) {
 	}
 }
 
-func TestMergeIntoTarget_CreatesParentDir(t *testing.T) {
+func TestMergeIntoTarget_NestedParentMissing_Skips(t *testing.T) {
+	// Sync must never create nested parent directories as a side effect.
+	// This test pins the "skip when the direct parent is missing" contract
+	// introduced by issue #17 — the previous "creates parent dir" behaviour
+	// is exactly what materialised ~/.zencoder/ on machines without zencoder.
 	target := filepath.Join(t.TempDir(), "nested", "deep", "mcp.json")
 	entry := serverEntry{Command: "cmd"}
 	if err := mergeIntoTarget(target, "s", entry); err != nil {
-		t.Fatalf("expected parent dirs to be created, got: %v", err)
+		t.Fatalf("mergeIntoTarget returned error for missing parent: %v", err)
 	}
-	if _, err := os.Stat(target); err != nil {
-		t.Error("expected target file to exist")
+	if _, err := os.Stat(target); err == nil {
+		t.Error("target file must not be created when parent does not exist")
+	}
+	if _, err := os.Stat(filepath.Dir(target)); err == nil {
+		t.Error("nested parent directory must not be created")
 	}
 }
 
@@ -249,6 +256,75 @@ func TestMergeIntoTarget_InvalidExistingJSON(t *testing.T) {
 	err := mergeIntoTarget(target, "s", entry)
 	if err == nil {
 		t.Fatal("expected error when existing file has invalid JSON")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// mergeIntoTarget / Manager.Sync — parent directory must already exist.
+// sync never creates an agent-owned directory as a side effect.
+// ---------------------------------------------------------------------------
+
+func TestMergeIntoTarget_ParentMissing_Skips(t *testing.T) {
+	// Target lives under a directory that does not yet exist — simulating
+	// an uninstalled agent. mergeIntoTarget must NOT create the parent,
+	// must NOT create the target, and must return nil.
+	root := t.TempDir()
+	parent := filepath.Join(root, ".zencoder")
+	target := filepath.Join(parent, "mcp.json")
+
+	entry := serverEntry{Command: "node"}
+	if err := mergeIntoTarget(target, "s", entry); err != nil {
+		t.Fatalf("mergeIntoTarget returned error for missing parent: %v", err)
+	}
+
+	if _, err := os.Stat(parent); err == nil {
+		t.Error("mergeIntoTarget must not create the parent directory")
+	}
+	if _, err := os.Stat(target); err == nil {
+		t.Error("mergeIntoTarget must not create the target file")
+	}
+}
+
+func TestMergeIntoTarget_ParentNotADirectory_Errors(t *testing.T) {
+	// The "parent" path exists but is a regular file, not a directory.
+	// This is a real-world misconfiguration and should error explicitly
+	// rather than silently skipping.
+	root := t.TempDir()
+	parent := filepath.Join(root, "not-a-dir")
+	os.WriteFile(parent, []byte("plain file"), 0o644)
+	target := filepath.Join(parent, "mcp.json")
+
+	entry := serverEntry{Command: "node"}
+	err := mergeIntoTarget(target, "s", entry)
+	if err == nil {
+		t.Fatal("expected error when target parent is not a directory")
+	}
+}
+
+func TestManager_Sync_SkipsUninstalledAgentTarget(t *testing.T) {
+	// End-to-end: a full Sync run with an MCP entry targeting a path inside
+	// a directory that does not exist must return nil and leave the disk
+	// untouched.
+	root := t.TempDir()
+	parent := filepath.Join(root, ".zencoder")
+	target := filepath.Join(parent, "mcp.json")
+
+	mcps := []config.MCPConfig{
+		{
+			Name:   "srv",
+			Target: target,
+			Inline: &config.MCPInlineConfig{Command: "node"},
+		},
+	}
+	m := NewManager(mcps)
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if _, err := os.Stat(parent); err == nil {
+		t.Errorf("Sync must not create uninstalled agent directory %s", parent)
+	}
+	if _, err := os.Stat(target); err == nil {
+		t.Errorf("Sync must not create target file %s", target)
 	}
 }
 

@@ -127,11 +127,26 @@ func fetchRemoteEntry(ctx context.Context, rawURL, name string) (serverEntry, er
 	return serverEntry{}, fmt.Errorf("no server entry found in %s", rawURL)
 }
 
-// mergeIntoTarget reads the target JSON file, upserts the named entry, and writes it back.
+// mergeIntoTarget reads the target JSON file, upserts the named entry, and
+// writes it back. If the target's parent directory does not already exist
+// the entry is silently skipped: sync never creates agent-owned directories
+// as a side effect. A parent that exists but is not a directory is reported
+// as an error (user misconfiguration).
 func mergeIntoTarget(target, name string, entry serverEntry) error {
 	slog.Debug("merging mcp entry into target", "name", name, "target", target)
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return fmt.Errorf("creating config directory: %w", err)
+
+	parent := filepath.Dir(target)
+	info, err := os.Stat(parent)
+	if err != nil {
+		if os.IsNotExist(err) {
+			slog.Warn("mcp: skipping entry — target parent directory does not exist",
+				"name", name, "target", target, "parent", parent)
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", parent, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", parent)
 	}
 
 	// Load existing document (or start fresh).
