@@ -26,7 +26,44 @@
 
 ## Quick start
 
-Create a `gaal.yaml` in your project (or copy `example.gaal.yaml`):
+The fastest way to get a working `gaal.yaml` is to run the interactive init
+wizard. It scans your machine for installed skills and MCP servers, asks you
+a few questions, and writes a configuration you can sync right away.
+
+```bash
+gaal init
+```
+
+The wizard asks two questions before doing anything:
+
+1. **How** to create the file — start from an empty documented skeleton, or
+   import the skills and MCP servers detected on this machine.
+2. **Where** the configuration applies — project-scoped (`./gaal.yaml`) or
+   global-scoped (`~/.config/gaal/config.yaml`).
+
+When you pick the import mode, gaal runs an audit under the selected scope
+and presents a multi-select list grouped by agent. Everything is preselected
+by default; press Enter to confirm, or Space to toggle individual entries.
+
+### Non-interactive (CI / scripts)
+
+The wizard prompts are bypassable via flags:
+
+```bash
+# Empty skeleton, project-scoped
+gaal init --empty --scope project
+
+# Import everything detected, global-scoped, overwrite existing file
+gaal init --import-all --scope global --force
+```
+
+`--empty` and `--import-all` are mutually exclusive; one of them is required
+when stdin is not a TTY.
+
+### Manual setup
+
+If you would rather hand-write your configuration, copy `example.gaal.yaml`
+and edit it. A minimal file looks like this:
 
 ```yaml
 repositories:

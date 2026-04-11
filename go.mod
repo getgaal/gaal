@@ -3,17 +3,18 @@ module gaal
 go 1.26
 
 require (
+	atomicgo.dev/keyboard v0.2.9
 	github.com/go-git/go-git/v5 v5.17.2
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/invopop/jsonschema v0.13.0
 	github.com/pterm/pterm v0.12.83
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/term v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
 	atomicgo.dev/cursor v0.2.0 // indirect
-	atomicgo.dev/keyboard v0.2.9 // indirect
 	atomicgo.dev/schedule v0.1.0 // indirect
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -49,7 +50,6 @@ require (
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/term v0.41.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )

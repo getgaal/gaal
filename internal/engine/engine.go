@@ -54,12 +54,13 @@ type Options struct {
 
 // Engine orchestrates repository, skill and MCP synchronisation.
 type Engine struct {
-	cfg     *config.Config
-	repos   *repo.Manager
-	skills  *skill.Manager
-	mcps    *mcp.Manager
-	home    string
-	workDir string
+	cfg       *config.Config
+	repos     *repo.Manager
+	skills    *skill.Manager
+	mcps      *mcp.Manager
+	home      string
+	workDir   string
+	cacheRoot string
 }
 
 // New creates an Engine from the given configuration using default directories.
@@ -88,12 +89,13 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 	slog.Debug("engine initialised", "home", home, "workDir", workDir, "cacheDir", cacheDir)
 
 	return &Engine{
-		cfg:     cfg,
-		repos:   repo.NewManager(cfg.Repositories),
-		skills:  skill.NewManager(cfg.Skills, cacheDir, home, workDir),
-		mcps:    mcp.NewManager(cfg.MCPs),
-		home:    home,
-		workDir: workDir,
+		cfg:       cfg,
+		repos:     repo.NewManager(cfg.Repositories),
+		skills:    skill.NewManager(cfg.Skills, cacheDir, home, workDir),
+		mcps:      mcp.NewManager(cfg.MCPs),
+		home:      home,
+		workDir:   workDir,
+		cacheRoot: cacheRoot,
 	}
 }
 
@@ -183,4 +185,15 @@ func (e *Engine) Info(ctx context.Context, pkg, filter string, format OutputForm
 // Init writes the documented gaal.yaml skeleton to dest.
 func (e *Engine) Init(dest string, force bool) error {
 	return ops.Init(dest, force)
+}
+
+// BuildImportCandidates scans the machine for installed skills and MCP servers
+// filtered by the given scope. The result is intended for the init wizard.
+func (e *Engine) BuildImportCandidates(ctx context.Context, scope ops.Scope) (ops.Candidates, error) {
+	return ops.BuildImportCandidates(ctx, scope, e.home, e.workDir, e.cacheRoot)
+}
+
+// InitFromPlan writes a gaal.yaml populated from the user-selected plan.
+func (e *Engine) InitFromPlan(dest string, plan ops.Plan, force bool) error {
+	return ops.InitFromPlan(dest, plan, force)
 }

@@ -72,6 +72,14 @@ func TestUserConfigFilePath_Darwin(t *testing.T) {
 	}
 }
 
+func TestUserConfigFilePath_Exported(t *testing.T) {
+	got := UserConfigFilePath()
+	want := userConfigFilePath()
+	if got != want {
+		t.Errorf("exported UserConfigFilePath returned %q, want %q", got, want)
+	}
+}
+
 func TestUserConfigFilePath_DarwinUsesXDGConfigHome(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("darwin-only test")
