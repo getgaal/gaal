@@ -10,6 +10,11 @@ import (
 	"gaal/internal/config"
 )
 
+// captureStdout is defined in info_test.go (same package).
+// It redirects os.Stdout to an os.Pipe drained concurrently, calls fn,
+// restores Stdout and returns everything written. Prevents Windows pipe
+// buffer (~4 KiB) deadlocks when Status/Audit output is large.
+
 func TestNewWithOptions_Defaults(t *testing.T) {
 	cfg := &config.Config{}
 	e := NewWithOptions(cfg, Options{})
@@ -67,20 +72,10 @@ func TestRunOnce_WithRepository_NoNetwork(t *testing.T) {
 func TestStatus_EmptyConfig(t *testing.T) {
 	cfg := &config.Config{}
 	e := New(cfg)
-	// Status writes to stdout — capture via os.Pipe so the test is side-effect free.
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	origStdout := os.Stdout
-	os.Stdout = w
-
-	statusErr := e.Status(context.Background(), FormatTable)
-
-	w.Close()
-	os.Stdout = origStdout
-	r.Close()
-
+	var statusErr error
+	captureStdout(t, func() {
+		statusErr = e.Status(context.Background(), FormatTable)
+	})
 	if statusErr != nil {
 		t.Fatalf("Status on empty config: %v", statusErr)
 	}
@@ -132,18 +127,10 @@ func TestStatus_WithRepos(t *testing.T) {
 		},
 	}
 	e := New(cfg)
-
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	origStdout := os.Stdout
-	os.Stdout = w
-	statusErr := e.Status(context.Background(), FormatTable)
-	w.Close()
-	os.Stdout = origStdout
-	r.Close()
-
+	var statusErr error
+	captureStdout(t, func() {
+		statusErr = e.Status(context.Background(), FormatTable)
+	})
 	if statusErr != nil {
 		t.Fatalf("Status with repos: %v", statusErr)
 	}
@@ -159,17 +146,9 @@ func TestStatus_WithMCPs(t *testing.T) {
 		},
 	}
 	e := New(cfg)
-
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	origStdout := os.Stdout
-	os.Stdout = w
-	e.Status(context.Background(), FormatTable)
-	w.Close()
-	os.Stdout = origStdout
-	r.Close()
+	captureStdout(t, func() {
+		e.Status(context.Background(), FormatTable) //nolint:errcheck
+	})
 }
 
 func TestOrDefault(t *testing.T) {
@@ -228,13 +207,10 @@ func TestStatus_WithRepoError(t *testing.T) {
 		},
 	}
 	e := New(cfg)
-	r, w, _ := os.Pipe()
-	origStdout := os.Stdout
-	os.Stdout = w
-	statusErr := e.Status(context.Background(), FormatTable)
-	w.Close()
-	os.Stdout = origStdout
-	r.Close()
+	var statusErr error
+	captureStdout(t, func() {
+		statusErr = e.Status(context.Background(), FormatTable)
+	})
 	if statusErr != nil {
 		t.Fatalf("Status should not error even with error entries: %v", statusErr)
 	}
@@ -248,13 +224,10 @@ func TestStatus_WithSkillError(t *testing.T) {
 		},
 	}
 	e := New(cfg)
-	r, w, _ := os.Pipe()
-	origStdout := os.Stdout
-	os.Stdout = w
-	statusErr := e.Status(context.Background(), FormatTable)
-	w.Close()
-	os.Stdout = origStdout
-	r.Close()
+	var statusErr error
+	captureStdout(t, func() {
+		statusErr = e.Status(context.Background(), FormatTable)
+	})
 	if statusErr != nil {
 		t.Fatalf("Status should not error even with skill error entries: %v", statusErr)
 	}

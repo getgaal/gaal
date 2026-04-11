@@ -128,7 +128,7 @@ func loadInto(data []byte, dst map[string]Info, allowOverride bool) error {
 func validateEntry(name string, e agentEntry) error {
 	slog.Debug("validating agent entry", "name", name)
 
-	if filepath.IsAbs(e.ProjectSkillsDir) {
+	if isAbsPath(e.ProjectSkillsDir) {
 		return fmt.Errorf("agent %q: project_skills_dir must be relative, got %q", name, e.ProjectSkillsDir)
 	}
 	if containsDotDot(e.ProjectSkillsDir) {
@@ -143,7 +143,7 @@ func validateEntry(name string, e agentEntry) error {
 		return fmt.Errorf("agent %q: project_mcp_config_file must be empty or start with '~/', got %q", name, e.ProjectMCPConfigFile)
 	}
 	for _, d := range e.ProjectSkillsSearch {
-		if filepath.IsAbs(d) {
+		if isAbsPath(d) {
 			return fmt.Errorf("agent %q: project_skills_search entry must be relative, got %q", name, d)
 		}
 		if containsDotDot(d) {
@@ -171,6 +171,14 @@ func containsDotDot(p string) bool {
 		}
 	}
 	return false
+}
+
+// isAbsPath reports whether p is absolute in a cross-platform sense.
+// filepath.IsAbs alone is not sufficient on Windows: it returns false for
+// Unix-style paths like "/foo/bar" (no drive letter), which must also be
+// rejected as non-relative.
+func isAbsPath(p string) bool {
+	return filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`)
 }
 
 // userAgentsPath returns the path to the optional user agents config file.
