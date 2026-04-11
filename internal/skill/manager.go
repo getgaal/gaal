@@ -125,9 +125,11 @@ func (m *Manager) syncOne(ctx context.Context, sc config.SkillConfig) error {
 		return nil
 	}
 
-	// 4. Determine target agents.
-	agents := m.resolveAgents(sc)
-	slog.DebugContext(ctx, "resolved agents", "source", sc.Source, "agents", agents)
+	// 4. Determine target agents — only those actually installed on this
+	//    machine. Uninstalled entries are dropped with a warning so sync
+	//    never creates agent-owned directories as a side effect.
+	agents := m.syncAgents(sc)
+	slog.DebugContext(ctx, "resolved sync agents", "source", sc.Source, "agents", agents)
 
 	// 5. Install each skill to each agent.
 	for _, agent := range agents {
@@ -199,12 +201,33 @@ func (m *Manager) resolveSource(ctx context.Context, source string) (string, err
 	return localPath, nil
 }
 
-// resolveAgents returns the list of agents to install to, expanding "*".
+// resolveAgents returns the list of agents named by a skill config. The
+// wildcard "*" expands to every installed agent; explicit lists are returned
+// as-is. This is the "as-configured" view used by Status to surface
+// misconfiguration to the user (e.g. unknown agent names).
 func (m *Manager) resolveAgents(sc config.SkillConfig) []string {
 	if len(sc.Agents) == 0 || (len(sc.Agents) == 1 && sc.Agents[0] == "*") {
 		return m.detectInstalledAgents(sc.Global)
 	}
 	return sc.Agents
+}
+
+// syncAgents returns the subset of resolveAgents that are actually installed
+// on this machine. Sync uses this to guarantee it never materialises an
+// agent-owned directory as a side effect — uninstalled entries in an
+// explicit list are dropped with a warning.
+func (m *Manager) syncAgents(sc config.SkillConfig) []string {
+	resolved := m.resolveAgents(sc)
+	out := make([]string, 0, len(resolved))
+	for _, a := range resolved {
+		if m.isAgentInstalled(a, sc.Global) {
+			out = append(out, a)
+			continue
+		}
+		slog.Warn("skill: skipping uninstalled agent",
+			"agent", a, "source", sc.Source, "global", sc.Global)
+	}
+	return out
 }
 
 // isAgentInstalled reports whether the directory that would own the agent's

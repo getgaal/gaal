@@ -412,6 +412,96 @@ func TestDetectInstalledAgents_GlobalScope(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Manager.syncAgents — the sync-time agent resolver. Explicit agent lists
+// must filter out uninstalled agents so sync never materialises an
+// agent-owned directory as a side effect.
+// ---------------------------------------------------------------------------
+
+func TestSyncAgents_ExplicitList_ProjectScope_FiltersUninstalled(t *testing.T) {
+	workDir := t.TempDir()
+	// claude-code is "installed" in this project (its .claude/ dir exists).
+	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
+	// zencoder is NOT installed — .zencoder/ does not exist.
+
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
+	got := m.syncAgents(config.SkillConfig{
+		Source: "owner/repo",
+		Agents: []string{"claude-code", "zencoder"},
+		Global: false,
+	})
+
+	if len(got) != 1 || got[0] != "claude-code" {
+		t.Errorf("expected [claude-code], got %v", got)
+	}
+
+	// Critical invariant: the filter must not have created the zencoder dir
+	// as a side effect of checking.
+	if _, err := os.Stat(filepath.Join(workDir, ".zencoder")); err == nil {
+		t.Error("syncAgents must not create .zencoder as a side effect")
+	}
+}
+
+func TestSyncAgents_ExplicitList_GlobalScope_FiltersUninstalled(t *testing.T) {
+	home := t.TempDir()
+	// claude-code is "installed" globally (its ~/.claude/ dir exists).
+	os.MkdirAll(filepath.Join(home, ".claude"), 0o755)
+	// zencoder is NOT installed — ~/.zencoder/ does not exist.
+
+	m := NewManager(nil, t.TempDir(), home, t.TempDir())
+	got := m.syncAgents(config.SkillConfig{
+		Source: "owner/repo",
+		Agents: []string{"claude-code", "zencoder"},
+		Global: true,
+	})
+
+	if len(got) != 1 || got[0] != "claude-code" {
+		t.Errorf("expected [claude-code], got %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".zencoder")); err == nil {
+		t.Error("syncAgents must not create ~/.zencoder as a side effect")
+	}
+}
+
+func TestSyncAgents_ExplicitList_AllUninstalled_ReturnsEmpty(t *testing.T) {
+	workDir := t.TempDir() // fresh, no agent dirs
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
+	got := m.syncAgents(config.SkillConfig{
+		Source: "owner/repo",
+		Agents: []string{"zencoder", "kilo"},
+		Global: false,
+	})
+	if len(got) != 0 {
+		t.Errorf("expected empty slice, got %v", got)
+	}
+}
+
+func TestSyncAgents_Wildcard_StillWorks(t *testing.T) {
+	// Regression guard: `agents: ["*"]` behaviour must be unchanged —
+	// detectInstalledAgents already filters, so the extra syncAgents pass
+	// is a no-op.
+	workDir := t.TempDir()
+	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
+	got := m.syncAgents(config.SkillConfig{
+		Source: "owner/repo",
+		Agents: []string{"*"},
+		Global: false,
+	})
+	hadClaude := false
+	for _, a := range got {
+		if a == "claude-code" {
+			hadClaude = true
+		}
+		if a == "zencoder" {
+			t.Errorf("zencoder must not be in wildcard result: %v", got)
+		}
+	}
+	if !hadClaude {
+		t.Errorf("expected claude-code in wildcard result, got %v", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // toCloneURL — ssh:// prefix unchanged
 // ---------------------------------------------------------------------------
 
