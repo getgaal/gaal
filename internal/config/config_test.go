@@ -57,6 +57,37 @@ func TestUserConfigFilePath(t *testing.T) {
 	}
 }
 
+func TestUserConfigFilePath_Darwin(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only test")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	got := userConfigFilePath()
+	want := filepath.Join(home, ".config", "gaal", "config.yaml")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestUserConfigFilePath_DarwinUsesXDGConfigHome(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only test")
+	}
+	home := t.TempDir()
+	xdg := filepath.Join(t.TempDir(), "xdg-config")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+
+	got := userConfigFilePath()
+	want := filepath.Join(xdg, "gaal", "config.yaml")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Load
 // ---------------------------------------------------------------------------

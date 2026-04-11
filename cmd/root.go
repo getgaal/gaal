@@ -81,8 +81,8 @@ func init() {
 }
 
 // applyOptions builds engine.Options, applying sandbox mode when requested.
-// When --sandbox is set, $HOME is redirected to the sandbox directory so that
-// all ~/... path expansions (config loading, skill dirs, MCP targets) stay
+// When --sandbox is set, gaal rewrites the relevant user-directory environment
+// variables so that config loading, skill dirs, caches and MCP targets stay
 // inside the sandbox. Nothing outside the sandbox directory is touched.
 func applyOptions() (engine.Options, error) {
 	if sandboxDir == "" {
@@ -90,15 +90,22 @@ func applyOptions() (engine.Options, error) {
 	}
 
 	workDir := filepath.Join(sandboxDir, "workspace")
-	for _, d := range []string{sandboxDir, workDir} {
+	configDir := filepath.Join(sandboxDir, ".config")
+	cacheDir := filepath.Join(sandboxDir, ".cache")
+	roamingAppDataDir := filepath.Join(sandboxDir, "AppData", "Roaming")
+	localAppDataDir := filepath.Join(sandboxDir, "AppData", "Local")
+	dirs := []string{sandboxDir, workDir, configDir, cacheDir}
+	if runtime.GOOS == "windows" {
+		dirs = append(dirs, roamingAppDataDir, localAppDataDir)
+	}
+	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return engine.Options{}, fmt.Errorf("creating sandbox directory %q: %w", d, err)
 		}
 	}
 
-	// Redirect $HOME / $USERPROFILE so that os.UserHomeDir() and all ~/...
-	// expansions (including inside config.Load) point into the sandbox.
-	// On Windows, os.UserHomeDir() reads USERPROFILE first, so both must be set.
+	// Redirect the OS-specific user directory environment variables so that all
+	// gaal-managed paths resolve inside the sandbox.
 	if err := os.Setenv("HOME", sandboxDir); err != nil {
 		return engine.Options{}, fmt.Errorf("setting sandbox HOME: %w", err)
 	}
@@ -106,9 +113,22 @@ func applyOptions() (engine.Options, error) {
 		if err := os.Setenv("USERPROFILE", sandboxDir); err != nil {
 			return engine.Options{}, fmt.Errorf("setting sandbox USERPROFILE: %w", err)
 		}
+		if err := os.Setenv("APPDATA", roamingAppDataDir); err != nil {
+			return engine.Options{}, fmt.Errorf("setting sandbox APPDATA: %w", err)
+		}
+		if err := os.Setenv("LOCALAPPDATA", localAppDataDir); err != nil {
+			return engine.Options{}, fmt.Errorf("setting sandbox LOCALAPPDATA: %w", err)
+		}
+	} else {
+		if err := os.Setenv("XDG_CONFIG_HOME", configDir); err != nil {
+			return engine.Options{}, fmt.Errorf("setting sandbox XDG_CONFIG_HOME: %w", err)
+		}
+		if err := os.Setenv("XDG_CACHE_HOME", cacheDir); err != nil {
+			return engine.Options{}, fmt.Errorf("setting sandbox XDG_CACHE_HOME: %w", err)
+		}
 	}
 
-	slog.Info("sandbox mode active", "home", sandboxDir, "workspace", workDir)
+	slog.Info("sandbox mode active", "home", sandboxDir, "workspace", workDir, "configDir", configDir, "cacheDir", cacheDir)
 	return engine.Options{WorkDir: workDir}, nil
 }
 

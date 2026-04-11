@@ -215,7 +215,7 @@ gaal merges up to three configuration files in order:
 | Priority | File |
 |----------|------|
 | 1 — lowest | `/etc/gaal/config.yaml` (global) |
-| 2 | `~/.config/gaal/config.yaml` (user) |
+| 2 | `$XDG_CONFIG_HOME/gaal/config.yaml` (user, defaults to `~/.config/gaal/config.yaml` on Linux and macOS) |
 | 3 — highest | `gaal.yaml` in CWD, or `--config` path |
 
 ### Agent registry customization
@@ -225,7 +225,7 @@ gaal ships with a built-in registry of supported coding agents (claude-code, git
 | OS | Path |
 |----|------|
 | Linux | `$XDG_CONFIG_HOME/gaal/agents.yaml` (defaults to `~/.config/gaal/agents.yaml`) |
-| macOS | `~/Library/Application Support/gaal/agents.yaml` |
+| macOS | `$XDG_CONFIG_HOME/gaal/agents.yaml` (defaults to `~/.config/gaal/agents.yaml`) |
 | Windows | `%AppData%\gaal\agents.yaml` |
 
 Custom entries **extend** the built-in list — they cannot override built-in entries. Each entry follows the same format as the built-in registry:
