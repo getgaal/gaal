@@ -34,6 +34,8 @@ gaal/
     │   ├── agent/             # Agent registry (YAML-driven)
     │   └── vcs/               # VCS backends (one file per backend)
     ├── engine/                # Central orchestrator — sequences the three managers
+    │   ├── ops/               # Command operations (audit, info, init, status)
+    │   └── render/            # Output types and renderers (table, JSON)
     ├── logger/                # Console logging (colorized) + JSON file handler
     ├── mcp/                   # MCP configuration management
     ├── repo/                  # Repository manager (uses core/vcs)
@@ -211,16 +213,43 @@ Error messages reference the YAML field name (e.g. `type: required`) rather than
 
 ## Package `internal/engine`
 
-The **single coupling point** between the configuration and the three resource managers. It holds no business logic of its own — it only sequences calls and owns the output rendering.
+The **single coupling point** between the configuration and the three resource managers. The engine holds no business logic of its own — it delegates every command operation to `engine/ops` and every rendering concern to `engine/render`.
 
-| File | Exports |
-|------|---------|
-| `engine.go` | `Options`, `Engine`, `New()`, `NewWithOptions()`, `RunOnce()`, `RunService()`, `Status()` |
+### `engine/engine.go`
+
+The public surface of the package. All `cmd/*.go` files import only this package.
+
+| Symbol | Description |
+|--------|-------------|
+| `Options` | Runtime directory overrides (used by `--sandbox`) |
+| `Engine` | Owns the three managers + home/workDir |
+| `New()` / `NewWithOptions()` | Constructors |
+| `RunOnce()` / `RunService()` | Sync entry-points |
+| `Collect()`, `Status()`, `Audit()`, `Info()`, `Init()` | Thin wrappers that delegate to `ops/` |
+| Type aliases | `OutputFormat`, `StatusCode`, `StatusReport`, `RepoEntry`, `SkillEntry`, `MCPEntry`, `AgentEntry`, `AuditReport`, `AuditSkillEntry`, `AuditMCPEntry` — all re-exported from `engine/render` for backward compatibility |
+
+### `engine/render/` — output types and renderers
+
+Pure rendering layer with no dependencies on the manager packages.
+
+| File | Contents |
+|------|----------|
+| `report.go` | `StatusCode` constants, `RepoEntry`, `SkillEntry`, `MCPEntry`, `AgentEntry`, `StatusReport`, `AuditSkillEntry`, `AuditMCPEntry`, `AuditReport` |
 | `renderer.go` | `OutputFormat` (`table` / `json`), `Renderer` interface, `NewRenderer()` |
-| `report.go` | `StatusCode` + constants, `RepoEntry`, `SkillEntry`, `AgentEntry`, `MCPEntry`, `StatusReport`, `(*Engine).Collect()` |
-| `render_json.go` | `jsonRenderer` (private) |
-| `table.go` | `tableRenderer` (private), formatting helpers |
-| `info.go` | `(*Engine).Info()`, per-type render helpers (private) |
+| `json.go` | `jsonRenderer` — indented JSON encoder |
+| `table.go` | `tableRenderer` — adaptive pterm tables, `StatusCell()`, `trunc()`, `varColWidth()` |
+| `audit.go` | `AuditRenderer`, `NewAuditRenderer()`, `auditTableRenderer`, `auditJSONRenderer` |
+
+### `engine/ops/` — command operations
+
+Stateless functions that implement each CLI command. Each function receives the managers and config it needs as parameters.
+
+| File | Exported symbols | Description |
+|------|-----------------|-------------|
+| `status.go` | `Collect()`, `Status()` | Gather resource state and render to stdout |
+| `audit.go` | `Audit()` | Discover all installed skills and MCP servers |
+| `info.go` | `Info()` | Detailed per-entry card rendering |
+| `init.go` | `Init()`, `InitTemplate` | Write the config file skeleton to disk |
 
 ### `Options.WorkDir`
 

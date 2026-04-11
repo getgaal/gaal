@@ -1,4 +1,4 @@
-package engine
+package ops
 
 import (
 	"context"
@@ -7,49 +7,27 @@ import (
 	"path/filepath"
 
 	"gaal/internal/core/agent"
+	"gaal/internal/engine/render"
 	"gaal/internal/mcp"
 	"gaal/internal/skill"
 )
 
-// AuditSkillEntry holds the metadata of a single skill discovered during audit.
-type AuditSkillEntry struct {
-	Name  string `json:"name"`
-	Desc  string `json:"desc,omitempty"`
-	Agent string `json:"agent"`
-	// Source is one of "project", "global", or "package-manager".
-	Source string `json:"source"`
-	Path   string `json:"path"`
-}
-
-// AuditMCPEntry holds the MCP servers found for a single agent.
-type AuditMCPEntry struct {
-	Agent      string   `json:"agent"`
-	ConfigFile string   `json:"config_file"`
-	Servers    []string `json:"servers"`
-}
-
-// AuditReport aggregates all skills and MCP servers discovered on the machine.
-type AuditReport struct {
-	Skills []AuditSkillEntry `json:"skills"`
-	MCPs   []AuditMCPEntry   `json:"mcps"`
-}
-
 // Audit discovers all skills and MCP servers installed on the machine and
 // renders the result to stdout using the requested format.
-func (e *Engine) Audit(ctx context.Context, format OutputFormat) error {
-	slog.DebugContext(ctx, "starting audit", "home", e.home, "workDir", e.workDir)
+func Audit(ctx context.Context, home, workDir string, format render.OutputFormat) error {
+	slog.DebugContext(ctx, "starting audit", "home", home, "workDir", workDir)
 
-	skills, err := e.collectAuditSkills(ctx)
+	skills, err := collectAuditSkills(ctx, home, workDir)
 	if err != nil {
 		return err
 	}
-	mcps, err := e.collectAuditMCPs(ctx)
+	mcps, err := collectAuditMCPs(ctx, home)
 	if err != nil {
 		return err
 	}
 
-	report := &AuditReport{Skills: skills, MCPs: mcps}
-	return NewAuditRenderer(format).Render(os.Stdout, report)
+	report := &render.AuditReport{Skills: skills, MCPs: mcps}
+	return render.NewAuditRenderer(format).Render(os.Stdout, report)
 }
 
 // collectAuditSkills iterates every registered agent and scans its project,
@@ -64,10 +42,10 @@ func (e *Engine) Audit(ctx context.Context, format OutputFormat) error {
 //   - Pass 2 scans the full search lists of each agent.  Directories already
 //     claimed in pass 1 are skipped, so only unclaimed shared dirs get a new
 //     attribution at this stage.
-func (e *Engine) collectAuditSkills(ctx context.Context) ([]AuditSkillEntry, error) {
+func collectAuditSkills(ctx context.Context, home, workDir string) ([]render.AuditSkillEntry, error) {
 	slog.DebugContext(ctx, "collecting audit skills")
 
-	var entries []AuditSkillEntry
+	var entries []render.AuditSkillEntry
 	seenDirs := map[string]struct{}{}
 
 	agents := agent.List()
@@ -77,13 +55,13 @@ func (e *Engine) collectAuditSkills(ctx context.Context) ([]AuditSkillEntry, err
 		name := a.Name
 
 		if a.Info.ProjectSkillsDir != "" {
-			absDir := filepath.Join(e.workDir, a.Info.ProjectSkillsDir)
+			absDir := filepath.Join(workDir, a.Info.ProjectSkillsDir)
 			metas, err := scanDeduped(absDir, seenDirs)
 			if err != nil {
 				slog.DebugContext(ctx, "canonical project scan error", "agent", name, "dir", absDir, "err", err)
 			} else {
 				for _, m := range metas {
-					entries = append(entries, AuditSkillEntry{
+					entries = append(entries, render.AuditSkillEntry{
 						Name:   m.Name,
 						Desc:   m.Desc,
 						Agent:  name,
@@ -95,13 +73,13 @@ func (e *Engine) collectAuditSkills(ctx context.Context) ([]AuditSkillEntry, err
 		}
 
 		if a.Info.GlobalSkillsDir != "" {
-			absDir := agent.ExpandHome(a.Info.GlobalSkillsDir, e.home)
+			absDir := agent.ExpandHome(a.Info.GlobalSkillsDir, home)
 			metas, err := scanDeduped(absDir, seenDirs)
 			if err != nil {
 				slog.DebugContext(ctx, "canonical global scan error", "agent", name, "dir", absDir, "err", err)
 			} else {
 				for _, m := range metas {
-					entries = append(entries, AuditSkillEntry{
+					entries = append(entries, render.AuditSkillEntry{
 						Name:   m.Name,
 						Desc:   m.Desc,
 						Agent:  name,
@@ -119,14 +97,14 @@ func (e *Engine) collectAuditSkills(ctx context.Context) ([]AuditSkillEntry, err
 
 		// ── Project skills (1 level) ────────────────────────────────────────
 		for _, relDir := range agent.ExpandedProjectSkillsSearch(name) {
-			absDir := filepath.Join(e.workDir, relDir)
+			absDir := filepath.Join(workDir, relDir)
 			metas, err := scanDeduped(absDir, seenDirs)
 			if err != nil {
 				slog.DebugContext(ctx, "project scan error", "agent", name, "dir", absDir, "err", err)
 				continue
 			}
 			for _, m := range metas {
-				entries = append(entries, AuditSkillEntry{
+				entries = append(entries, render.AuditSkillEntry{
 					Name:   m.Name,
 					Desc:   m.Desc,
 					Agent:  name,
@@ -137,14 +115,14 @@ func (e *Engine) collectAuditSkills(ctx context.Context) ([]AuditSkillEntry, err
 		}
 
 		// ── Global skills (1 level) ─────────────────────────────────────────
-		for _, absDir := range agent.ExpandedGlobalSkillsSearch(name, e.home) {
+		for _, absDir := range agent.ExpandedGlobalSkillsSearch(name, home) {
 			metas, err := scanDeduped(absDir, seenDirs)
 			if err != nil {
 				slog.DebugContext(ctx, "global scan error", "agent", name, "dir", absDir, "err", err)
 				continue
 			}
 			for _, m := range metas {
-				entries = append(entries, AuditSkillEntry{
+				entries = append(entries, render.AuditSkillEntry{
 					Name:   m.Name,
 					Desc:   m.Desc,
 					Agent:  name,
@@ -155,7 +133,7 @@ func (e *Engine) collectAuditSkills(ctx context.Context) ([]AuditSkillEntry, err
 		}
 
 		// ── Package-manager skills (recursive) ──────────────────────────────
-		for _, pmRoot := range agent.ExpandedPmSkillsSearch(name, e.home) {
+		for _, pmRoot := range agent.ExpandedPmSkillsSearch(name, home) {
 			skillsDirs, err := skill.WalkForSkillDirs(pmRoot)
 			if err != nil {
 				slog.DebugContext(ctx, "pm walk error", "agent", name, "root", pmRoot, "err", err)
@@ -168,7 +146,7 @@ func (e *Engine) collectAuditSkills(ctx context.Context) ([]AuditSkillEntry, err
 					continue
 				}
 				for _, m := range metas {
-					entries = append(entries, AuditSkillEntry{
+					entries = append(entries, render.AuditSkillEntry{
 						Name:   m.Name,
 						Desc:   m.Desc,
 						Agent:  name,
@@ -185,13 +163,13 @@ func (e *Engine) collectAuditSkills(ctx context.Context) ([]AuditSkillEntry, err
 
 // collectAuditMCPs reads the project_mcp_config_file of every registered agent
 // and returns agents that actually have servers configured.
-func (e *Engine) collectAuditMCPs(ctx context.Context) ([]AuditMCPEntry, error) {
+func collectAuditMCPs(ctx context.Context, home string) ([]render.AuditMCPEntry, error) {
 	slog.DebugContext(ctx, "collecting audit mcps")
 
-	var entries []AuditMCPEntry
+	var entries []render.AuditMCPEntry
 
 	for _, a := range agent.List() {
-		cfgFile, ok := agent.ProjectMCPConfigPath(a.Name, e.home)
+		cfgFile, ok := agent.ProjectMCPConfigPath(a.Name, home)
 		if !ok {
 			continue
 		}
@@ -205,7 +183,7 @@ func (e *Engine) collectAuditMCPs(ctx context.Context) ([]AuditMCPEntry, error) 
 			continue
 		}
 
-		entries = append(entries, AuditMCPEntry{
+		entries = append(entries, render.AuditMCPEntry{
 			Agent:      a.Name,
 			ConfigFile: cfgFile,
 			Servers:    servers,

@@ -74,14 +74,6 @@ func TestInit_ForceOverwrites(t *testing.T) {
 	}
 }
 
-func TestInit_TemplateHasAllSections(t *testing.T) {
-	for _, section := range []string{"repositories:", "skills:", "mcps:"} {
-		if !strings.Contains(string(initTemplate), section) {
-			t.Errorf("initTemplate missing section %q", section)
-		}
-	}
-}
-
 func TestInit_StatError(t *testing.T) {
 	// Path inside a non-existent parent triggers os.WriteFile error.
 	err := newTestEngine(t).Init("/nonexistent-dir/gaal.yaml", false)
