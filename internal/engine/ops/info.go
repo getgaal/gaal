@@ -401,12 +401,16 @@ func renderAgentInfo(w io.Writer, entries []render.AgentEntry, filter string) er
 			continue
 		}
 		lines := []string{}
-		if e.ProjectSkillsDir != "" {
+		if e.ProjectSkillsViaGeneric {
+			lines = append(lines, kvLine("Project", pterm.FgDarkGray.Sprintf("via generic convention (%s)", e.ProjectSkillsDir)))
+		} else if e.ProjectSkillsDir != "" {
 			lines = append(lines, kvLine("Project", pterm.FgCyan.Sprint(e.ProjectSkillsDir)))
 		} else {
 			lines = append(lines, kvLine("Project", pterm.FgDarkGray.Sprint("via generic convention")))
 		}
-		if e.GlobalSkillsDir != "" {
+		if e.GlobalSkillsViaGeneric {
+			lines = append(lines, kvLine("Global", pterm.FgDarkGray.Sprintf("via generic convention (%s)", e.GlobalSkillsDir)))
+		} else if e.GlobalSkillsDir != "" {
 			lines = append(lines, kvLine("Global", pterm.FgCyan.Sprint(e.GlobalSkillsDir)))
 		} else {
 			lines = append(lines, kvLine("Global", pterm.FgDarkGray.Sprint("via generic convention")))

@@ -38,10 +38,12 @@ type SkillEntry struct {
 
 // AgentEntry holds the registry information for a supported agent.
 type AgentEntry struct {
-	Name                 string `json:"name"`
-	ProjectSkillsDir     string `json:"project_skills_dir"`
-	GlobalSkillsDir      string `json:"global_skills_dir"`
-	ProjectMCPConfigFile string `json:"project_mcp_config_file,omitempty"`
+	Name                    string `json:"name"`
+	ProjectSkillsDir        string `json:"project_skills_dir"`
+	GlobalSkillsDir         string `json:"global_skills_dir"`
+	ProjectMCPConfigFile    string `json:"project_mcp_config_file,omitempty"`
+	ProjectSkillsViaGeneric bool   `json:"project_skills_via_generic,omitempty"`
+	GlobalSkillsViaGeneric  bool   `json:"global_skills_via_generic,omitempty"`
 }
 
 // MCPEntry holds the status of a single MCP server entry.

@@ -380,7 +380,10 @@ func TestRenderAgentInfo_EmptyWithFilter(t *testing.T) {
 }
 
 func TestRenderAgentInfo_ContainsKnownAgents(t *testing.T) {
-	entries := collectAgents()
+	entries, err := collectAgents()
+	if err != nil {
+		t.Fatalf("collectAgents: %v", err)
+	}
 	var buf bytes.Buffer
 	if err := renderAgentInfo(&buf, entries, ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -394,7 +397,10 @@ func TestRenderAgentInfo_ContainsKnownAgents(t *testing.T) {
 }
 
 func TestRenderAgentInfo_Filter(t *testing.T) {
-	entries := collectAgents()
+	entries, err := collectAgents()
+	if err != nil {
+		t.Fatalf("collectAgents: %v", err)
+	}
 	var buf bytes.Buffer
 	if err := renderAgentInfo(&buf, entries, "cursor"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -419,5 +425,32 @@ func TestRenderAgentInfo_NoMCPShownAsDash(t *testing.T) {
 	out := pterm.RemoveColorFromString(buf.String())
 	if !strings.Contains(out, "not supported") {
 		t.Error("expected 'not supported' for empty ProjectMCPConfigFile")
+	}
+}
+
+func TestRenderAgentInfo_GenericConventionShowsResolvedDir(t *testing.T) {
+	entries := []render.AgentEntry{
+		{
+			Name:                    "cline",
+			ProjectSkillsDir:        ".agents/skills",
+			GlobalSkillsDir:         "/tmp/home/.agents/skills",
+			ProjectSkillsViaGeneric: true,
+			GlobalSkillsViaGeneric:  true,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := renderAgentInfo(&buf, entries, ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := pterm.RemoveColorFromString(buf.String())
+	for _, want := range []string{
+		"via generic convention (.agents/skills)",
+		"via generic convention (/tmp/home/.agents/skills)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output:\n%s", want, out)
+		}
 	}
 }

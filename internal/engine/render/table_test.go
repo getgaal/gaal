@@ -110,12 +110,15 @@ func TestTableRenderer_WithData(t *testing.T) {
 		MCPs: []MCPEntry{
 			{Name: "filesystem", Status: StatusPresent, Target: "/home/user/.config/claude.json"},
 		},
+		Agents: []AgentEntry{
+			{Name: "cline", ProjectSkillsDir: ".agents/skills", GlobalSkillsDir: "/home/user/.agents/skills", ProjectSkillsViaGeneric: true, GlobalSkillsViaGeneric: true},
+		},
 	}
 	if err := r.Render(&buf, report); err != nil {
 		t.Fatalf("tableRenderer.Render with data: %v", err)
 	}
 	out := buf.String()
-	for _, want := range []string{"myrepo", "git", "other", "filesystem"} {
+	for _, want := range []string{"myrepo", "git", "other", "filesystem", "cline", ".agents/skills"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("table output missing %q", want)
 		}
