@@ -10,7 +10,7 @@ import (
 	"gaal/internal/config"
 )
 
-// captureStdout is defined in info_test.go (same package).
+// captureStdout is defined in testutil_test.go (same package).
 // It redirects os.Stdout to an os.Pipe drained concurrently, calls fn,
 // restores Stdout and returns everything written. Prevents Windows pipe
 // buffer (~4 KiB) deadlocks when Status/Audit output is large.
@@ -149,15 +149,6 @@ func TestStatus_WithMCPs(t *testing.T) {
 	captureStdout(t, func() {
 		e.Status(context.Background(), FormatTable) //nolint:errcheck
 	})
-}
-
-func TestOrDefault(t *testing.T) {
-	if got := orDefault("", "fallback"); got != "fallback" {
-		t.Errorf("orDefault empty: got %q, want fallback", got)
-	}
-	if got := orDefault("value", "fallback"); got != "value" {
-		t.Errorf("orDefault non-empty: got %q, want value", got)
-	}
 }
 
 func TestRunService_CancelledContext(t *testing.T) {

@@ -4,6 +4,7 @@ GOBIN         := $(shell go env GOPATH)/bin
 VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME    := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS       := -ldflags "-X gaal/cmd.Version=$(VERSION) -X gaal/cmd.BuildTime=$(BUILD_TIME)"
+LDFLAGS_R     := -ldflags "-X gaal/cmd.Version=$(VERSION) -X gaal/cmd.BuildTime=$(BUILD_TIME) -s -w -buildid= -extldflags '-static'"
 
 # Sandbox directory — override with: make sandbox SANDBOX=/my/dir
 SANDBOX  ?= $(shell mktemp -d /tmp/gaal-test-XXXXXX)
@@ -20,8 +21,14 @@ all: build
 ## build: compile the binary
 build:
 	@mkdir -p $(DIST_DIR)
-	go build $(LDFLAGS) -o $(BIN) .
+	go build $(LDFLAGS) -o $(BIN)-dev .
+	$(BIN)-dev schema -f $(DIST_DIR)/schema.json
+
+build-release:
+	@mkdir -p $(DIST_DIR)
+	go build -trimpath $(LDFLAGS_R) -o $(BIN) .
 	$(BIN) schema -f $(DIST_DIR)/schema.json
+	
 
 ## run: sync once with the example config (uses real HOME)
 run: build
@@ -106,7 +113,8 @@ coverage-ci:
 ##   make build-cross GOOS=linux GOARCH=arm64
 build-cross:
 	@mkdir -p dist
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(LDFLAGS) -o $(BIN_CROSS) .
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath $(LDFLAGS_R) -o $(BIN_CROSS) .
+	$(BIN_CROSS) schema -f $(DIST_DIR)/schema.json
 
 ## clean: remove build artefacts
 clean:

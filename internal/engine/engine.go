@@ -9,9 +9,40 @@ import (
 	"time"
 
 	"gaal/internal/config"
+	"gaal/internal/engine/ops"
+	"gaal/internal/engine/render"
 	"gaal/internal/mcp"
 	"gaal/internal/repo"
 	"gaal/internal/skill"
+)
+
+// Re-exported types from the render sub-package for backward compatibility.
+// All cmd/ and test code can continue to use the engine.* names unchanged.
+type (
+	OutputFormat    = render.OutputFormat
+	StatusCode      = render.StatusCode
+	StatusReport    = render.StatusReport
+	RepoEntry       = render.RepoEntry
+	SkillEntry      = render.SkillEntry
+	MCPEntry        = render.MCPEntry
+	AgentEntry      = render.AgentEntry
+	AuditReport     = render.AuditReport
+	AuditSkillEntry = render.AuditSkillEntry
+	AuditMCPEntry   = render.AuditMCPEntry
+)
+
+// Re-exported constants from the render sub-package.
+const (
+	FormatTable OutputFormat = render.FormatTable
+	FormatJSON  OutputFormat = render.FormatJSON
+
+	StatusOK        StatusCode = render.StatusOK
+	StatusDirty     StatusCode = render.StatusDirty
+	StatusNotCloned StatusCode = render.StatusNotCloned
+	StatusPartial   StatusCode = render.StatusPartial
+	StatusPresent   StatusCode = render.StatusPresent
+	StatusAbsent    StatusCode = render.StatusAbsent
+	StatusError     StatusCode = render.StatusError
 )
 
 // Options allows overriding runtime directories (useful for sandbox/test runs).
@@ -44,9 +75,10 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 		workDir = opts.WorkDir
 	}
 	// os.UserCacheDir returns the OS-appropriate cache root:
-	//   Linux   : $XDG_CACHE_HOME or ~/.cache
-	//   macOS   : ~/Library/Caches
-	//   Windows : %LocalAppData%
+	//
+	//	Linux   : $XDG_CACHE_HOME or ~/.cache
+	//	macOS   : ~/Library/Caches
+	//	Windows : %LocalAppData%
 	cacheRoot, err := os.UserCacheDir()
 	if err != nil {
 		cacheRoot = filepath.Join(home, ".cache")
@@ -127,20 +159,28 @@ func (e *Engine) RunService(ctx context.Context, interval time.Duration) error {
 	}
 }
 
-// Status collects the current resource state and renders it to os.Stdout
-// using the specified format (FormatTable or FormatJSON).
+// Collect gathers the current status of all resources without side effects.
+func (e *Engine) Collect(ctx context.Context) (*render.StatusReport, error) {
+	return ops.Collect(ctx, e.repos, e.skills, e.mcps)
+}
+
+// Status collects the current resource state and renders it to os.Stdout.
 func (e *Engine) Status(ctx context.Context, format OutputFormat) error {
-	slog.DebugContext(ctx, "status requested", "format", format)
+	return ops.Status(ctx, e.repos, e.skills, e.mcps, format)
+}
 
-	report, err := e.Collect(ctx)
-	if err != nil {
-		return err
-	}
+// Audit discovers all skills and MCP servers installed on the machine and
+// renders the result to stdout using the requested format.
+func (e *Engine) Audit(ctx context.Context, format OutputFormat) error {
+	return ops.Audit(ctx, e.home, e.workDir, format)
+}
 
-	renderer, err := NewRenderer(format)
-	if err != nil {
-		return err
-	}
+// Info renders a detailed view for the given package type to stdout.
+func (e *Engine) Info(ctx context.Context, pkg, filter string, format OutputFormat) error {
+	return ops.Info(ctx, e.repos, e.skills, e.mcps, e.cfg, pkg, filter, format)
+}
 
-	return renderer.Render(os.Stdout, report)
+// Init writes the documented gaal.yaml skeleton to dest.
+func (e *Engine) Init(dest string, force bool) error {
+	return ops.Init(dest, force)
 }

@@ -8,7 +8,7 @@
       "mode": "auto",
       "program": "${workspaceFolder}",
       "args": [
-        "--config", "${workspaceFolder}/example.gaal.yaml",
+        //"--config", "${workspaceFolder}/example.gaal.yaml",
         "--sandbox", "${workspaceFolder}/.sandbox",
         "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
         "--verbose",
@@ -25,11 +25,27 @@
       "mode": "auto",
       "program": "${workspaceFolder}",
       "args": [
-        "--config", "${workspaceFolder}/example.gaal.yaml",
+        //"--config", "${workspaceFolder}/example.gaal.yaml",
         "--sandbox", "${workspaceFolder}/.sandbox",
         "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
         //"--verbose",
         "status"
+      ],
+      "env": {},
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "gaal: init (sandbox)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": [
+        "--sandbox", "${workspaceFolder}/.sandbox",
+        "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
+        "--verbose",
+        "init"
       ],
       "env": {},
       "cwd": "${workspaceFolder}",
@@ -77,7 +93,7 @@
       "mode": "auto",
       "program": "${workspaceFolder}",
       "args": [
-        "--config", "${workspaceFolder}/example.gaal.yaml",
+        //"--config", "${workspaceFolder}/example.gaal.yaml",
         "--sandbox", "${workspaceFolder}/.sandbox",
         "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
         "--verbose",
@@ -111,7 +127,7 @@
       "mode": "auto",
       "program": "${workspaceFolder}",
       "args": [
-        "--config", "${workspaceFolder}/example.gaal.yaml",
+        //"--config", "${workspaceFolder}/example.gaal.yaml",
         "--sandbox", "${workspaceFolder}/.sandbox",
         "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
         //"--verbose",
@@ -128,11 +144,45 @@
       "mode": "auto",
       "program": "${workspaceFolder}",
       "args": [
-        "--config", "${workspaceFolder}/example.gaal.yaml",
+        //"--config", "${workspaceFolder}/example.gaal.yaml",
         "--sandbox", "${workspaceFolder}/.sandbox",
         "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
         //"--verbose",
         "info", "agent", "cursor"
+      ],
+      "env": {},
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "gaal: audit (sandbox)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": [
+        //"--config", "${workspaceFolder}/example.gaal.yaml",
+        "--sandbox", "${workspaceFolder}/.sandbox",
+        "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
+        //"--verbose",
+        "audit"
+      ],
+      "env": {},
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "gaal: audit --json (sandbox)",
+      "type": "go",
+      "request": "launch",
+      "mode": "auto",
+      "program": "${workspaceFolder}",
+      "args": [
+        //"--config", "${workspaceFolder}/example.gaal.yaml",
+        "--sandbox", "${workspaceFolder}/.sandbox",
+        "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
+        "--output", "json",
+        "audit"
       ],
       "env": {},
       "cwd": "${workspaceFolder}",

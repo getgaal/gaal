@@ -1,4 +1,4 @@
-package engine
+package render
 
 import (
 	"encoding/json"

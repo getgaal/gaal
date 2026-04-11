@@ -1,4 +1,4 @@
-package engine
+package render
 
 import (
 	"fmt"
@@ -71,6 +71,12 @@ func varColWidth(termW, numCols, numVar, fixedSum int) int {
 		avail = numVar * 12
 	}
 	return avail / numVar
+}
+
+// StatusCell renders a StatusCode as a coloured pterm string.
+// This exported wrapper allows other packages to reuse the same style.
+func StatusCell(code StatusCode, errMsg string) string {
+	return statusCell(code, errMsg)
 }
 
 // tableRenderer implements Renderer using pterm tables with adaptive column widths.

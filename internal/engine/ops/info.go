@@ -1,4 +1,4 @@
-package engine
+package ops
 
 import (
 	"context"
@@ -14,6 +14,10 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/core/agent"
+	"gaal/internal/engine/render"
+	"gaal/internal/mcp"
+	"gaal/internal/repo"
+	"gaal/internal/skill"
 )
 
 // Info renders a detailed view for the given package type.
@@ -21,27 +25,27 @@ import (
 // filter is an optional name/source substring; if non-empty only matching
 // entries are shown. Matching is case-insensitive.
 // format controls the output: FormatTable (pterm) or FormatJSON.
-func (e *Engine) Info(ctx context.Context, pkg, filter string, format OutputFormat) error {
+func Info(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, cfg *config.Config, pkg, filter string, format render.OutputFormat) error {
 	slog.DebugContext(ctx, "info requested", "package", pkg, "filter", filter, "format", format)
 
-	report, err := e.Collect(ctx)
+	report, err := Collect(ctx, repos, skills, mcps)
 	if err != nil {
 		return err
 	}
 
 	w := os.Stdout
 
-	if format == FormatJSON {
+	if format == render.FormatJSON {
 		return renderInfoJSON(w, pkg, filter, report)
 	}
 
 	switch pkg {
 	case "repo":
-		return renderRepoInfo(w, e.cfg.Repositories, report.Repositories, filter)
+		return renderRepoInfo(w, cfg.Repositories, report.Repositories, filter)
 	case "skill":
-		return renderSkillInfo(w, e.cfg.Skills, report.Skills, filter)
+		return renderSkillInfo(w, cfg.Skills, report.Skills, filter)
 	case "mcp":
-		return renderMCPInfo(w, e.cfg.MCPs, report.MCPs, filter)
+		return renderMCPInfo(w, cfg.MCPs, report.MCPs, filter)
 	case "agent":
 		return renderAgentInfo(w, report.Agents, filter)
 	default:
@@ -51,48 +55,48 @@ func (e *Engine) Info(ctx context.Context, pkg, filter string, format OutputForm
 
 // renderInfoJSON serialises only the section of the report matching pkg,
 // after applying the optional filter, as indented JSON.
-func renderInfoJSON(w io.Writer, pkg, filter string, report *StatusReport) error {
+func renderInfoJSON(w io.Writer, pkg, filter string, report *render.StatusReport) error {
 	var payload any
 	switch pkg {
 	case "repo":
-		filtered := make([]RepoEntry, 0)
+		filtered := make([]render.RepoEntry, 0)
 		for _, e := range report.Repositories {
 			if matchFilter(e.Path, filter) {
 				filtered = append(filtered, e)
 			}
 		}
 		payload = struct {
-			Repositories []RepoEntry `json:"repositories"`
+			Repositories []render.RepoEntry `json:"repositories"`
 		}{filtered}
 	case "skill":
-		filtered := make([]SkillEntry, 0)
+		filtered := make([]render.SkillEntry, 0)
 		for _, e := range report.Skills {
 			if matchFilter(e.Source, filter) {
 				filtered = append(filtered, e)
 			}
 		}
 		payload = struct {
-			Skills []SkillEntry `json:"skills"`
+			Skills []render.SkillEntry `json:"skills"`
 		}{filtered}
 	case "mcp":
-		filtered := make([]MCPEntry, 0)
+		filtered := make([]render.MCPEntry, 0)
 		for _, e := range report.MCPs {
 			if matchFilter(e.Name, filter) {
 				filtered = append(filtered, e)
 			}
 		}
 		payload = struct {
-			MCPs []MCPEntry `json:"mcps"`
+			MCPs []render.MCPEntry `json:"mcps"`
 		}{filtered}
 	case "agent":
-		filtered := make([]AgentEntry, 0)
+		filtered := make([]render.AgentEntry, 0)
 		for _, e := range report.Agents {
 			if matchFilter(e.Name, filter) {
 				filtered = append(filtered, e)
 			}
 		}
 		payload = struct {
-			Agents []AgentEntry `json:"agents"`
+			Agents []render.AgentEntry `json:"agents"`
 		}{filtered}
 	default:
 		return fmt.Errorf("unknown package type %q (want: repo, skill, mcp, agent)", pkg)
@@ -197,7 +201,7 @@ func matchFilter(name, filter string) bool {
 }
 
 // renderRepoInfo prints a detailed card for each repository entry.
-func renderRepoInfo(w io.Writer, cfgRepos map[string]config.RepoConfig, entries []RepoEntry, filter string) error {
+func renderRepoInfo(w io.Writer, cfgRepos map[string]config.RepoConfig, entries []render.RepoEntry, filter string) error {
 	slog.Debug("rendering repo info", "count", len(entries), "filter", filter)
 
 	if len(entries) == 0 {
@@ -207,7 +211,7 @@ func renderRepoInfo(w io.Writer, cfgRepos map[string]config.RepoConfig, entries 
 	}
 
 	// Stable output: sort by path; apply filter.
-	sorted := make([]RepoEntry, 0, len(entries))
+	sorted := make([]render.RepoEntry, 0, len(entries))
 	for _, e := range entries {
 		if matchFilter(e.Path, filter) {
 			sorted = append(sorted, e)
@@ -245,7 +249,7 @@ func renderRepoInfo(w io.Writer, cfgRepos map[string]config.RepoConfig, entries 
 			lines = append(lines, kvLine("Error", pterm.FgRed.Sprint(e.Error)))
 		}
 
-		statusStr := statusCell(e.Status, e.Error)
+		statusStr := render.StatusCell(e.Status, e.Error)
 		title := fmt.Sprintf(" %s   %s ",
 			pterm.NewStyle(pterm.Bold).Sprint(e.Path), statusStr)
 		cards = append(cards, infoCard{title: title, lines: lines})
@@ -255,7 +259,7 @@ func renderRepoInfo(w io.Writer, cfgRepos map[string]config.RepoConfig, entries 
 }
 
 // renderSkillInfo prints a detailed card for each skill config entry.
-func renderSkillInfo(w io.Writer, cfgSkills []config.SkillConfig, entries []SkillEntry, filter string) error {
+func renderSkillInfo(w io.Writer, cfgSkills []config.SkillConfig, entries []render.SkillEntry, filter string) error {
 	slog.Debug("rendering skill info", "count", len(cfgSkills), "filter", filter)
 
 	if len(cfgSkills) == 0 {
@@ -279,7 +283,7 @@ func renderSkillInfo(w io.Writer, cfgSkills []config.SkillConfig, entries []Skil
 	infoSection(w, "Skills", len(filtered), pterm.FgGreen)
 
 	// Group runtime entries by source so we can correlate them with config.
-	bySource := make(map[string][]SkillEntry, len(entries))
+	bySource := make(map[string][]render.SkillEntry, len(entries))
 	for _, e := range entries {
 		bySource[e.Source] = append(bySource[e.Source], e)
 	}
@@ -312,7 +316,7 @@ func renderSkillInfo(w io.Writer, cfgSkills []config.SkillConfig, entries []Skil
 		if len(skillEntries) > 0 {
 			lines = append(lines, "")
 			for _, e := range skillEntries {
-				agentStatus := statusCell(e.Status, e.Error)
+				agentStatus := render.StatusCell(e.Status, e.Error)
 				lines = append(lines, fmt.Sprintf("  %s   %s",
 					pterm.NewStyle(pterm.Bold, pterm.FgLightBlue).Sprint(e.Agent), agentStatus))
 
@@ -335,7 +339,7 @@ func renderSkillInfo(w io.Writer, cfgSkills []config.SkillConfig, entries []Skil
 }
 
 // buildSkillTree returns tree-formatted lines for a skill's installed/missing/modified files.
-func buildSkillTree(e SkillEntry) []string {
+func buildSkillTree(e render.SkillEntry) []string {
 	type item struct {
 		label string
 	}
@@ -362,11 +366,11 @@ func buildSkillTree(e SkillEntry) []string {
 }
 
 // renderAgentInfo prints a detailed card for each registered agent.
-func renderAgentInfo(w io.Writer, entries []AgentEntry, filter string) error {
+func renderAgentInfo(w io.Writer, entries []render.AgentEntry, filter string) error {
 	slog.Debug("rendering agent info", "count", len(entries), "filter", filter)
 
 	// Apply filter.
-	filtered := make([]AgentEntry, 0, len(entries))
+	filtered := make([]render.AgentEntry, 0, len(entries))
 	for _, e := range entries {
 		if matchFilter(e.Name, filter) {
 			filtered = append(filtered, e)
@@ -420,7 +424,7 @@ func renderAgentInfo(w io.Writer, entries []AgentEntry, filter string) error {
 }
 
 // renderMCPInfo prints a detailed card for each MCP config entry.
-func renderMCPInfo(w io.Writer, cfgMCPs []config.MCPConfig, entries []MCPEntry, filter string) error {
+func renderMCPInfo(w io.Writer, cfgMCPs []config.MCPConfig, entries []render.MCPEntry, filter string) error {
 	slog.Debug("rendering mcp info", "count", len(cfgMCPs), "filter", filter)
 
 	if len(cfgMCPs) == 0 {
@@ -444,7 +448,7 @@ func renderMCPInfo(w io.Writer, cfgMCPs []config.MCPConfig, entries []MCPEntry, 
 	infoSection(w, "MCP Configs", len(filtered), pterm.FgMagenta)
 
 	// Index runtime entries by name.
-	byName := make(map[string]MCPEntry, len(entries))
+	byName := make(map[string]render.MCPEntry, len(entries))
 	for _, e := range entries {
 		byName[e.Name] = e
 	}
@@ -498,7 +502,7 @@ func renderMCPInfo(w io.Writer, cfgMCPs []config.MCPConfig, entries []MCPEntry, 
 			lines = append(lines, fmt.Sprintf("  %s", pterm.FgRed.Sprint("✗  "+e.Error)))
 		}
 
-		statusStr := statusCell(e.Status, e.Error)
+		statusStr := render.StatusCell(e.Status, e.Error)
 		title := fmt.Sprintf(" %s   %s ",
 			pterm.NewStyle(pterm.Bold).Sprint(mc.Name), statusStr)
 		cards = append(cards, infoCard{title: title, lines: lines})
