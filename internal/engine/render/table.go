@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -227,38 +228,138 @@ func (tr *tableRenderer) repoTable(w io.Writer, entries []RepoEntry, termW int) 
 	return tr.ptermTable(w, data)
 }
 
+// aggregatedSkill rolls up all per-(source, agent) SkillEntry rows for a
+// single skill name. See [aggregateSkillsByName] for semantics.
+type aggregatedSkill struct {
+	Name      string
+	Sources   []string
+	Status    StatusCode
+	Agents    []string
+	AllAgents bool
+	Error     string
+}
+
+// aggregateSkillsByName groups per-(source, agent) skill entries into one
+// row per unique skill name. The result is sorted alphabetically by name.
+//
+// For each skill name, "targeted agents" is the set of agents that list the
+// skill in Installed ∪ Missing ∪ Modified — i.e. agents gaal expected to
+// manage the skill for. AllAgents is true when the skill is installed in
+// every one of those targeted agents (including "installed but dirty"),
+// which the renderer shows as `*` in the AGENTS column.
+func aggregateSkillsByName(entries []SkillEntry) []aggregatedSkill {
+	type bucket struct {
+		sources   map[string]struct{}
+		targeted  map[string]struct{}
+		installed map[string]struct{}
+		dirty     bool
+		errored   bool
+		errMsg    string
+	}
+	byName := map[string]*bucket{}
+
+	get := func(name string) *bucket {
+		b, ok := byName[name]
+		if !ok {
+			b = &bucket{
+				sources:   map[string]struct{}{},
+				targeted:  map[string]struct{}{},
+				installed: map[string]struct{}{},
+			}
+			byName[name] = b
+		}
+		return b
+	}
+
+	markEntry := func(e SkillEntry, name string, installed bool) {
+		b := get(name)
+		b.sources[e.Source] = struct{}{}
+		b.targeted[e.Agent] = struct{}{}
+		if installed {
+			b.installed[e.Agent] = struct{}{}
+		}
+		if e.Status == StatusError {
+			b.errored = true
+			if b.errMsg == "" {
+				b.errMsg = e.Error
+			}
+		}
+	}
+
+	for _, e := range entries {
+		for _, name := range e.Installed {
+			markEntry(e, name, true)
+		}
+		for _, name := range e.Missing {
+			markEntry(e, name, false)
+		}
+		for _, name := range e.Modified {
+			// Modified implies installed, but may not appear in Installed
+			// (status is reported as dirty, not ok). Track it as installed
+			// and flag the bucket as dirty.
+			markEntry(e, name, true)
+			get(name).dirty = true
+		}
+	}
+
+	out := make([]aggregatedSkill, 0, len(byName))
+	for name, b := range byName {
+		s := aggregatedSkill{
+			Name:    name,
+			Sources: keysSorted(b.sources),
+			Agents:  keysSorted(b.installed),
+			Error:   b.errMsg,
+		}
+		s.AllAgents = len(b.installed) > 0 && len(b.installed) == len(b.targeted)
+		switch {
+		case b.errored:
+			s.Status = StatusError
+		case b.dirty:
+			s.Status = StatusDirty
+		case s.AllAgents:
+			s.Status = StatusOK
+		default:
+			s.Status = StatusPartial
+		}
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func keysSorted(m map[string]struct{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (tr *tableRenderer) skillTable(w io.Writer, entries []SkillEntry, termW int) error {
-	tr.section(w, "Skills", len(entries))
-	// Fixed cols: AGENT(20) + STATUS(14) = 34
-	// Variable cols: SOURCE, INSTALLED, MISSING, MODIFIED share the rest equally.
-	vw := varColWidth(termW, 6, 4, 34)
+	aggregated := aggregateSkillsByName(entries)
+	tr.section(w, "Skills", len(aggregated))
+
+	// Fixed col: STATUS(14). SKILL, SOURCE, AGENTS share the rest.
+	vw := varColWidth(termW, 4, 3, 14)
 	if vw < 12 {
 		vw = 12
 	}
 
-	data := pterm.TableData{{"SOURCE", "AGENT", "STATUS", "INSTALLED", "MISSING", "MODIFIED"}}
-	for _, e := range entries {
-		installed := strings.Join(e.Installed, ", ")
-		missing := strings.Join(e.Missing, ", ")
-		modified := strings.Join(e.Modified, ", ")
-		if installed == "" {
-			installed = "—"
-		}
-		if missing == "" {
-			missing = "—"
-		}
-		if modified == "" {
-			modified = "—"
-		} else {
-			modified = pterm.FgYellow.Sprint(modified)
+	data := pterm.TableData{{"SKILL", "SOURCE", "STATUS", "AGENTS"}}
+	for _, s := range aggregated {
+		agents := "—"
+		switch {
+		case s.AllAgents:
+			agents = "*"
+		case len(s.Agents) > 0:
+			agents = strings.Join(s.Agents, ", ")
 		}
 		data = append(data, []string{
-			trunc(e.Source, vw),
-			e.Agent,
-			statusCell(e.Status, e.Error),
-			trunc(installed, vw),
-			trunc(missing, vw),
-			trunc(modified, vw),
+			trunc(s.Name, vw),
+			trunc(strings.Join(s.Sources, ", "), vw),
+			statusCell(s.Status, s.Error),
+			trunc(agents, vw),
 		})
 	}
 	return tr.ptermTable(w, data)
