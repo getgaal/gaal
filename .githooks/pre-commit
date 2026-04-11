@@ -1,0 +1,3 @@
+#!/bin/sh
+# Run linters before allowing a commit.
+exec make lint

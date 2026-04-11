@@ -14,7 +14,7 @@ GOOS      ?= $(shell go env GOOS)
 GOARCH    ?= $(shell go env GOARCH)
 BIN_CROSS ?= $(DIST_DIR)/gaal-$(GOOS)-$(GOARCH)
 
-.PHONY: all build build-cross run run-service test test-race coverage coverage-ci lint clean tidy sandbox sandbox-service sandbox-status
+.PHONY: all build build-cross run run-service test test-race coverage coverage-ci lint hooks clean tidy sandbox sandbox-service sandbox-status
 
 all: build
 
@@ -93,6 +93,11 @@ lint:
 		exit 1; \
 	fi
 	go vet ./...
+
+## hooks: install repo git hooks (.githooks/) as core.hooksPath
+hooks:
+	git config core.hooksPath .githooks
+	@echo "git hooks installed from .githooks/"
 
 ## tidy: tidy dependencies
 tidy:
