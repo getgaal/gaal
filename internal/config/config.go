@@ -99,6 +99,13 @@ func userConfigDir() (string, error) {
 	return os.UserConfigDir()
 }
 
+// UserConfigFilePath is the exported accessor for userConfigFilePath. It is
+// used by callers outside this package (e.g. the init wizard) that need to
+// resolve the per-user config destination before a Config is loaded.
+func UserConfigFilePath() string {
+	return userConfigFilePath()
+}
+
 // userConfigFilePath returns the per-user config path for the current OS.
 // It respects XDG_CONFIG_HOME on Linux and macOS when set, otherwise ~/.config
 // on macOS (see userConfigDir), and %AppData% on Windows.

@@ -440,3 +440,94 @@ func TestListServers_InvalidJSON(t *testing.T) {
 		t.Error("expected error for invalid JSON, got nil")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// LoadServers
+// ---------------------------------------------------------------------------
+
+func TestLoadServers_FileNotExist(t *testing.T) {
+	got, err := LoadServers("/no/such/file.json")
+	if err != nil {
+		t.Fatalf("expected nil error for missing file, got %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil map for missing file, got %v", got)
+	}
+}
+
+func TestLoadServers_ValidFile(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "mcp.json")
+	content := `{
+  "mcpServers": {
+    "filesystem": {
+      "command": "uvx",
+      "args": ["mcp-server-filesystem", "/tmp"],
+      "env": {"LOG_LEVEL": "debug"}
+    },
+    "git": {
+      "command": "uvx",
+      "args": ["mcp-server-git"]
+    }
+  }
+}`
+	if err := os.WriteFile(f, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := LoadServers(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(got))
+	}
+	fs, ok := got["filesystem"]
+	if !ok {
+		t.Fatal("filesystem entry missing")
+	}
+	if fs.Command != "uvx" {
+		t.Errorf("filesystem.command: want uvx, got %q", fs.Command)
+	}
+	if len(fs.Args) != 2 || fs.Args[0] != "mcp-server-filesystem" || fs.Args[1] != "/tmp" {
+		t.Errorf("filesystem.args: unexpected %v", fs.Args)
+	}
+	if fs.Env["LOG_LEVEL"] != "debug" {
+		t.Errorf("filesystem.env: unexpected %v", fs.Env)
+	}
+	g, ok := got["git"]
+	if !ok {
+		t.Fatal("git entry missing")
+	}
+	if g.Command != "uvx" || len(g.Args) != 1 || g.Args[0] != "mcp-server-git" {
+		t.Errorf("git entry: unexpected %+v", g)
+	}
+	if g.Env != nil && len(g.Env) != 0 {
+		t.Errorf("git.env should be empty, got %v", g.Env)
+	}
+}
+
+func TestLoadServers_NoMCPServersKey(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(f, []byte(`{"other":"value"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := LoadServers(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil when no mcpServers key, got %v", got)
+	}
+}
+
+func TestLoadServers_InvalidJSON(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(f, []byte("not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadServers(f); err == nil {
+		t.Error("expected error for invalid JSON, got nil")
+	}
+}
