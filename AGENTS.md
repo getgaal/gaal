@@ -3,7 +3,7 @@
 ## Language
 
 - All code, comments, identifiers, commit messages, and documentation must be written in **English**.
-- Communication with the user is in French.
+- Match the user's language when communicating with them: reply in French if they write in French, in English if they write in English.
 
 ## Architecture
 
