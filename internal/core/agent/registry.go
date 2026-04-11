@@ -42,16 +42,31 @@ type Info struct {
 	// installed by the agent's package manager. Scanned recursively for
 	// sub-trees containing a "skills/" folder with SKILL.md files.
 	PmSkillsSearch []string
+
+	// SupportsGenericProject reports whether the agent natively reads
+	// project-level skills from the shared .agents/skills convention
+	// owned by the "generic" built-in agent. When true, the agent's own
+	// ProjectSkillsDir may be empty; sync and audit transparently
+	// delegate to generic's project path.
+	SupportsGenericProject bool
+	// SupportsGenericGlobal reports whether the agent natively reads
+	// global skills from the shared ~/.agents/skills convention owned by
+	// the "generic" built-in agent. When true, the agent's own
+	// GlobalSkillsDir may be empty; sync and audit transparently
+	// delegate to generic's global path.
+	SupportsGenericGlobal bool
 }
 
 // agentEntry is the YAML-decodable shape for a single agent.
 type agentEntry struct {
-	ProjectSkillsDir     string   `yaml:"project_skills_dir"`
-	GlobalSkillsDir      string   `yaml:"global_skills_dir"`
-	ProjectMCPConfigFile string   `yaml:"project_mcp_config_file"`
-	ProjectSkillsSearch  []string `yaml:"project_skills_search"`
-	GlobalSkillsSearch   []string `yaml:"global_skills_search"`
-	PmSkillsSearch       []string `yaml:"pm_skills_search"`
+	ProjectSkillsDir       string   `yaml:"project_skills_dir"`
+	GlobalSkillsDir        string   `yaml:"global_skills_dir"`
+	ProjectMCPConfigFile   string   `yaml:"project_mcp_config_file"`
+	ProjectSkillsSearch    []string `yaml:"project_skills_search"`
+	GlobalSkillsSearch     []string `yaml:"global_skills_search"`
+	PmSkillsSearch         []string `yaml:"pm_skills_search"`
+	SupportsGenericProject bool     `yaml:"supports_generic_project"`
+	SupportsGenericGlobal  bool     `yaml:"supports_generic_global"`
 }
 
 // agentsFile is the top-level structure of agents.yaml.
@@ -109,12 +124,14 @@ func loadInto(data []byte, dst map[string]Info, allowOverride bool) error {
 			return fmt.Errorf("duplicate agent name %q", name)
 		}
 		dst[name] = Info{
-			ProjectSkillsDir:     e.ProjectSkillsDir,
-			GlobalSkillsDir:      e.GlobalSkillsDir,
-			ProjectMCPConfigFile: e.ProjectMCPConfigFile,
-			ProjectSkillsSearch:  e.ProjectSkillsSearch,
-			GlobalSkillsSearch:   e.GlobalSkillsSearch,
-			PmSkillsSearch:       e.PmSkillsSearch,
+			ProjectSkillsDir:       e.ProjectSkillsDir,
+			GlobalSkillsDir:        e.GlobalSkillsDir,
+			ProjectMCPConfigFile:   e.ProjectMCPConfigFile,
+			ProjectSkillsSearch:    e.ProjectSkillsSearch,
+			GlobalSkillsSearch:     e.GlobalSkillsSearch,
+			PmSkillsSearch:         e.PmSkillsSearch,
+			SupportsGenericProject: e.SupportsGenericProject,
+			SupportsGenericGlobal:  e.SupportsGenericGlobal,
 		}
 	}
 	return nil
@@ -129,13 +146,28 @@ func loadInto(data []byte, dst map[string]Info, allowOverride bool) error {
 func validateEntry(name string, e agentEntry) error {
 	slog.Debug("validating agent entry", "name", name)
 
-	if isAbsPath(e.ProjectSkillsDir) {
-		return fmt.Errorf("agent %q: project_skills_dir must be relative, got %q", name, e.ProjectSkillsDir)
+	// project_skills_dir: may be empty when the agent delegates project
+	// skills to the "generic" convention; otherwise must be relative.
+	if e.ProjectSkillsDir == "" {
+		if !e.SupportsGenericProject {
+			return fmt.Errorf("agent %q: project_skills_dir must be set unless supports_generic_project is true", name)
+		}
+	} else {
+		if isAbsPath(e.ProjectSkillsDir) {
+			return fmt.Errorf("agent %q: project_skills_dir must be relative, got %q", name, e.ProjectSkillsDir)
+		}
+		if containsDotDot(e.ProjectSkillsDir) {
+			return fmt.Errorf("agent %q: project_skills_dir must not contain '..', got %q", name, e.ProjectSkillsDir)
+		}
 	}
-	if containsDotDot(e.ProjectSkillsDir) {
-		return fmt.Errorf("agent %q: project_skills_dir must not contain '..', got %q", name, e.ProjectSkillsDir)
-	}
-	if !strings.HasPrefix(e.GlobalSkillsDir, "~/") && !strings.HasPrefix(e.GlobalSkillsDir, `~\`) {
+
+	// global_skills_dir: may be empty when the agent delegates global
+	// skills to the "generic" convention; otherwise must be ~/-prefixed.
+	if e.GlobalSkillsDir == "" {
+		if !e.SupportsGenericGlobal {
+			return fmt.Errorf("agent %q: global_skills_dir must be set unless supports_generic_global is true", name)
+		}
+	} else if !strings.HasPrefix(e.GlobalSkillsDir, "~/") && !strings.HasPrefix(e.GlobalSkillsDir, `~\`) {
 		return fmt.Errorf("agent %q: global_skills_dir must start with '~/', got %q", name, e.GlobalSkillsDir)
 	}
 	if e.ProjectMCPConfigFile != "" &&
@@ -238,13 +270,31 @@ func Lookup(name string) (Info, bool) {
 
 // SkillDir returns the target skills directory for the given agent.
 // If global is true the user-home directory is returned (~ expanded).
+//
+// Agents that support the generic convention for the requested scope
+// delegate to the "generic" built-in, so sync lands skills in the
+// shared .agents/skills tree instead of an agent-specific fork.
 func SkillDir(name string, global bool, home string) (string, bool) {
 	info, ok := registry[name]
 	if !ok {
 		return "", false
 	}
 	if global {
+		if info.SupportsGenericGlobal {
+			gen, ok := registry["generic"]
+			if !ok {
+				return "", false
+			}
+			return ExpandHome(gen.GlobalSkillsDir, home), true
+		}
 		return ExpandHome(info.GlobalSkillsDir, home), true
+	}
+	if info.SupportsGenericProject {
+		gen, ok := registry["generic"]
+		if !ok {
+			return "", false
+		}
+		return gen.ProjectSkillsDir, true
 	}
 	return info.ProjectSkillsDir, true
 }

@@ -400,9 +400,16 @@ func renderAgentInfo(w io.Writer, entries []render.AgentEntry, filter string) er
 		if !matchFilter(e.Name, filter) {
 			continue
 		}
-		lines := []string{
-			kvLine("Project", pterm.FgCyan.Sprint(e.ProjectSkillsDir)),
-			kvLine("Global", pterm.FgCyan.Sprint(e.GlobalSkillsDir)),
+		lines := []string{}
+		if e.ProjectSkillsDir != "" {
+			lines = append(lines, kvLine("Project", pterm.FgCyan.Sprint(e.ProjectSkillsDir)))
+		} else {
+			lines = append(lines, kvLine("Project", pterm.FgDarkGray.Sprint("via generic convention")))
+		}
+		if e.GlobalSkillsDir != "" {
+			lines = append(lines, kvLine("Global", pterm.FgCyan.Sprint(e.GlobalSkillsDir)))
+		} else {
+			lines = append(lines, kvLine("Global", pterm.FgDarkGray.Sprint("via generic convention")))
 		}
 		if e.ProjectMCPConfigFile != "" {
 			lines = append(lines, kvLine("MCP cfg", pterm.FgGreen.Sprint(e.ProjectMCPConfigFile)))
