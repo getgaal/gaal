@@ -4,8 +4,20 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+)
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const (
+	configDirName  = "gaal"
+	configFileName = "config.yaml"
+
+	envXDGConfigHome  = "XDG_CONFIG_HOME"
+	envProgramData    = "PROGRAMDATA"
+	defaultConfigHome = ".config" // fallback when XDG_CONFIG_HOME is unset
+
+	globalConfigPathUnix = "/etc/gaal/config.yaml"
 )
 
 // ── OS-aware config path resolution ──────────────────────────────────────────
@@ -21,37 +33,11 @@ import (
 //                   Windows     : %AppData%\gaal\config.yaml
 //  3. Workspace — project-specific, value of the --config flag (default: gaal.yaml in CWD)
 
-// GlobalConfigFilePath returns the system-wide read-only config path for the current OS.
-func GlobalConfigFilePath() string {
-	if runtime.GOOS == "windows" {
-		pd := os.Getenv("PROGRAMDATA")
-		if pd == "" {
-			pd = `C:\ProgramData`
-		}
-		return filepath.Join(pd, "gaal", "config.yaml")
-	}
-	// Linux and macOS both follow the /etc convention for system-wide config.
-	return "/etc/gaal/config.yaml"
-}
-
-// userConfigDir returns the directory in which gaal stores per-user config.
-// On macOS we intentionally diverge from os.UserConfigDir() (which would return
-// ~/Library/Application Support) and prefer XDG_CONFIG_HOME when it is set,
-// otherwise ~/.config to match the conventions of other CLI tools. Linux and
-// Windows fall through to os.UserConfigDir().
-func userConfigDir() (string, error) {
-	if runtime.GOOS == "darwin" {
-		if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
-			return xdg, nil
-		}
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(home, ".config"), nil
-	}
-	return os.UserConfigDir()
-}
+// GlobalConfigFilePath and userConfigDir are defined in the OS-specific
+// build-constraint files:
+//   platform_windows.go  (build: windows)
+//   platform_darwin.go   (build: darwin)
+//   platform_other.go    (build: !windows && !darwin)
 
 // UserConfigFilePath is the exported accessor for the per-user config path.
 // It is used by callers outside this package (e.g. the init wizard and
@@ -69,9 +55,9 @@ func userConfigFilePath() string {
 	dir, err := userConfigDir()
 	if err != nil {
 		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, ".config")
+		dir = filepath.Join(home, defaultConfigHome)
 	}
-	return filepath.Join(dir, "gaal", "config.yaml")
+	return filepath.Join(dir, configDirName, configFileName)
 }
 
 // ── Cross-platform path expansion ────────────────────────────────────────────
