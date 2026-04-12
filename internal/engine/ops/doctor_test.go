@@ -16,8 +16,52 @@ func TestDoctorCleanConfig(t *testing.T) {
 	cfg := &config.Config{}
 	report := RunDoctor(cfg, DoctorOptions{Offline: true})
 
+	// Empty config has no Version → warning, so exit code is 1.
+	if report.ExitCode != 1 {
+		t.Errorf("expected exit code 1 for config without version, got %d", report.ExitCode)
+	}
+}
+
+func TestDoctorVersionMissing_Warning(t *testing.T) {
+	cfg := &config.Config{} // Version is nil
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	found := false
+	for _, f := range report.Findings {
+		if f.Section == "config" && f.Severity == SeverityWarning && strings.Contains(f.Message, "version") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning about missing version, findings: %+v", report.Findings)
+	}
+}
+
+func TestDoctorVersionOne_Info(t *testing.T) {
+	v := 1
+	cfg := &config.Config{Version: &v}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	found := false
+	for _, f := range report.Findings {
+		if f.Section == "config" && f.Severity == SeverityInfo && strings.Contains(f.Message, "version: 1") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected info about version 1, findings: %+v", report.Findings)
+	}
+}
+
+func TestDoctorCleanConfigWithVersion(t *testing.T) {
+	v := 1
+	cfg := &config.Config{Version: &v}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
 	if report.ExitCode != 0 {
-		t.Errorf("expected exit code 0 for clean config, got %d", report.ExitCode)
+		t.Errorf("expected exit code 0 for clean config with version, got %d", report.ExitCode)
 	}
 }
 

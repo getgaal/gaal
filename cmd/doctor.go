@@ -79,12 +79,13 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 
 func renderDoctorTable(report *ops.DoctorReport) {
 	sectionDisplay := map[string]string{
+		"config":    "Config",
 		"telemetry": "Telemetry",
 		"skills":    "Skills",
 		"mcps":      "MCP",
 		"agents":    "Agents",
 	}
-	sections := []string{"telemetry", "skills", "mcps", "agents"}
+	sections := []string{"config", "telemetry", "skills", "mcps", "agents"}
 	for _, section := range sections {
 		var sectionFindings []ops.Finding
 		for _, f := range report.Findings {
