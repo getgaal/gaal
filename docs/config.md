@@ -36,9 +36,9 @@ highest priority:
 | 3 — highest | `workspace` | `--config` value (default: `gaal.yaml` in CWD) | ← same |
 
 > macOS intentionally departs from `os.UserConfigDir()` (`~/Library/Application
-> Support`) to prefer `~/.config` / XDG. Use `userConfigFilePath()` from
-> `internal/config` — never call `os.UserConfigDir()` directly for gaal-scoped
-> user paths.
+> Support`) to prefer `~/.config` / XDG. Use `UserConfigFilePath()` from
+> `internal/config` (which delegates to `internal/config/platform`) — never
+> call `os.UserConfigDir()` directly for gaal-scoped user paths.
 
 Missing files are silently skipped. At least one file must be present; if none
 is found `LoadChain` returns an error listing all three attempted paths.
@@ -72,13 +72,16 @@ them.
 internal/config/
 ├── manager.go          — Config, LevelConfigs, ResolvedConfig
 │                         Load(), LoadChain(), GenerateSchema()
+│                         UserConfigFilePath()  [thin wrapper → platform]
 ├── scope.go            — ConfigScope, ScopeGlobal/User/Workspace, ParseConfigScope()
 ├── policy.go           — buildMergePolicy(), allowedAt()  [unexported]
 ├── utils.go            — indexOf(), deduplicate()  [unexported generics]
-├── platform.go         — path constants, expandPaths(), isRemoteURL()
-├── platform_unix.go    — GlobalConfigFilePath(), userConfigDir()
-├── platform_darwin.go  — GlobalConfigFilePath(), userConfigDir()  (XDG override)
-├── platform_windows.go — GlobalConfigFilePath(), userConfigDir()
+│                         isRemoteURL(), isGitHubShorthand(), expandPaths()
+├── platform/
+│   ├── manager.go      — path constants, UserConfigFilePath(), userConfigFilePath()
+│   ├── unix.go         — GlobalConfigFilePath(), userConfigDir()  (!windows && !darwin)
+│   ├── darwin.go       — GlobalConfigFilePath(), userConfigDir()  (XDG override)
+│   └── windows.go      — GlobalConfigFilePath(), userConfigDir()
 └── schema/
     ├── generator.go           — Generator interface, Default, Set(), Generate()
     ├── generator_invopop.go   — GeneratorInvopop  (invopop/jsonschema)
@@ -306,6 +309,50 @@ file. Rules:
 
 ---
 
+## Platform Sub-package (`internal/config/platform`)
+
+OS-specific path resolution is isolated in its own package so that the rest of
+`internal/config` stays free of build constraints and `//go:build` tags.
+
+### Responsibilities
+
+| Symbol | Description |
+|--------|-------------|
+| `GlobalConfigFilePath() string` | System-wide config path for the current OS |
+| `UserConfigFilePath() string` | Per-user config path (exported accessor) |
+| `userConfigFilePath() string` | Internal implementation — resolves via `userConfigDir()` with fallback to `~/.config` |
+| `userConfigDir() (string, error)` | OS-specific directory lookup (defined per build constraint) |
+
+### Build-constraint files
+
+| File | Build constraint | Behaviour |
+|------|-----------------|-----------|
+| `unix.go` | `!windows && !darwin` | Delegates to `os.UserConfigDir()` which honours `$XDG_CONFIG_HOME` |
+| `darwin.go` | `darwin` | Prefers `$XDG_CONFIG_HOME`; falls back to `~/.config` (overrides `os.UserConfigDir()` which returns `~/Library/Application Support`) |
+| `windows.go` | `windows` | Global path uses `%PROGRAMDATA%`; user path delegates to `os.UserConfigDir()` (`%AppData%`) |
+
+### Relationship with `internal/config`
+
+`internal/config` never calls `os.UserConfigDir()` directly. Instead:
+
+```
+config.UserConfigFilePath()          — public wrapper in manager.go
+  └─→ platform.UserConfigFilePath()  — exported from platform/manager.go
+        └─→ platform.userConfigFilePath()
+              └─→ platform.userConfigDir()  (OS-specific, one per build tag)
+```
+
+`config.LoadChain()` calls `platform.GlobalConfigFilePath()` and
+`platform.UserConfigFilePath()` directly for the global and user candidates.
+
+### Tests
+
+All path-resolution tests live in `platform/manager_test.go` (package `platform`).
+They cover: correct suffix on each OS, XDG override on macOS/Linux, fallback
+when `HOME` is broken.
+
+---
+
 ## Rules for Future Agents
 
 When working on any code that touches the config system, follow these rules:
@@ -319,16 +366,19 @@ When working on any code that touches the config system, follow these rules:
    when the field must not propagate beyond a certain level.
 
 3. **Never call `os.UserConfigDir()` directly** for gaal user-scoped paths —
-   use `UserConfigFilePath()` / `userConfigFilePath()`. macOS intentionally
-   overrides `UserConfigDir()` to prefer `~/.config`.
+   use `UserConfigFilePath()` from `internal/config` (or `platform.UserConfigFilePath()`
+   from `internal/config/platform`). macOS intentionally overrides `UserConfigDir()`
+   to prefer `~/.config`.
 
 4. **Schema = runtime.** Any new field added to `Config` must be reflected in
    the generated schema output. Run `make build` (which regenerates the
    schema) and keep the generated schema in sync with the current build output
    location.
 
-5. **Test coverage target: 100% for `internal/config`.** Every new function or
-   behaviour needs at least one test. Use table-driven tests for functions with
+5. **Test coverage target: 100% for `internal/config` and `internal/config/platform`.**
+   Every new function or behaviour needs at least one test. Tests for OS-specific
+   path helpers live in `platform/manager_test.go`; tests for path expansion
+   helpers live in `utils_test.go`. Use table-driven tests for functions with
    multiple input cases. Mock FS access with `os.TempDir()`.
 
 6. **Scope restriction: declarative only.** To restrict a field, add

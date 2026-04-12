@@ -1,6 +1,6 @@
 //go:build darwin
 
-package config
+package platform
 
 import (
 	"os"
