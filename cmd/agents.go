@@ -88,20 +88,11 @@ func renderAgentsTable(w io.Writer, entries []render.AgentEntry) error {
 	styled := pterm.NewStyle(pterm.Bold, pterm.FgCyan).Sprintf("── Agents  (%d) ──", len(entries))
 	fmt.Fprintf(w, "\n%s\n", styled)
 
-	termW := pterm.GetTerminalWidth()
-	if termW < 60 {
-		termW = 120
-	}
-
-	data := pterm.TableData{{"NAME", "INSTALLED", "PROJECT SKILLS", "GLOBAL SKILLS", "MCP CONFIG", "SOURCE"}}
+	data := pterm.TableData{{"NAME", "INSTALLED", "SOURCE"}}
 	for _, e := range entries {
 		installed := pterm.FgDarkGray.Sprint("—")
 		if e.Installed {
 			installed = pterm.FgGreen.Sprint("✓")
-		}
-		mcpCfg := pterm.FgDarkGray.Sprint("—")
-		if e.ProjectMCPConfigFile != "" {
-			mcpCfg = e.ProjectMCPConfigFile
 		}
 		source := pterm.FgGreen.Sprint(e.Source)
 		if e.Source == "user" {
@@ -111,9 +102,6 @@ func renderAgentsTable(w io.Writer, entries []render.AgentEntry) error {
 		data = append(data, []string{
 			e.Name,
 			installed,
-			e.ProjectSkillsDir,
-			e.GlobalSkillsDir,
-			mcpCfg,
 			source,
 		})
 	}
