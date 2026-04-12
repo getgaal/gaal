@@ -184,6 +184,16 @@ func (e *Engine) Info(ctx context.Context, pkg, filter string, format OutputForm
 	return ops.Info(ctx, e.repos, e.skills, e.mcps, e.cfg, pkg, filter, format)
 }
 
+// ListAgents returns all registered agents with installed-detection.
+func (e *Engine) ListAgents() ([]render.AgentEntry, error) {
+	return ops.ListAgents(e.home, e.workDir)
+}
+
+// AgentDetail returns the full detail view for a single agent.
+func (e *Engine) AgentDetail(name string) (*render.AgentDetail, error) {
+	return ops.AgentDetail(e.home, e.workDir, name)
+}
+
 // Init writes the documented gaal.yaml skeleton to dest.
 func (e *Engine) Init(dest string, force bool) error {
 	return ops.Init(dest, force)
