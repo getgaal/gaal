@@ -1,11 +1,14 @@
 name: Release
 
-# Triggered only on semver release tags (e.g. v0.1.0, v1.2.3).
-# Can also be triggered manually for testing.
+# Triggered on:
+#   - semver release tags (v0.1.0, v1.2.3) → builds + publishes GitHub Release
+#   - pull requests → smoke-tests the release pipeline (no publishing)
+#   - workflow_dispatch → manual run from any branch (no publishing unless tagged)
 on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -13,10 +16,12 @@ permissions:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
-  # Reuse the full CI workflow: lint + build (3 OS) + test (3 OS) + coverage
+  # Reuse the full CI workflow: lint + build (3 OS) + test (3 OS) + coverage.
+  # Skipped on pull_request because ci.yml already runs standalone on PRs.
   # ──────────────────────────────────────────────────────────────────────────
   ci:
     name: CI
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
@@ -24,21 +29,23 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   # Cross-compile release binaries for all supported platforms / architectures.
   # Darwin builds run on macOS for code signing and notarization.
+  # Runs even when `ci` is skipped (PR runs) so the release pipeline is exercised.
   # ──────────────────────────────────────────────────────────────────────────
   binaries:
     name: Binary / ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     needs: ci
+    if: ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux,   goarch: amd64, runner: self-hosted }
-          - { goos: linux,   goarch: arm64, runner: self-hosted }
-          - { goos: darwin,  goarch: amd64, runner: macos-latest }
-          - { goos: darwin,  goarch: arm64, runner: macos-latest }
-          - { goos: windows, goarch: amd64, runner: self-hosted, ext: .exe }
-          - { goos: windows, goarch: arm64, runner: self-hosted, ext: .exe }
+          - { goos: linux,   goarch: amd64, runner: [self-hosted, Linux, X64] }
+          - { goos: linux,   goarch: arm64, runner: [self-hosted, Linux, X64] }
+          - { goos: darwin,  goarch: amd64, runner: [self-hosted, macOS, ARM64] }
+          - { goos: darwin,  goarch: arm64, runner: [self-hosted, macOS, ARM64] }
+          - { goos: windows, goarch: amd64, runner: [self-hosted, Linux, X64], ext: .exe }
+          - { goos: windows, goarch: arm64, runner: [self-hosted, Linux, X64], ext: .exe }
     steps:
       - uses: actions/checkout@v6
 
@@ -148,11 +155,14 @@ jobs:
           if-no-files-found: error
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Create the GitHub Release and attach all compiled binaries + checksums
+  # Create the GitHub Release and attach all compiled binaries + checksums.
+  # Only runs on semver tag pushes — PRs and manual dispatches build artifacts
+  # but do not publish.
   # ──────────────────────────────────────────────────────────────────────────
   release:
     name: Create Release
-    runs-on: self-hosted
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, Linux, X64]
     needs: binaries
     steps:
       - uses: actions/download-artifact@v7
