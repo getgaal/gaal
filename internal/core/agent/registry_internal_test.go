@@ -153,6 +153,90 @@ func TestValidateEntry_MCPConfigWithoutTilde_Rejected(t *testing.T) {
 	}
 }
 
+func TestValidateEntry_EmptyProjectDir_NoGenericFlag_Rejected(t *testing.T) {
+	e := agentEntry{
+		ProjectSkillsDir:       "",
+		GlobalSkillsDir:        "~/.foo/skills",
+		SupportsGenericProject: false,
+	}
+	if err := validateEntry("foo", e); err == nil {
+		t.Error("expected error when project_skills_dir is empty and supports_generic_project is false")
+	}
+}
+
+func TestValidateEntry_EmptyGlobalDir_NoGenericFlag_Rejected(t *testing.T) {
+	e := agentEntry{
+		ProjectSkillsDir:      ".foo/skills",
+		GlobalSkillsDir:       "",
+		SupportsGenericGlobal: false,
+	}
+	if err := validateEntry("foo", e); err == nil {
+		t.Error("expected error when global_skills_dir is empty and supports_generic_global is false")
+	}
+}
+
+func TestValidateEntry_ProjectSearchAbsolute_Rejected(t *testing.T) {
+	e := agentEntry{
+		ProjectSkillsDir:    ".foo/skills",
+		GlobalSkillsDir:     "~/.foo/skills",
+		ProjectSkillsSearch: []string{"/absolute/path"},
+	}
+	if err := validateEntry("foo", e); err == nil {
+		t.Error("expected error for absolute path in project_skills_search")
+	}
+}
+
+func TestValidateEntry_ProjectSearchDotDot_Rejected(t *testing.T) {
+	e := agentEntry{
+		ProjectSkillsDir:    ".foo/skills",
+		GlobalSkillsDir:     "~/.foo/skills",
+		ProjectSkillsSearch: []string{"../escape"},
+	}
+	if err := validateEntry("foo", e); err == nil {
+		t.Error("expected error for '..' in project_skills_search")
+	}
+}
+
+func TestValidateEntry_GlobalSearchWithoutTilde_Rejected(t *testing.T) {
+	e := agentEntry{
+		ProjectSkillsDir:   ".foo/skills",
+		GlobalSkillsDir:    "~/.foo/skills",
+		GlobalSkillsSearch: []string{"/abs/path"},
+	}
+	if err := validateEntry("foo", e); err == nil {
+		t.Error("expected error for global_skills_search entry without ~/")
+	}
+}
+
+func TestValidateEntry_PmSearchWithoutTilde_Rejected(t *testing.T) {
+	e := agentEntry{
+		ProjectSkillsDir: ".foo/skills",
+		GlobalSkillsDir:  "~/.foo/skills",
+		PmSkillsSearch:   []string{"relative/path"},
+	}
+	if err := validateEntry("foo", e); err == nil {
+		t.Error("expected error for pm_skills_search entry without ~/")
+	}
+}
+
+func TestIsAbsPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"/absolute/path", true},
+		{`\windows\path`, true},
+		{"relative/path", false},
+		{"./relative", false},
+		{"", false},
+	}
+	for _, tc := range tests {
+		if got := isAbsPath(tc.input); got != tc.want {
+			t.Errorf("isAbsPath(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
 // ── containsDotDot ────────────────────────────────────────────────────────────
 
 func TestContainsDotDot(t *testing.T) {

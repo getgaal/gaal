@@ -626,3 +626,57 @@ func TestManager_Status_CleanSkill(t *testing.T) {
 		t.Errorf("expected Modified empty for clean skill, got: %v", st.Modified)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// installSkill — error paths
+// ---------------------------------------------------------------------------
+
+func TestInstallSkill_MkdirAllFailure(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permissions — skipping")
+	}
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(parent, 0o755) })
+
+	src := t.TempDir()
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("# skill"), 0o644)
+
+	err := installSkill(src, filepath.Join(parent, "new-subdir"))
+	if err == nil {
+		t.Fatal("expected error when destination parent is not writable")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// copyFile — error paths
+// ---------------------------------------------------------------------------
+
+func TestCopyFile_SourceNotFound(t *testing.T) {
+	err := copyFile("/nonexistent/source/file.txt", filepath.Join(t.TempDir(), "dst.txt"))
+	if err == nil {
+		t.Fatal("expected error for missing source file")
+	}
+}
+
+func TestCopyFile_WriteError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permissions — skipping")
+	}
+	src := t.TempDir()
+	srcFile := filepath.Join(src, "file.txt")
+	os.WriteFile(srcFile, []byte("content"), 0o644)
+
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(parent, 0o755) })
+
+	err := copyFile(srcFile, filepath.Join(parent, "dst.txt"))
+	if err == nil {
+		t.Fatal("expected error when destination parent is not writable")
+	}
+}

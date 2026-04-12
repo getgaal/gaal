@@ -122,3 +122,65 @@ func TestVcsBazaar_CurrentVersion_FakeBin(t *testing.T) {
 		t.Error("expected non-empty version")
 	}
 }
+
+func TestVcsBazaar_CurrentVersion_ExecError(t *testing.T) {
+	binDir := makeFakeBin(t, "bzr", "exit 1")
+	t.Setenv("PATH", binDir)
+	b := &VcsBazaar{}
+	_, err := b.CurrentVersion(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when bzr exits with non-zero status")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VcsBazaar - HasChanges
+// ---------------------------------------------------------------------------
+
+func TestVcsBazaar_HasChanges_NoBinary(t *testing.T) {
+	t.Setenv("PATH", "")
+	b := &VcsBazaar{}
+	_, err := b.HasChanges(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when bzr binary missing")
+	}
+}
+
+func TestVcsBazaar_HasChanges_FakeBin_Clean(t *testing.T) {
+	// Empty output from bzr status → no changes.
+	binDir := makeFakeBin(t, "bzr", "exit 0")
+	t.Setenv("PATH", binDir)
+	b := &VcsBazaar{}
+	dirty, err := b.HasChanges(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("HasChanges clean: %v", err)
+	}
+	if dirty {
+		t.Error("expected HasChanges=false for empty bzr status output")
+	}
+}
+
+func TestVcsBazaar_HasChanges_FakeBin_Dirty(t *testing.T) {
+	// Non-empty output from bzr status → has changes.
+	binDir := makeFakeBin(t, "bzr", "printf 'M  file.go'")
+	t.Setenv("PATH", binDir)
+	b := &VcsBazaar{}
+	dirty, err := b.HasChanges(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("HasChanges dirty: %v", err)
+	}
+	if !dirty {
+		t.Error("expected HasChanges=true for non-empty bzr status output")
+	}
+}
+
+func TestVcsBazaar_HasChanges_ExecError(t *testing.T) {
+	// bzr exits with non-zero — must propagate as error.
+	binDir := makeFakeBin(t, "bzr", "exit 1")
+	t.Setenv("PATH", binDir)
+	b := &VcsBazaar{}
+	_, err := b.HasChanges(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when bzr status exits with non-zero status")
+	}
+}

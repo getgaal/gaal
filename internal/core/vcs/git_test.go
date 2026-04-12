@@ -308,6 +308,20 @@ func TestVcsGit_HasChanges_NotARepo(t *testing.T) {
 	}
 }
 
+// TestVcsGit_HasChanges_BareRepo exercises the r.Worktree() error path:
+// a bare repository has no working tree, so Worktree() returns an error.
+func TestVcsGit_HasChanges_BareRepo(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := gogit.PlainInit(dir, true /* bare */); err != nil {
+		t.Fatalf("PlainInit bare: %v", err)
+	}
+	g := &VcsGit{}
+	_, err := g.HasChanges(context.Background(), dir)
+	if err == nil {
+		t.Fatal("expected error for bare repository (no working tree)")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // VcsGit - Shallow clone and hard-reset update
 // ---------------------------------------------------------------------------

@@ -112,3 +112,62 @@ func TestVcsSVN_CurrentVersion_FakeBin(t *testing.T) {
 		t.Error("expected non-empty version")
 	}
 }
+
+func TestVcsSVN_CurrentVersion_ExecError(t *testing.T) {
+	binDir := makeFakeBin(t, "svnversion", "exit 1")
+	t.Setenv("PATH", binDir)
+	s := &VcsSVN{}
+	_, err := s.CurrentVersion(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when svnversion exits with non-zero status")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VcsSVN - HasChanges
+// ---------------------------------------------------------------------------
+
+func TestVcsSVN_HasChanges_NoBinary(t *testing.T) {
+	t.Setenv("PATH", "")
+	s := &VcsSVN{}
+	_, err := s.HasChanges(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when svn binary missing")
+	}
+}
+
+func TestVcsSVN_HasChanges_FakeBin_Clean(t *testing.T) {
+	binDir := makeFakeBin(t, "svn", "exit 0")
+	t.Setenv("PATH", binDir)
+	s := &VcsSVN{}
+	dirty, err := s.HasChanges(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("HasChanges clean: %v", err)
+	}
+	if dirty {
+		t.Error("expected HasChanges=false for empty svn status output")
+	}
+}
+
+func TestVcsSVN_HasChanges_FakeBin_Dirty(t *testing.T) {
+	binDir := makeFakeBin(t, "svn", "printf 'M       file.go'")
+	t.Setenv("PATH", binDir)
+	s := &VcsSVN{}
+	dirty, err := s.HasChanges(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("HasChanges dirty: %v", err)
+	}
+	if !dirty {
+		t.Error("expected HasChanges=true for non-empty svn status output")
+	}
+}
+
+func TestVcsSVN_HasChanges_ExecError(t *testing.T) {
+	binDir := makeFakeBin(t, "svn", "exit 1")
+	t.Setenv("PATH", binDir)
+	s := &VcsSVN{}
+	_, err := s.HasChanges(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when svn status exits with non-zero status")
+	}
+}
