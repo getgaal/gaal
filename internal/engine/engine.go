@@ -31,6 +31,7 @@ type (
 	AuditReport     = render.AuditReport
 	AuditSkillEntry = render.AuditSkillEntry
 	AuditMCPEntry   = render.AuditMCPEntry
+	PlanReport      = render.PlanReport
 )
 
 // Re-exported constants from the render sub-package.
@@ -166,6 +167,13 @@ func (e *Engine) RunService(ctx context.Context, interval time.Duration) error {
 // Collect gathers the current status of all resources without side effects.
 func (e *Engine) Collect(ctx context.Context) (*render.StatusReport, error) {
 	return ops.Collect(ctx, e.repos, e.skills, e.mcps)
+}
+
+// DryRun computes what sync would do and renders the plan to os.Stdout.
+// It returns the plan so the caller can inspect HasChanges / HasErrors for
+// exit code logic.
+func (e *Engine) DryRun(ctx context.Context, format OutputFormat) (*render.PlanReport, error) {
+	return ops.RenderPlan(ctx, e.repos, e.skills, e.mcps, format)
 }
 
 // Status collects the current resource state and renders it to os.Stdout.
