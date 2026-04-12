@@ -145,6 +145,38 @@ func TestPersistConsentPreservesExisting(t *testing.T) {
 	}
 }
 
+func TestStatusEnabled(t *testing.T) {
+	t.Setenv("GAAL_TELEMETRY", "1")
+	status, source := Status(nil)
+	if status != "enabled" {
+		t.Fatalf("expected enabled, got %q", status)
+	}
+	if source != "GAAL_TELEMETRY=1" {
+		t.Fatalf("expected source GAAL_TELEMETRY=1, got %q", source)
+	}
+}
+
+func TestStatusDisabledEnv(t *testing.T) {
+	t.Setenv("DO_NOT_TRACK", "1")
+	status, source := Status(nil)
+	if status != "disabled" {
+		t.Fatalf("expected disabled, got %q", status)
+	}
+	if source != "DO_NOT_TRACK=1" {
+		t.Fatalf("expected source DO_NOT_TRACK=1, got %q", source)
+	}
+}
+
+func TestStatusUnconfigured(t *testing.T) {
+	status, source := Status(nil)
+	if status != "not configured" {
+		t.Fatalf("expected not configured, got %q", status)
+	}
+	if source != "" {
+		t.Fatalf("expected empty source, got %q", source)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }
