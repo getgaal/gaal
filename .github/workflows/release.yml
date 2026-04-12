@@ -65,6 +65,22 @@ jobs:
 
       # ── macOS code signing & notarization ──────────────────────────────────
 
+      - name: Debug — verify .p12 secret integrity
+        if: matrix.goos == 'darwin'
+        env:
+          CERTIFICATE_P12: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+        run: |
+          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/debug.p12"
+          echo "=== file info ==="
+          ls -la "$RUNNER_TEMP/debug.p12"
+          echo "=== sha256 ==="
+          shasum -a 256 "$RUNNER_TEMP/debug.p12"
+          echo "=== file type ==="
+          file "$RUNNER_TEMP/debug.p12"
+          echo "=== openssl info ==="
+          openssl pkcs12 -in "$RUNNER_TEMP/debug.p12" -nodes -info -passin "pass:${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}" -legacy 2>&1 | grep -E "BEGIN|subject=|Bag|Encrypted" || true
+          rm "$RUNNER_TEMP/debug.p12"
+
       - name: Import Apple certificate
         if: matrix.goos == 'darwin'
         uses: apple-actions/import-codesign-certs@a22d0cee6aef91737ec4f75a776ad460774970ea  # v6.0.0
@@ -75,6 +91,12 @@ jobs:
       - name: Resolve signing identity
         if: matrix.goos == 'darwin'
         run: |
+          echo "=== Search list ==="
+          security list-keychains -d user
+          echo "=== All codesigning identities ==="
+          security find-identity -v -p codesigning
+          echo "=== All identities (any policy) ==="
+          security find-identity -v
           IDENTITY=$(security find-identity -v -p codesigning \
             | grep "Developer ID Application" | head -1 \
             | sed 's/.*"\(.*\)"/\1/')
