@@ -138,13 +138,13 @@ func TestInitFromPlan_OverwritesWithForce(t *testing.T) {
 	}
 }
 
-func TestInit_TemplateHasVersionField(t *testing.T) {
-	if !strings.Contains(string(InitTemplate), "version: 1") {
-		t.Error("InitTemplate missing 'version: 1'")
+func TestInit_TemplateHasSchemaField(t *testing.T) {
+	if !strings.Contains(string(InitTemplate), "schema: 1") {
+		t.Error("InitTemplate missing 'schema: 1'")
 	}
 }
 
-func TestInitFromPlan_IncludesVersion(t *testing.T) {
+func TestInitFromPlan_IncludesSchema(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "gaal.yaml")
 	if err := InitFromPlan(dest, Plan{}, false); err != nil {
 		t.Fatalf("InitFromPlan: %v", err)
@@ -153,7 +153,7 @@ func TestInitFromPlan_IncludesVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "version: 1") {
-		t.Errorf("plan output missing 'version: 1'\n---\n%s\n---", data)
+	if !strings.Contains(string(data), "schema: 1") {
+		t.Errorf("plan output missing 'schema: 1'\n---\n%s\n---", data)
 	}
 }
