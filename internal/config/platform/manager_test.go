@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -101,5 +102,85 @@ func TestUserConfigFilePath_FallbackWhenHomeBroken(t *testing.T) {
 	}
 	if !strings.HasSuffix(got, filepath.Join("gaal", "config.yaml")) {
 		t.Errorf("got %q, expected suffix gaal/config.yaml", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UserConfigFilePath (exported) — platform-specific behaviour
+// ---------------------------------------------------------------------------
+
+func TestUserConfigFilePath_LinuxUsesXDGConfigHome(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-only test")
+	}
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+
+	got := UserConfigFilePath()
+	want := filepath.Join(xdg, "gaal", "config.yaml")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestUserConfigFilePath_LinuxDefaultsToConfigDir(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-only test")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	got := UserConfigFilePath()
+	want := filepath.Join(home, ".config", "gaal", "config.yaml")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestUserConfigFilePath_WindowsUsesAppData(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-only test")
+	}
+	got := UserConfigFilePath()
+	if got == "" {
+		t.Fatal("UserConfigFilePath returned empty string on Windows")
+	}
+	if !strings.HasSuffix(got, filepath.Join("gaal", "config.yaml")) {
+		t.Errorf("got %q, expected suffix gaal\\config.yaml", got)
+	}
+	// os.UserConfigDir on Windows returns %AppData% — verify the path sits under it.
+	appData := os.Getenv("APPDATA")
+	if appData != "" && !strings.HasPrefix(got, appData) {
+		t.Errorf("got %q, expected path under APPDATA=%q", got, appData)
+	}
+}
+
+func TestUserConfigFilePath_DarwinExported_UsesXDG(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only test")
+	}
+	xdg := filepath.Join(t.TempDir(), "xdg-config")
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+
+	got := UserConfigFilePath()
+	want := filepath.Join(xdg, "gaal", "config.yaml")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestUserConfigFilePath_DarwinExported_NoXDG(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only test")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	got := UserConfigFilePath()
+	want := filepath.Join(home, ".config", "gaal", "config.yaml")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

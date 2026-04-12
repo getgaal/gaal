@@ -24,6 +24,20 @@ func writeYAML(t *testing.T, content string) string {
 }
 
 // ---------------------------------------------------------------------------
+// UserConfigFilePath
+// ---------------------------------------------------------------------------
+
+func TestUserConfigFilePath_DelegatesToPlatform(t *testing.T) {
+	got := UserConfigFilePath()
+	if got == "" {
+		t.Fatal("UserConfigFilePath returned empty string")
+	}
+	if !strings.HasSuffix(got, filepath.Join("gaal", "config.yaml")) {
+		t.Errorf("got %q, expected suffix gaal/config.yaml", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Load
 // ---------------------------------------------------------------------------
 
