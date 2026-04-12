@@ -33,13 +33,13 @@ jobs:
   # Build: compile the binary on Linux, macOS, and Windows (make build)
   # ──────────────────────────────────────────────────────────────────────────
   build:
-    name: Build / ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Build / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     needs: lint
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('["self-hosted", "macos-latest", "windows-latest"]') || fromJson('["self-hosted", "macos-latest"]') }}
+        include: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('[{"name":"linux","runner":"self-hosted"},{"name":"macOS","runner":["self-hosted","macOS","ARM64"]},{"name":"windows","runner":"windows-latest"}]') || fromJson('[{"name":"linux","runner":"self-hosted"},{"name":"macOS","runner":["self-hosted","macOS","ARM64"]}]') }}
     steps:
       - uses: actions/checkout@v6
 
@@ -55,7 +55,7 @@ jobs:
         if: github.event_name == 'push' || github.event_name == 'workflow_call'
         uses: actions/upload-artifact@v7
         with:
-          name: gaal-${{ matrix.os }}
+          name: gaal-${{ matrix.name }}
           path: dist/
           retention-days: 7
 
@@ -64,13 +64,13 @@ jobs:
   # (make test-race)
   # ──────────────────────────────────────────────────────────────────────────
   test:
-    name: Test / ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Test / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     needs: build
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('["self-hosted", "macos-latest", "windows-latest"]') || fromJson('["self-hosted", "macos-latest"]') }}
+        include: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('[{"name":"linux","runner":"self-hosted"},{"name":"macOS","runner":["self-hosted","macOS","ARM64"]},{"name":"windows","runner":"windows-latest"}]') || fromJson('[{"name":"linux","runner":"self-hosted"},{"name":"macOS","runner":["self-hosted","macOS","ARM64"]}]') }}
     steps:
       - uses: actions/checkout@v6
 

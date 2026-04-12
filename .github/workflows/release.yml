@@ -35,8 +35,8 @@ jobs:
         include:
           - { goos: linux,   goarch: amd64, runner: self-hosted }
           - { goos: linux,   goarch: arm64, runner: self-hosted }
-          - { goos: darwin,  goarch: amd64, runner: macos-latest }
-          - { goos: darwin,  goarch: arm64, runner: macos-latest }
+          - { goos: darwin,  goarch: amd64, runner: [self-hosted, macOS, ARM64] }
+          - { goos: darwin,  goarch: arm64, runner: [self-hosted, macOS, ARM64] }
           - { goos: windows, goarch: amd64, runner: self-hosted, ext: .exe }
           - { goos: windows, goarch: arm64, runner: self-hosted, ext: .exe }
     steps:
