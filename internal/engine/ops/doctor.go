@@ -115,15 +115,7 @@ func checkSkillSources(cfg *config.Config, offline bool) []Finding {
 			}
 		}
 
-		if isLocalSkillPath(sk.Source) {
-			if _, err := os.Stat(sk.Source); err != nil {
-				findings = append(findings, Finding{
-					Section:  "skills",
-					Severity: SeverityError,
-					Message:  fmt.Sprintf("local skill path does not exist: %s", sk.Source),
-				})
-			}
-		} else {
+		if isRemoteSource(sk.Source) {
 			// Remote source (URL or GitHub shorthand).
 			if offline {
 				findings = append(findings, Finding{
@@ -140,6 +132,15 @@ func checkSkillSources(cfg *config.Config, offline bool) []Finding {
 						Message:  fmt.Sprintf("remote skill source unreachable: %s (%v)", url, err),
 					})
 				}
+			}
+		} else {
+			// Local path.
+			if _, err := os.Stat(sk.Source); err != nil {
+				findings = append(findings, Finding{
+					Section:  "skills",
+					Severity: SeverityError,
+					Message:  fmt.Sprintf("local skill path does not exist: %s", sk.Source),
+				})
 			}
 		}
 	}
@@ -203,36 +204,46 @@ func checkAgents() []Finding {
 	}
 }
 
-// isLocalSkillPath returns true for paths starting with /, ./, ../, ~/, or
-// absolute paths. Returns false for URLs and GitHub shorthands (owner/repo).
-func isLocalSkillPath(source string) bool {
-	if strings.HasPrefix(source, "/") ||
-		strings.HasPrefix(source, "./") ||
-		strings.HasPrefix(source, "../") ||
-		strings.HasPrefix(source, "~/") ||
-		strings.HasPrefix(source, `.\`) ||
-		strings.HasPrefix(source, `..\`) ||
-		strings.HasPrefix(source, `~\`) {
+// isRemoteSource returns true for URLs and GitHub shorthands.
+func isRemoteSource(source string) bool {
+	if strings.HasPrefix(source, "http://") ||
+		strings.HasPrefix(source, "https://") ||
+		strings.HasPrefix(source, "git@") ||
+		strings.HasPrefix(source, "ssh://") {
 		return true
 	}
-	if filepath.IsAbs(source) {
+	// GitHub shorthand: exactly owner/repo — no scheme, no dots in owner.
+	parts := strings.Split(source, "/")
+	if len(parts) == 2 && !strings.Contains(parts[0], ".") &&
+		!strings.HasPrefix(source, ".") && !strings.HasPrefix(source, "~") {
 		return true
 	}
 	return false
 }
 
-// resolveSkillURL returns the URL to use for a reachability check.
-// GitHub shorthands (owner/repo) are converted to https://github.com/owner/repo.
+// resolveSkillURL returns an HTTPS URL for a reachability check.
+// Handles GitHub shorthands (owner/repo), git@ SSH URLs, and plain HTTPS URLs.
 func resolveSkillURL(source string) string {
 	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
 		return source
 	}
-	// Assume GitHub shorthand: exactly owner/repo.
-	parts := strings.Split(source, "/")
-	if len(parts) == 2 {
-		return "https://github.com/" + source
+	// git@github.com:owner/repo.git → https://github.com/owner/repo
+	if strings.HasPrefix(source, "git@") {
+		// git@host:owner/repo.git
+		s := strings.TrimPrefix(source, "git@")
+		s = strings.TrimSuffix(s, ".git")
+		s = strings.Replace(s, ":", "/", 1)
+		return "https://" + s
 	}
-	return source
+	// ssh://git@github.com/owner/repo.git
+	if strings.HasPrefix(source, "ssh://") {
+		s := strings.TrimPrefix(source, "ssh://")
+		s = strings.TrimPrefix(s, "git@")
+		s = strings.TrimSuffix(s, ".git")
+		return "https://" + s
+	}
+	// GitHub shorthand: owner/repo
+	return "https://github.com/" + source
 }
 
 // checkRemoteReachable performs an HTTP HEAD request with a 5-second timeout

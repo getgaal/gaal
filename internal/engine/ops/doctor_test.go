@@ -258,3 +258,44 @@ func TestDoctorReportJSON(t *testing.T) {
 		t.Errorf("expected exit_code=0, got %d", decoded.ExitCode)
 	}
 }
+
+func TestResolveSkillURL(t *testing.T) {
+	tests := []struct {
+		source   string
+		expected string
+	}{
+		{"owner/repo", "https://github.com/owner/repo"},
+		{"https://github.com/owner/repo", "https://github.com/owner/repo"},
+		{"git@github.com:owner/repo.git", "https://github.com/owner/repo"},
+		{"ssh://git@github.com/owner/repo.git", "https://github.com/owner/repo"},
+		{"git@gitlab.com:team/project.git", "https://gitlab.com/team/project"},
+	}
+	for _, tt := range tests {
+		got := resolveSkillURL(tt.source)
+		if got != tt.expected {
+			t.Errorf("resolveSkillURL(%q) = %q, want %q", tt.source, got, tt.expected)
+		}
+	}
+}
+
+func TestIsRemoteSource(t *testing.T) {
+	tests := []struct {
+		source   string
+		expected bool
+	}{
+		{"owner/repo", true},
+		{"https://github.com/owner/repo", true},
+		{"git@github.com:owner/repo.git", true},
+		{"ssh://git@github.com/owner/repo.git", true},
+		{"/absolute/path", false},
+		{"./relative/path", false},
+		{"../parent/path", false},
+		{"~/home/path", false},
+	}
+	for _, tt := range tests {
+		got := isRemoteSource(tt.source)
+		if got != tt.expected {
+			t.Errorf("isRemoteSource(%q) = %v, want %v", tt.source, got, tt.expected)
+		}
+	}
+}
