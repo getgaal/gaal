@@ -187,7 +187,7 @@ func LoadChain(workspacePath string) (*ResolvedConfig, error) {
 	return resolved, nil
 }
 
-// GenerateSchema returns the JSON Schema (draft-07) for the Config type.
+// GenerateSchema returns the JSON Schema (draft 2020-12) for the Config type.
 // The active schema.Generator (swappable via schema.Set) is used.
 func GenerateSchema() ([]byte, error) {
 	return schema.Generate(&Config{})
