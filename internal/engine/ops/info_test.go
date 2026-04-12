@@ -428,6 +428,45 @@ func TestRenderAgentInfo_NoMCPShownAsDash(t *testing.T) {
 	}
 }
 
+func TestRenderAgentInfo_InstalledFirst(t *testing.T) {
+	entries := []render.AgentEntry{
+		{Name: "alpha", Installed: false, Source: "builtin"},
+		{Name: "beta", Installed: true, Source: "builtin"},
+		{Name: "gamma", Installed: false, Source: "builtin"},
+		{Name: "delta", Installed: true, Source: "builtin"},
+	}
+	var buf bytes.Buffer
+	if err := renderAgentInfo(&buf, entries, ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := pterm.RemoveColorFromString(buf.String())
+	// beta and delta (installed) should appear before alpha and gamma.
+	betaIdx := strings.Index(out, "beta")
+	deltaIdx := strings.Index(out, "delta")
+	alphaIdx := strings.Index(out, "alpha")
+	gammaIdx := strings.Index(out, "gamma")
+	if betaIdx < 0 || deltaIdx < 0 || alphaIdx < 0 || gammaIdx < 0 {
+		t.Fatalf("missing agent names in output:\n%s", out)
+	}
+	if betaIdx > alphaIdx || deltaIdx > gammaIdx {
+		t.Error("expected installed agents to appear before uninstalled agents")
+	}
+}
+
+func TestRenderAgentInfo_ShowsInstalledStatus(t *testing.T) {
+	entries := []render.AgentEntry{
+		{Name: "myagent", Installed: true, Source: "builtin", ProjectSkillsDir: ".test/skills", GlobalSkillsDir: "~/.test/skills"},
+	}
+	var buf bytes.Buffer
+	if err := renderAgentInfo(&buf, entries, ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := pterm.RemoveColorFromString(buf.String())
+	if !strings.Contains(out, "yes") {
+		t.Error("expected 'yes' for installed agent")
+	}
+}
+
 func TestRenderAgentInfo_GenericConventionShowsResolvedDir(t *testing.T) {
 	entries := []render.AgentEntry{
 		{
