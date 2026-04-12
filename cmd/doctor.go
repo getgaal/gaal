@@ -56,6 +56,10 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 		cfg = &config.Config{}
 	}
 
+	// Telemetry field is excluded from config merging, so read it
+	// directly from the user config file.
+	cfg.Telemetry = loadUserTelemetryConfig()
+
 	eng := engine.NewWithOptions(cfg, engineOpts)
 	report := eng.Doctor(ops.DoctorOptions{Offline: doctorOffline})
 
