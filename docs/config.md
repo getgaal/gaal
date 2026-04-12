@@ -323,8 +323,9 @@ When working on any code that touches the config system, follow these rules:
    overrides `UserConfigDir()` to prefer `~/.config`.
 
 4. **Schema = runtime.** Any new field added to `Config` must be reflected in
-   the generated `dist/schema.json`. Run `make build` (which regenerates the
-   schema) and commit the updated `dist/schema.json`.
+   the generated schema output. Run `make build` (which regenerates the
+   schema) and keep the generated schema in sync with the current build output
+   location.
 
 5. **Test coverage target: 100% for `internal/config`.** Every new function or
    behaviour needs at least one test. Use table-driven tests for functions with
