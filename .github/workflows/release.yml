@@ -88,6 +88,24 @@ jobs:
           p12-file-base64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
 
+      - name: Install Apple Developer ID intermediate CA
+        if: matrix.goos == 'darwin'
+        run: |
+          # The Developer ID Application leaf cert requires the
+          # "Developer ID Certification Authority G2" intermediate to build
+          # a trusted chain. GitHub-hosted runners ship it; fresh self-hosted
+          # Macs may not. See https://www.apple.com/certificateauthority/
+          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
+            https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          SUBJECT=$(openssl x509 -in "$RUNNER_TEMP/DeveloperIDG2CA.cer" -inform DER -noout -subject)
+          echo "Downloaded intermediate: $SUBJECT"
+          if ! echo "$SUBJECT" | grep -q "Apple Inc"; then
+            echo "::error::Downloaded intermediate is not from Apple Inc"
+            exit 1
+          fi
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k signing_temp.keychain
+          rm "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+
       - name: Resolve signing identity
         if: matrix.goos == 'darwin'
         run: |
