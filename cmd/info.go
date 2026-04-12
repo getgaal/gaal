@@ -48,7 +48,7 @@ func runInfo(_ *cobra.Command, args []string) error {
 	}
 
 	if resolvedCfg == nil {
-		return fmt.Errorf("loading config: no configuration found")
+		return fmt.Errorf("loading config: %w", resolvedCfgErr)
 	}
 	cfg := resolvedCfg
 

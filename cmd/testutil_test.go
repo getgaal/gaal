@@ -40,9 +40,11 @@ func setConfig(t *testing.T, path string) {
 	t.Helper()
 	orig := cfgFile
 	origResolved := resolvedCfg
+	origErr := resolvedCfgErr
 	t.Cleanup(func() {
 		cfgFile = orig
 		resolvedCfg = origResolved
+		resolvedCfgErr = origErr
 	})
 	cfgFile = path
 	rc, err := config.LoadChain(path)
@@ -50,4 +52,5 @@ func setConfig(t *testing.T, path string) {
 		t.Fatalf("setConfig: %v", err)
 	}
 	resolvedCfg = rc
+	resolvedCfgErr = nil
 }

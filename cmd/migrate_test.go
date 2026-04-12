@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,6 +103,7 @@ func TestMigrate_InvalidConfig(t *testing.T) {
 
 	cfgFile = bad
 	resolvedCfg = nil // invalid config — simulate load failure
+	resolvedCfgErr = fmt.Errorf("no configuration found (tried: [%s])", bad)
 	migrateTarget = "community"
 	engineOpts = engine.Options{WorkDir: workDir}
 
