@@ -7,10 +7,14 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
+	"gaal/internal/config"
 	"gaal/internal/engine"
 	"gaal/internal/logger"
+	"gaal/internal/telemetry"
 )
 
 var (
@@ -55,6 +59,19 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 			return err
 		}
 		engineOpts = opts
+
+		// Telemetry: resolve consent state and initialise.
+		if !skipTelemetry(cmd) {
+			userCfg := loadUserTelemetryConfig()
+			var promptFn func() (bool, error)
+			if term.IsTerminal(int(os.Stdin.Fd())) {
+				promptFn = showConsentPrompt
+			}
+			if _, err := telemetry.Init(userCfg, promptFn, Version); err != nil {
+				slog.Debug("telemetry init failed", "err", err)
+			}
+		}
+
 		return nil
 	},
 	// No RunE: invoking gaal without a sub-command prints the banner (via
@@ -142,4 +159,41 @@ func setupLogger() error {
 	}
 	_, err := logger.Setup(level, logFile)
 	return err
+}
+
+// skipTelemetry returns true for commands that should never trigger
+// telemetry or the consent prompt.
+func skipTelemetry(cmd *cobra.Command) bool {
+	name := cmd.Name()
+	return name == "version" || name == "schema" ||
+		(cmd.HasParent() && cmd.Parent().Name() == "completion")
+}
+
+// loadUserTelemetryConfig reads the telemetry field from the user config
+// file without going through the full config merge chain.
+func loadUserTelemetryConfig() *bool {
+	cfg, err := config.Load(config.UserConfigFilePath())
+	if err != nil {
+		return nil
+	}
+	return cfg.Telemetry
+}
+
+// showConsentPrompt displays the opt-in telemetry prompt.
+func showConsentPrompt() (bool, error) {
+	fmt.Println()
+	fmt.Println("gaal can send anonymous usage pings to help us understand adoption.")
+	fmt.Println("No config contents, file paths, or identifiers are ever sent.")
+	fmt.Println("See PRIVACY_POLICY.md for details.")
+	fmt.Println()
+
+	result, err := pterm.DefaultInteractiveConfirm.
+		WithDefaultValue(false).
+		WithDefaultText("Enable anonymous telemetry?").
+		Show()
+	if err != nil {
+		return false, err
+	}
+	fmt.Println()
+	return result, nil
 }
