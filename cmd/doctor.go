@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -75,7 +74,13 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 }
 
 func renderDoctorTable(report *ops.DoctorReport) {
-	sections := []string{"config", "telemetry", "skills", "mcps", "agents"}
+	sectionDisplay := map[string]string{
+		"telemetry": "Telemetry",
+		"skills":    "Skills",
+		"mcps":      "MCP",
+		"agents":    "Agents",
+	}
+	sections := []string{"telemetry", "skills", "mcps", "agents"}
 	for _, section := range sections {
 		var sectionFindings []ops.Finding
 		for _, f := range report.Findings {
@@ -87,7 +92,7 @@ func renderDoctorTable(report *ops.DoctorReport) {
 			continue
 		}
 
-		title := strings.ToUpper(section[:1]) + section[1:]
+		title := sectionDisplay[section]
 		styled := pterm.NewStyle(pterm.Bold, pterm.FgCyan).Sprintf("── %s ──", title)
 		fmt.Printf("\n%s\n", styled)
 

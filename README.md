@@ -147,6 +147,24 @@ gaal agents -o json          # machine-readable output
 Lists every registered coding agent and whether it is installed on this machine.
 Pass a name for a detailed view with search paths, skill counts, and MCP config.
 
+### Health check
+
+```bash
+gaal doctor
+```
+
+Runs sanity checks on your configuration: validates gaal.yaml, checks that
+skill sources are reachable, verifies MCP target files, and reports agent
+and telemetry status.
+
+```bash
+gaal doctor --offline     # skip network checks
+gaal doctor --no-upsell   # suppress the Community Edition message
+gaal doctor -o json       # machine-readable JSON output
+```
+
+Exit codes: **0** = all checks passed, **1** = warnings, **2** = errors.
+
 ### Generate the JSON Schema
 
 ```bash
