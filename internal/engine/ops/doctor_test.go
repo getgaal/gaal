@@ -1,0 +1,260 @@
+package ops
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"gaal/internal/config"
+)
+
+func TestDoctorCleanConfig(t *testing.T) {
+	cfg := &config.Config{}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	if report.ExitCode != 0 {
+		t.Errorf("expected exit code 0 for clean config, got %d", report.ExitCode)
+	}
+}
+
+func TestDoctorSkillSourceLocalMissing(t *testing.T) {
+	cfg := &config.Config{
+		Skills: []config.SkillConfig{
+			{Source: "/nonexistent/path/that/does/not/exist", Agents: []string{"claude-code"}},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	if report.ExitCode != 2 {
+		t.Errorf("expected exit code 2, got %d", report.ExitCode)
+	}
+
+	found := false
+	for _, f := range report.Findings {
+		if f.Severity == SeverityError && strings.Contains(f.Message, "/nonexistent/path") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected error finding about missing local path")
+	}
+}
+
+func TestDoctorSkillSourceLocalExists(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Skills: []config.SkillConfig{
+			{Source: dir, Agents: []string{"claude-code"}},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	for _, f := range report.Findings {
+		if f.Severity == SeverityError && f.Section == "skills" {
+			t.Errorf("unexpected error finding in skills section: %s", f.Message)
+		}
+	}
+}
+
+func TestDoctorSkillSourceRemoteReachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		Skills: []config.SkillConfig{
+			{Source: srv.URL, Agents: []string{"claude-code"}},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: false})
+
+	for _, f := range report.Findings {
+		if f.Severity == SeverityError && f.Section == "skills" {
+			t.Errorf("unexpected error finding in skills section: %s", f.Message)
+		}
+	}
+}
+
+func TestDoctorSkillSourceRemoteUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		Skills: []config.SkillConfig{
+			{Source: srv.URL, Agents: []string{"claude-code"}},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: false})
+
+	found := false
+	for _, f := range report.Findings {
+		if f.Severity == SeverityError && f.Section == "skills" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected error finding for unreachable remote source")
+	}
+}
+
+func TestDoctorOfflineSkipsNetwork(t *testing.T) {
+	cfg := &config.Config{
+		Skills: []config.SkillConfig{
+			{Source: "owner/repo", Agents: []string{"claude-code"}},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	for _, f := range report.Findings {
+		if f.Severity == SeverityError && f.Section == "skills" {
+			t.Errorf("unexpected error finding in skills section (offline should skip network): %s", f.Message)
+		}
+	}
+}
+
+func TestDoctorMCPTargetValid(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "mcp.json")
+	os.WriteFile(target, []byte(`{"mcpServers": {}}`), 0o644)
+
+	cfg := &config.Config{
+		MCPs: []config.MCPConfig{
+			{Name: "test", Target: target},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	for _, f := range report.Findings {
+		if f.Severity == SeverityError && f.Section == "mcps" {
+			t.Errorf("unexpected error finding in mcps section: %s", f.Message)
+		}
+	}
+}
+
+func TestDoctorMCPTargetInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "mcp.json")
+	os.WriteFile(target, []byte(`not valid json`), 0o644)
+
+	cfg := &config.Config{
+		MCPs: []config.MCPConfig{
+			{Name: "test", Target: target},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	found := false
+	for _, f := range report.Findings {
+		if f.Severity == SeverityWarning && f.Section == "mcps" && strings.Contains(f.Message, "invalid JSON") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected warning finding about invalid JSON")
+	}
+}
+
+func TestDoctorMCPTargetOutsideHome(t *testing.T) {
+	// Use a target path under /tmp which is outside any reasonable $HOME.
+	dir := t.TempDir()
+	target := filepath.Join(dir, "mcp.json")
+	os.WriteFile(target, []byte(`{}`), 0o644)
+
+	// Set HOME to a different directory so the target is "outside $HOME".
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cfg := &config.Config{
+		MCPs: []config.MCPConfig{
+			{Name: "test", Target: target},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	found := false
+	for _, f := range report.Findings {
+		if f.Severity == SeverityWarning && f.Section == "mcps" && strings.Contains(f.Message, "outside $HOME") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning about target outside $HOME, findings: %+v", report.Findings)
+	}
+}
+
+func TestDoctorExitCodeWarnings(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "mcp.json")
+	os.WriteFile(target, []byte(`not json`), 0o644)
+
+	cfg := &config.Config{
+		MCPs: []config.MCPConfig{
+			{Name: "test", Target: target},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	// Should have at least one warning and no errors in the mcps section.
+	hasWarning := false
+	hasError := false
+	for _, f := range report.Findings {
+		if f.Severity == SeverityWarning {
+			hasWarning = true
+		}
+		if f.Severity == SeverityError {
+			hasError = true
+		}
+	}
+	if !hasWarning {
+		t.Error("expected at least one warning finding")
+	}
+	if hasError {
+		t.Error("unexpected error finding — wanted warnings only for exit code 1")
+	}
+	if report.ExitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", report.ExitCode)
+	}
+}
+
+func TestDoctorReportJSON(t *testing.T) {
+	report := &DoctorReport{
+		Findings: []Finding{
+			{Section: "telemetry", Severity: SeverityInfo, Message: "enabled via GAAL_TELEMETRY=1"},
+		},
+		ExitCode: 0,
+	}
+
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var decoded DoctorReport
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(decoded.Findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(decoded.Findings))
+	}
+	if decoded.Findings[0].Section != "telemetry" {
+		t.Errorf("expected section=telemetry, got %q", decoded.Findings[0].Section)
+	}
+	if decoded.Findings[0].Severity != SeverityInfo {
+		t.Errorf("expected severity=info, got %q", decoded.Findings[0].Severity)
+	}
+	if decoded.ExitCode != 0 {
+		t.Errorf("expected exit_code=0, got %d", decoded.ExitCode)
+	}
+}
