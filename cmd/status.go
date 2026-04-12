@@ -8,6 +8,7 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/engine"
+	"gaal/internal/telemetry"
 )
 
 var statusCmd = &cobra.Command{
@@ -27,9 +28,11 @@ func init() {
 func runStatus(_ *cobra.Command, _ []string) error {
 	cfg, err := config.LoadChain(cfgFile)
 	if err != nil {
+		telemetry.TrackError("status", err)
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	telemetry.Track("status")
 	return engine.NewWithOptions(cfg, engineOpts).
 		Status(context.Background(), engine.OutputFormat(outputFormat))
 }

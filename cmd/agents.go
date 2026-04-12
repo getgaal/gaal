@@ -13,6 +13,7 @@ import (
 	"gaal/internal/config"
 	"gaal/internal/engine"
 	"gaal/internal/engine/render"
+	"gaal/internal/telemetry"
 )
 
 var (
@@ -42,6 +43,7 @@ func init() {
 }
 
 func runAgents(_ *cobra.Command, args []string) error {
+	telemetry.Track("agents")
 	eng := engine.NewWithOptions(&config.Config{}, engineOpts)
 	w := os.Stdout
 	format := engine.OutputFormat(outputFormat)
