@@ -291,6 +291,25 @@ Use `gaal agents` to list all registered agents (built-in + custom) and verify y
 
 ---
 
+## Graduation path to gaal Community
+
+When your team outgrows single-user Lite (shared configs, drift detection,
+approval workflows), gaal Community Edition picks up where Lite leaves off.
+
+The migration command validates your current configuration and confirms it is
+ready to push to a Community instance:
+
+```bash
+gaal migrate --to community https://community.example.com
+gaal migrate --to community https://community.example.com --dry-run
+```
+
+Community Edition is not yet publicly available. Running `gaal migrate` today
+validates your YAML and prints what would be migrated. Subscribe at
+<https://getgaal.com> to be notified when Community ships.
+
+---
+
 ## Development
 
 ```bash

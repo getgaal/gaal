@@ -209,3 +209,10 @@ func (e *Engine) BuildImportCandidates(ctx context.Context, scope ops.Scope) (op
 func (e *Engine) InitFromPlan(dest string, plan ops.Plan, force bool) error {
 	return ops.InitFromPlan(dest, plan, force)
 }
+
+// Migrate validates the configuration and returns a summary of what would be
+// migrated to a Community Edition instance. The actual migration is not yet
+// implemented — this stub reserves the CLI surface.
+func (e *Engine) Migrate(target, url string, dryRun bool) (*ops.MigrateResult, error) {
+	return ops.Migrate(e.cfg, target, url, dryRun)
+}
