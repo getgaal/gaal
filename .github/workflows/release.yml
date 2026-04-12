@@ -67,32 +67,15 @@ jobs:
 
       - name: Import Apple certificate
         if: matrix.goos == 'darwin'
-        env:
-          CERTIFICATE_P12: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        uses: apple-actions/import-codesign-certs@a22d0cee6aef91737ec4f75a776ad460774970ea  # v6.0.0
+        with:
+          p12-file-base64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+
+      - name: Resolve signing identity
+        if: matrix.goos == 'darwin'
         run: |
-          KEYCHAIN="build.keychain"
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security set-keychain-settings -t 3600 "$KEYCHAIN"
-
-          # Add build keychain to search list while keeping the login keychain
-          # (which contains Apple's intermediate certificates needed for a valid chain)
-          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
-
-          echo "$CERTIFICATE_P12" | base64 --decode > /tmp/cert.p12
-          security import /tmp/cert.p12 -k "$KEYCHAIN" \
-            -P "$CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign
-          rm /tmp/cert.p12
-
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-
-          # Resolve the full signing identity from the imported certificate
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
+          IDENTITY=$(security find-identity -v -p codesigning \
             | grep "Developer ID Application" | head -1 \
             | sed 's/.*"\(.*\)"/\1/')
           if [ -z "$IDENTITY" ]; then
@@ -101,7 +84,6 @@ jobs:
           fi
           echo "Found identity: $IDENTITY"
           echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
-          echo "BUILD_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
       - name: Codesign binary
         if: matrix.goos == 'darwin'
@@ -142,9 +124,7 @@ jobs:
           # Show signing details for CI logs
           codesign -dvv dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
 
-      - name: Clean up keychain
-        if: matrix.goos == 'darwin' && always()
-        run: security delete-keychain "$BUILD_KEYCHAIN" 2>/dev/null || true
+      # Keychain cleanup is handled by the import-codesign-certs action's post step.
 
       # ── Upload artifact ────────────────────────────────────────────────────
 
