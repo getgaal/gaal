@@ -513,6 +513,63 @@ mcps:
 }
 
 // ---------------------------------------------------------------------------
+// Telemetry field
+// ---------------------------------------------------------------------------
+
+func TestTelemetryFieldLoadedFromYAML(t *testing.T) {
+	p := writeYAML(t, "telemetry: true\n")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Telemetry == nil {
+		t.Fatal("expected Telemetry to be non-nil, got nil")
+	}
+	if !*cfg.Telemetry {
+		t.Errorf("expected Telemetry to be true, got false")
+	}
+}
+
+func TestTelemetryFieldNilWhenAbsent(t *testing.T) {
+	p := writeYAML(t, "skills:\n  - source: owner/repo\n")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Telemetry != nil {
+		t.Errorf("expected Telemetry to be nil when absent, got %v", *cfg.Telemetry)
+	}
+}
+
+func TestTelemetryNotMerged(t *testing.T) {
+	dir := t.TempDir()
+
+	lower := filepath.Join(dir, "lower.yaml")
+	os.WriteFile(lower, []byte("telemetry: true\n"), 0o644)
+
+	higher := filepath.Join(dir, "higher.yaml")
+	os.WriteFile(higher, []byte("skills:\n  - source: owner/repo\n"), 0o644)
+
+	cfgLow, err := Load(lower)
+	if err != nil {
+		t.Fatalf("Load lower: %v", err)
+	}
+	cfgHigh, err := Load(higher)
+	if err != nil {
+		t.Fatalf("Load higher: %v", err)
+	}
+
+	merged := &Config{}
+	merged.mergeFrom(cfgLow)
+	merged.mergeFrom(cfgHigh)
+
+	// Telemetry is intentionally excluded from merging; higher config's nil wins.
+	if merged.Telemetry != nil {
+		t.Errorf("expected Telemetry to be nil after merge (higher has no telemetry), got %v", *merged.Telemetry)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 
