@@ -122,3 +122,62 @@ func TestVcsMercurial_CurrentVersion_FakeBin(t *testing.T) {
 		t.Error("expected non-empty version")
 	}
 }
+
+func TestVcsMercurial_CurrentVersion_ExecError(t *testing.T) {
+	binDir := makeFakeBin(t, "hg", "exit 1")
+	t.Setenv("PATH", binDir)
+	m := &VcsMercurial{}
+	_, err := m.CurrentVersion(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when hg exits with non-zero status")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// VcsMercurial - HasChanges
+// ---------------------------------------------------------------------------
+
+func TestVcsMercurial_HasChanges_NoBinary(t *testing.T) {
+	t.Setenv("PATH", "")
+	m := &VcsMercurial{}
+	_, err := m.HasChanges(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when hg binary missing")
+	}
+}
+
+func TestVcsMercurial_HasChanges_FakeBin_Clean(t *testing.T) {
+	binDir := makeFakeBin(t, "hg", "exit 0")
+	t.Setenv("PATH", binDir)
+	m := &VcsMercurial{}
+	dirty, err := m.HasChanges(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("HasChanges clean: %v", err)
+	}
+	if dirty {
+		t.Error("expected HasChanges=false for empty hg status output")
+	}
+}
+
+func TestVcsMercurial_HasChanges_FakeBin_Dirty(t *testing.T) {
+	binDir := makeFakeBin(t, "hg", "printf 'M file.go'")
+	t.Setenv("PATH", binDir)
+	m := &VcsMercurial{}
+	dirty, err := m.HasChanges(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("HasChanges dirty: %v", err)
+	}
+	if !dirty {
+		t.Error("expected HasChanges=true for non-empty hg status output")
+	}
+}
+
+func TestVcsMercurial_HasChanges_ExecError(t *testing.T) {
+	binDir := makeFakeBin(t, "hg", "exit 1")
+	t.Setenv("PATH", binDir)
+	m := &VcsMercurial{}
+	_, err := m.HasChanges(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected error when hg status exits with non-zero status")
+	}
+}

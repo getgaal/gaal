@@ -57,3 +57,27 @@ func TestCmdOutput_MissingBinary(t *testing.T) {
 		t.Fatal("expected error for missing binary")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// cmdOutput — non-zero exit and context cancellation
+// ---------------------------------------------------------------------------
+
+func TestCmdOutput_NonZeroExit(t *testing.T) {
+	binDir := makeFakeBin(t, "fail-cmd", "exit 1")
+	t.Setenv("PATH", binDir)
+	_, err := cmdOutput(context.Background(), t.TempDir(), "fail-cmd")
+	if err == nil {
+		t.Fatal("expected error for non-zero exit")
+	}
+}
+
+func TestCmdOutput_ContextCancelled(t *testing.T) {
+	binDir := makeFakeBin(t, "slow-cmd", "sleep 30")
+	t.Setenv("PATH", binDir)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before starting
+	_, err := cmdOutput(ctx, t.TempDir(), "slow-cmd")
+	if err == nil {
+		t.Fatal("expected error for pre-cancelled context")
+	}
+}

@@ -376,3 +376,86 @@ func TestIsRemoteSource(t *testing.T) {
 		}
 	}
 }
+
+func TestDoctorMCPTargetNotExistYet(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	cfg := &config.Config{
+		MCPs: []config.ConfigMcp{
+			{Name: "test-mcp", Target: filepath.Join(home, "nonexistent.json")},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	found := false
+	for _, f := range report.Findings {
+		if f.Section == "mcps" && f.Severity == SeverityInfo && strings.Contains(f.Message, "will be created on sync") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected info finding about target not existing yet; findings: %+v", report.Findings)
+	}
+}
+
+func TestDoctorMCPTarget_Unreadable(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permissions — skipping")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	tmp, err := os.CreateTemp(home, "mcp*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp.Close()
+	if err := os.Chmod(tmp.Name(), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(tmp.Name(), 0o644) })
+
+	cfg := &config.Config{
+		MCPs: []config.ConfigMcp{
+			{Name: "test-mcp", Target: tmp.Name()},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	found := false
+	for _, f := range report.Findings {
+		if f.Section == "mcps" && f.Severity == SeverityError && strings.Contains(f.Message, "unreadable") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected error finding for unreadable MCP target; findings: %+v", report.Findings)
+	}
+}
+
+func TestDoctorSkillSources_DuplicateSource(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Skills: []config.ConfigSkill{
+			{Source: dir, Agents: []string{"claude-code"}},
+			{Source: dir, Agents: []string{"claude-code"}},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+
+	found := false
+	for _, f := range report.Findings {
+		if f.Section == "skills" && f.Severity == SeverityWarning && strings.Contains(f.Message, "duplicate") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning for duplicate skill source; findings: %+v", report.Findings)
+	}
+}

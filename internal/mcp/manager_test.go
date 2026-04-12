@@ -607,3 +607,100 @@ func TestLoadServers_InvalidJSON(t *testing.T) {
 		t.Error("expected error for invalid JSON, got nil")
 	}
 }
+
+func TestLoadServers_InvalidMCPServersType(t *testing.T) {
+	// mcpServers exists but is a number, not an object.
+	f := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(f, []byte(`{"mcpServers": 123}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadServers(f)
+	if err == nil {
+		t.Fatal("expected error when mcpServers is not a JSON object")
+	}
+}
+
+func TestLoadServers_ReadError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permissions — skipping")
+	}
+	tmp, err := os.CreateTemp(t.TempDir(), "mcp*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp.Close()
+	if err := os.Chmod(tmp.Name(), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(tmp.Name(), 0o644) })
+
+	_, err = LoadServers(tmp.Name())
+	if err == nil {
+		t.Fatal("expected error for unreadable file")
+	}
+}
+
+func TestListServers_InvalidMCPServersType(t *testing.T) {
+	// mcpServers exists but is a number, not an object.
+	f := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(f, []byte(`{"mcpServers": 123}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ListServers(f)
+	if err == nil {
+		t.Fatal("expected error when mcpServers is not a JSON object")
+	}
+}
+
+func TestListServers_ReadError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permissions — skipping")
+	}
+	tmp, err := os.CreateTemp(t.TempDir(), "mcp*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp.Close()
+	if err := os.Chmod(tmp.Name(), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(tmp.Name(), 0o644) })
+
+	_, err = ListServers(tmp.Name())
+	if err == nil {
+		t.Fatal("expected error for unreadable file")
+	}
+}
+
+func TestManager_Status_ReadError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permissions — skipping")
+	}
+	tmp, err := os.CreateTemp(t.TempDir(), "mcp*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp.Close()
+	if err := os.Chmod(tmp.Name(), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(tmp.Name(), 0o644) })
+
+	mcps := []config.ConfigMcp{{Name: "srv", Target: tmp.Name()}}
+	m := NewManager(mcps)
+	statuses := m.Status(context.Background())
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].Err == nil {
+		t.Error("expected error status for unreadable target file")
+	}
+}
+
+func TestFetchRemoteEntry_InvalidURL(t *testing.T) {
+	// URL with a null byte causes http.NewRequestWithContext to fail.
+	_, err := fetchRemoteEntry(context.Background(), "http://\x00invalid", "any")
+	if err == nil {
+		t.Fatal("expected error for URL with null byte")
+	}
+}

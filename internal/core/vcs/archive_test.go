@@ -343,3 +343,91 @@ func TestVcsArchive_HasChanges_AlwaysFalse(t *testing.T) {
 		t.Error("expected HasChanges=false for archive backend")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// fetchURL — network and HTTP error paths
+// ---------------------------------------------------------------------------
+
+func TestFetchURL_NetworkError(t *testing.T) {
+	// Close the server before making the request to get a connection refused error.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL
+	srv.Close()
+	_, err := fetchURL(context.Background(), url)
+	if err == nil {
+		t.Fatal("expected error for connection refused")
+	}
+}
+
+func TestFetchURL_HTTP500(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	_, err := fetchURL(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected error for HTTP 500")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// extractZip — corrupted data
+// ---------------------------------------------------------------------------
+
+func TestExtractZip_CorruptedData(t *testing.T) {
+	// Pass random bytes that are not a valid zip archive.
+	r := bytes.NewReader([]byte("this is not a zip file at all"))
+	err := extractZip(r, t.TempDir(), "")
+	if err == nil {
+		t.Fatal("expected error for corrupted zip data")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Clone — destination MkdirAll failure
+// ---------------------------------------------------------------------------
+
+func TestVcsArchive_Clone_MkdirAllFailure(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permissions — skipping")
+	}
+	// Serve a valid tar so the HTTP part succeeds; the mkdir will fail first.
+	data := buildTarGz(t, map[string]string{"p/file.txt": "hi"})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(data)
+	}))
+	defer srv.Close()
+
+	// Make the parent of the destination unwritable.
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(parent, 0o755) })
+
+	a := &VcsArchive{Format: "tar"}
+	err := a.Clone(context.Background(), srv.URL, filepath.Join(parent, "dest"), "")
+	if err == nil {
+		t.Fatal("expected error when destination parent is not writable")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// writeFile — MkdirAll failure
+// ---------------------------------------------------------------------------
+
+func TestWriteFile_MkdirAllFailure(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permissions — skipping")
+	}
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(parent, 0o755) })
+
+	err := writeFile(bytes.NewReader([]byte("data")), filepath.Join(parent, "sub", "file.txt"), 0o644)
+	if err == nil {
+		t.Fatal("expected error when parent directory is not writable")
+	}
+}
