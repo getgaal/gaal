@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('[["self-hosted","Linux","X64"], "macos-latest", "windows-latest"]') || fromJson('[["self-hosted","Linux","X64"], "macos-latest"]') }}
+        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('[["self-hosted","Linux","X64"], ["self-hosted","macOS","ARM64"], "windows-latest"]') || fromJson('[["self-hosted","Linux","X64"], ["self-hosted","macOS","ARM64"]]') }}
     steps:
       - uses: actions/checkout@v6
 
@@ -70,7 +70,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('[["self-hosted","Linux","X64"], "macos-latest", "windows-latest"]') || fromJson('[["self-hosted","Linux","X64"], "macos-latest"]') }}
+        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('[["self-hosted","Linux","X64"], ["self-hosted","macOS","ARM64"], "windows-latest"]') || fromJson('[["self-hosted","Linux","X64"], ["self-hosted","macOS","ARM64"]]') }}
     steps:
       - uses: actions/checkout@v6
 
