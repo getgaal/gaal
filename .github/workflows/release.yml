@@ -33,12 +33,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux,   goarch: amd64, runner: ubuntu-latest }
-          - { goos: linux,   goarch: arm64, runner: ubuntu-latest }
+          - { goos: linux,   goarch: amd64, runner: self-hosted }
+          - { goos: linux,   goarch: arm64, runner: self-hosted }
           - { goos: darwin,  goarch: amd64, runner: macos-latest }
           - { goos: darwin,  goarch: arm64, runner: macos-latest }
-          - { goos: windows, goarch: amd64, runner: ubuntu-latest, ext: .exe }
-          - { goos: windows, goarch: arm64, runner: ubuntu-latest, ext: .exe }
+          - { goos: windows, goarch: amd64, runner: self-hosted, ext: .exe }
+          - { goos: windows, goarch: arm64, runner: self-hosted, ext: .exe }
     steps:
       - uses: actions/checkout@v6
 
@@ -152,7 +152,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   release:
     name: Create Release
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: binaries
     steps:
       - uses: actions/download-artifact@v7

@@ -17,7 +17,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v6
 
@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('["ubuntu-latest", "macos-latest", "windows-latest"]') || fromJson('["ubuntu-latest", "macos-latest"]') }}
+        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('["self-hosted", "macos-latest", "windows-latest"]') || fromJson('["self-hosted", "macos-latest"]') }}
     steps:
       - uses: actions/checkout@v6
 
@@ -70,7 +70,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('["ubuntu-latest", "macos-latest", "windows-latest"]') || fromJson('["ubuntu-latest", "macos-latest"]') }}
+        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('["self-hosted", "macos-latest", "windows-latest"]') || fromJson('["self-hosted", "macos-latest"]') }}
     steps:
       - uses: actions/checkout@v6
 
@@ -87,7 +87,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   coverage:
     name: Coverage
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: test
     steps:
       - uses: actions/checkout@v6
