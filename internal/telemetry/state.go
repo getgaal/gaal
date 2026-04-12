@@ -40,6 +40,20 @@ func resolveState(cfgValue *bool) consentState {
 	return consentState{Enabled: false, Source: "unconfigured", NeedsPrompt: true}
 }
 
+// Status returns the current telemetry state as a human-readable string
+// and the source that determined it. cfgValue is the Telemetry field from
+// the user config (may be nil). This does not initialise the client.
+func Status(cfgValue *bool) (status string, source string) {
+	s := resolveState(cfgValue)
+	if s.NeedsPrompt {
+		return "not configured", ""
+	}
+	if s.Enabled {
+		return "enabled", s.Source
+	}
+	return "disabled", s.Source
+}
+
 // persistConsent writes or updates the telemetry field in the user config file.
 func persistConsent(cfgPath string, enabled bool) error {
 	slog.Debug("persisting telemetry consent", "path", cfgPath, "enabled", enabled)
