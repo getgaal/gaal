@@ -31,3 +31,21 @@ func NewRenderer(f OutputFormat) (Renderer, error) {
 		return nil, fmt.Errorf("unknown output format %q (want: table, json)", f)
 	}
 }
+
+// PlanRenderer formats a PlanReport and writes it to an io.Writer.
+type PlanRenderer interface {
+	Render(w io.Writer, r *PlanReport) error
+}
+
+// NewPlanRenderer returns a PlanRenderer for format f.
+func NewPlanRenderer(f OutputFormat) (PlanRenderer, error) {
+	slog.Debug("creating plan renderer", "format", f)
+	switch f {
+	case FormatTable:
+		return &planTableRenderer{}, nil
+	case FormatJSON:
+		return &planJSONRenderer{}, nil
+	default:
+		return nil, fmt.Errorf("unknown output format %q (want: table, json)", f)
+	}
+}
