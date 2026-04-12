@@ -33,7 +33,7 @@ Examples:
   gaal migrate --to community https://community.example.com --dry-run
   gaal migrate --to community https://community.example.com --yes`,
 	SilenceUsage: true,
-	Args:         cobra.ExactArgs(1),
+	Args:         cobra.MaximumNArgs(1),
 	RunE:         runMigrate,
 }
 
@@ -41,20 +41,33 @@ func init() {
 	migrateCmd.Flags().StringVar(&migrateTarget, "to", "", `migration target (currently only "community" is supported)`)
 	migrateCmd.Flags().BoolVar(&migrateDryRun, "dry-run", false, "validate everything but do not perform the migration")
 	migrateCmd.Flags().BoolVar(&migrateYes, "yes", false, "skip interactive confirmation")
-	_ = migrateCmd.MarkFlagRequired("to")
 	rootCmd.AddCommand(migrateCmd)
+}
+
+func printDisclaimer() {
+	fmt.Println()
+	fmt.Println("gaal Community Edition is not yet available. Your configuration is valid and")
+	fmt.Println("ready to migrate when Community ships. Join the announcement list:")
+	fmt.Println("https://getgaal.com")
 }
 
 func runMigrate(_ *cobra.Command, args []string) error {
 	cfg, err := config.LoadChain(cfgFile)
 	if err != nil {
+		printDisclaimer()
 		return fmt.Errorf("loading config: %w", err)
+	}
+
+	var url string
+	if len(args) > 0 {
+		url = args[0]
 	}
 
 	eng := engine.NewWithOptions(cfg, engineOpts)
 
-	result, err := eng.Migrate(migrateTarget, args[0], migrateDryRun)
+	result, err := eng.Migrate(migrateTarget, url, migrateDryRun)
 	if err != nil {
+		printDisclaimer()
 		return err
 	}
 
@@ -65,10 +78,7 @@ func runMigrate(_ *cobra.Command, args []string) error {
 
 	fmt.Printf("Would migrate %d repositories, %d skills, %d MCP servers to %s\n",
 		result.Repositories, result.Skills, result.MCPs, result.URL)
-	fmt.Println()
-	fmt.Println("gaal Community Edition is not yet available. Your configuration is valid and")
-	fmt.Println("ready to migrate when Community ships. Join the announcement list:")
-	fmt.Println("https://getgaal.com")
+	printDisclaimer()
 
 	return nil
 }

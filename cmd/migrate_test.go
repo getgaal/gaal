@@ -102,9 +102,15 @@ func TestMigrate_InvalidConfig(t *testing.T) {
 	migrateTarget = "community"
 	engineOpts = engine.Options{WorkDir: workDir}
 
-	err := runMigrate(migrateCmd, []string{"https://community.example.com"})
-	if err == nil {
+	var gotErr error
+	out := captureStdout(t, func() {
+		gotErr = runMigrate(migrateCmd, []string{"https://community.example.com"})
+	})
+	if gotErr == nil {
 		t.Fatal("expected error for invalid config")
+	}
+	if !strings.Contains(out, "not yet available") {
+		t.Errorf("expected disclaimer even on config error:\n%s", out)
 	}
 }
 
@@ -119,12 +125,18 @@ func TestMigrate_BadURL(t *testing.T) {
 	migrateTarget = "community"
 	engineOpts = engine.Options{WorkDir: workDir}
 
-	err := runMigrate(migrateCmd, []string{"not-a-url"})
-	if err == nil {
+	var gotErr error
+	out := captureStdout(t, func() {
+		gotErr = runMigrate(migrateCmd, []string{"not-a-url"})
+	})
+	if gotErr == nil {
 		t.Fatal("expected error for bad URL")
 	}
-	if !strings.Contains(err.Error(), "invalid URL") {
-		t.Errorf("expected 'invalid URL' in error, got: %v", err)
+	if !strings.Contains(gotErr.Error(), "invalid URL") {
+		t.Errorf("expected 'invalid URL' in error, got: %v", gotErr)
+	}
+	if !strings.Contains(out, "not yet available") {
+		t.Errorf("expected disclaimer even on bad URL:\n%s", out)
 	}
 }
 
@@ -139,12 +151,40 @@ func TestMigrate_UnknownTarget(t *testing.T) {
 	migrateTarget = "saas"
 	engineOpts = engine.Options{WorkDir: workDir}
 
-	err := runMigrate(migrateCmd, []string{"https://example.com"})
-	if err == nil {
+	var gotErr error
+	out := captureStdout(t, func() {
+		gotErr = runMigrate(migrateCmd, []string{"https://example.com"})
+	})
+	if gotErr == nil {
 		t.Fatal("expected error for unknown target")
 	}
-	if !strings.Contains(err.Error(), "unknown migration target") {
-		t.Errorf("expected 'unknown migration target' in error, got: %v", err)
+	if !strings.Contains(gotErr.Error(), "unknown migration target") {
+		t.Errorf("expected 'unknown migration target' in error, got: %v", gotErr)
+	}
+	if !strings.Contains(out, "not yet available") {
+		t.Errorf("expected disclaimer even on unknown target:\n%s", out)
+	}
+}
+
+func TestMigrate_NoArgs(t *testing.T) {
+	resetMigrateFlags(t)
+
+	home := t.TempDir()
+	workDir := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cfgFile = writeMinimalConfig(t, workDir)
+	engineOpts = engine.Options{WorkDir: workDir}
+
+	var gotErr error
+	out := captureStdout(t, func() {
+		gotErr = runMigrate(migrateCmd, nil)
+	})
+	if gotErr == nil {
+		t.Fatal("expected error when no URL or --to provided")
+	}
+	if !strings.Contains(out, "not yet available") {
+		t.Errorf("expected disclaimer even with missing params:\n%s", out)
 	}
 }
 
