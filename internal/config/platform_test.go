@@ -198,3 +198,27 @@ func TestIsGitHubShorthand(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// userConfigFilePath — fallback when HOME is invalid
+// ---------------------------------------------------------------------------
+
+func TestUserConfigFilePath_FallbackWhenHomeBroken(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HOME env var does not control os.UserConfigDir on Windows")
+	}
+	// Unset both HOME and XDG_CONFIG_HOME; os.UserConfigDir will fail on Linux
+	// but the function should still return a non-empty path via the fallback.
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	got := userConfigFilePath()
+	// The fallback uses an empty home so the path will look odd, but it must
+	// not be empty and must end with the expected suffix.
+	if got == "" {
+		t.Fatal("userConfigFilePath returned empty string even with broken HOME")
+	}
+	if !strings.HasSuffix(got, filepath.Join("gaal", "config.yaml")) {
+		t.Errorf("got %q, expected suffix gaal/config.yaml", got)
+	}
+}

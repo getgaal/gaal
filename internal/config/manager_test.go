@@ -852,6 +852,77 @@ func TestLoadChain_PopulatesLevels(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SourcePath — set by Load
+// ---------------------------------------------------------------------------
+
+func TestLoad_SetsSourcePath(t *testing.T) {
+	p := writeYAML(t, "skills:\n  - source: owner/repo\n")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SourcePath != p {
+		t.Errorf("SourcePath = %q, want %q", cfg.SourcePath, p)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ResolvedConfig.SourcePaths
+// ---------------------------------------------------------------------------
+
+func TestResolvedConfig_SourcePaths_OnlyWorkspace(t *testing.T) {
+	empty := t.TempDir()
+	t.Setenv("HOME", empty)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(empty, "xdg"))
+
+	p := writeYAML(t, "skills:\n  - source: owner/repo\n")
+	rcfg, err := LoadChain(p)
+	if err != nil {
+		t.Fatalf("LoadChain: %v", err)
+	}
+	paths := rcfg.SourcePaths()
+	if len(paths) != 1 {
+		t.Fatalf("expected 1 source path (workspace only), got %d: %v", len(paths), paths)
+	}
+	if paths[0] != p {
+		t.Errorf("SourcePaths()[0] = %q, want %q", paths[0], p)
+	}
+}
+
+func TestResolvedConfig_SourcePaths_MultiLevel(t *testing.T) {
+	dir := t.TempDir()
+
+	userDir := filepath.Join(dir, ".config", "gaal")
+	if err := os.MkdirAll(userDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	userFile := filepath.Join(userDir, "config.yaml")
+	os.WriteFile(userFile, []byte("skills:\n  - source: owner/user-repo\n"), 0o644)
+
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
+
+	wsFile := writeYAML(t, "skills:\n  - source: owner/ws-repo\n")
+	rcfg, err := LoadChain(wsFile)
+	if err != nil {
+		t.Fatalf("LoadChain: %v", err)
+	}
+	paths := rcfg.SourcePaths()
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 source paths (user + workspace), got %d: %v", len(paths), paths)
+	}
+}
+
+func TestResolvedConfig_SourcePaths_Empty(t *testing.T) {
+	// ResolvedConfig with no loaded levels returns empty slice.
+	rcfg := &ResolvedConfig{Config: &Config{}, Levels: LevelConfigs{}}
+	paths := rcfg.SourcePaths()
+	if len(paths) != 0 {
+		t.Errorf("expected empty paths for no levels, got %v", paths)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 
