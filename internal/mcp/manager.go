@@ -42,7 +42,7 @@ type Manager struct {
 	mcps []config.ConfigMcp
 }
 
-// NewManager creates a new MCP config.
+// NewManager creates a new MCP Manager.
 func NewManager(mcps []config.ConfigMcp) *Manager {
 	return &Manager{mcps: mcps}
 }
