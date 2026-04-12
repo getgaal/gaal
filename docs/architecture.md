@@ -106,10 +106,7 @@ In `--service` mode, `engine.RunService()` wraps `RunOnce()` in a `time.Ticker` 
 
 ## Package `internal/config`
 
-> The complete reference for the configuration system — data model, file
-> locations, merge strategy, scope restriction policy, schema generation,
-> validation, and rules for future agents — lives in
-> [**docs/config.md**](config.md).
+> The complete reference for the configuration system — data model, file locations, merge strategy, scope restriction policy, schema generation, validation, and rules for future agents — lives in [**docs/config.md**](config.md).
 
 The package exposes three entry-points consumed by the rest of the codebase:
 
@@ -119,16 +116,13 @@ The package exposes three entry-points consumed by the rest of the codebase:
 | `LoadChain(workspacePath string) (*ResolvedConfig, error)` | Merge global → user → workspace |
 | `GenerateSchema() ([]byte, error)` | JSON Schema for `Config` |
 
-OS-aware path helpers (`GlobalConfigFilePath`, `UserConfigFilePath`) and the
-`ConfigScope` type are also exported for diagnostics and wizard code.
+OS-aware path helpers (`GlobalConfigFilePath`, `UserConfigFilePath`) and the `ConfigScope` type are also exported for diagnostics and wizard code.
 
 ---
 
 ## Package `internal/config/schema`
 
-A thin layer of **swappable abstractions** for schema generation and struct
-validation. See [docs/config.md — Schema Generation](config.md#schema-generation)
-and [docs/config.md — Validation](config.md#validation) for full details.
+A thin layer of **swappable abstractions** for schema generation and struct validation. See [docs/config.md — Schema Generation](config.md#schema-generation) and [docs/config.md — Validation](config.md#validation) for full details.
 
 ### `Generator` — JSON Schema generation
 
@@ -147,6 +141,19 @@ and [docs/config.md — Validation](config.md#validation) for full details.
 | `DefaultValidator` | Active `Validator` instance (init: `NewPlaygroundValidator()`) |
 | `SetValidator(v Validator)` | Replace the active instance |
 | `Validate(v any) error` | Convenience wrapper |
+
+---
+
+## Package `internal/core`
+
+> The complete reference for the core layer — VCS backends, factory functions, type detection, the agent registry, path helpers, and security constraints — lives in [**docs/core.md**](core.md).
+
+The two pillars exposed to the rest of the codebase:
+
+| Sub-package | Key exports | Consumed by |
+|------------|-------------|-------------|
+| `internal/core/vcs` | `VCS` interface, `New()`, `NewShallow()`, `DetectType()` | `internal/repo`, `internal/skill` |
+| `internal/core/agent` | `Lookup()`, `List()`, `SkillDir()`, `MCPConfigPath()`, `ExpandHome()` | `internal/skill`, `internal/engine/ops` |
 
 ---
 
@@ -202,31 +209,7 @@ Defaults to `os.Getwd()`. In `--sandbox` mode it is redirected to an isolated su
 
 ## Package `internal/repo`
 
-### VCS interface
-
-```go
-type VCS interface {
-    Clone(ctx, url, path, version string) error
-    Update(ctx, path, version string) error
-    IsCloned(path string) bool
-    CurrentVersion(ctx, path string) (string, error)
-    HasChanges(ctx, path string) (bool, error)
-}
-```
-
-All five backends are enforced at compile time via `var _ VCS = (*VcsXxx)(nil)` assertions in `vcs.go`.
-
-### Available backends
-
-| Type | Struct | Binary required | Local probe |
-|------|--------|----------------|-------------|
-| `git` | `VcsGit` | **none** (go-git, pure Go) | `.git/` |
-| `hg` | `VcsMercurial` | `hg` | `.hg/` |
-| `svn` | `VcsSVN` | `svn` / `svnversion` | `.svn/` |
-| `bzr` | `VcsBazaar` | `bzr` | `.bzr/` |
-| `tar` / `zip` | `VcsArchive` | none (stdlib) | target directory |
-
-For subprocess backends (`hg`, `svn`, `bzr`), `requireBinary(name)` is the **first statement** in every method — it returns a clear error message rather than a cryptic exec failure.
+VCS backends are described in [**docs/core.md — VCS Sub-package**](core.md#vcs-sub-package-internalcorevcs).
 
 ### Parallelism
 
@@ -308,15 +291,7 @@ When `--log-file` is set, a `teeHandler` fans out to both handlers simultaneousl
 
 ## Package `internal/core/agent`
 
-The agent registry is loaded from an embedded `agents.yaml` file. Custom agents can be added by the user at:
-
-| OS | Path |
-|----|------|
-| Linux | `$XDG_CONFIG_HOME/gaal/agents.yaml` |
-| macOS | `$XDG_CONFIG_HOME/gaal/agents.yaml` (defaults to `~/.config/gaal/agents.yaml`) |
-| Windows | `%AppData%\gaal\agents.yaml` |
-
-Custom entries extend the built-in list; they cannot override built-in entries.
+> Full details — `Info` descriptor, built-in registry, user extension, initialisation flow, and security constraints — live in [**docs/core.md — Agent Registry Sub-package**](core.md#agent-registry-sub-package-internalcoreagent).
 
 | Export | Description |
 |--------|-------------|
