@@ -10,6 +10,7 @@ import (
 	"github.com/invopop/jsonschema"
 	"gopkg.in/yaml.v3"
 
+	"gaal/internal/config/platform"
 	"gaal/internal/config/schema"
 )
 
@@ -103,6 +104,12 @@ func (r *ResolvedConfig) SourcePaths() []string {
 //   - mcps: upsert by Name — higher-priority level replaces any existing entry
 //     with the same Name.
 
+// UserConfigFilePath is the exported accessor for the per-user config path.
+// It delegates to the platform sub-package.
+func UserConfigFilePath() string {
+	return platform.UserConfigFilePath()
+}
+
 // Load reads and validates a single gaal configuration file.
 // Duplicate skill sources and MCP names within the file are silently
 // deduplicated, keeping the first occurrence.
@@ -150,8 +157,8 @@ func LoadChain(workspacePath string) (*ResolvedConfig, error) {
 		store **Config
 	}
 	candidates := []candidate{
-		{GlobalConfigFilePath(), ScopeGlobal, &levels.Global},
-		{userConfigFilePath(), ScopeUser, &levels.User},
+		{platform.GlobalConfigFilePath(), ScopeGlobal, &levels.Global},
+		{platform.UserConfigFilePath(), ScopeUser, &levels.User},
 		{workspacePath, ScopeWorkspace, &levels.Workspace},
 	}
 
