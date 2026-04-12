@@ -16,52 +16,52 @@ func TestDoctorCleanConfig(t *testing.T) {
 	cfg := &config.Config{}
 	report := RunDoctor(cfg, DoctorOptions{Offline: true})
 
-	// Empty config has no Version → warning, so exit code is 1.
+	// Empty config has no Schema → warning, so exit code is 1.
 	if report.ExitCode != 1 {
-		t.Errorf("expected exit code 1 for config without version, got %d", report.ExitCode)
+		t.Errorf("expected exit code 1 for config without schema, got %d", report.ExitCode)
 	}
 }
 
-func TestDoctorVersionMissing_Warning(t *testing.T) {
-	cfg := &config.Config{} // Version is nil
+func TestDoctorSchemaMissing_Warning(t *testing.T) {
+	cfg := &config.Config{} // Schema is nil
 	report := RunDoctor(cfg, DoctorOptions{Offline: true})
 
 	found := false
 	for _, f := range report.Findings {
-		if f.Section == "config" && f.Severity == SeverityWarning && strings.Contains(f.Message, "version") {
+		if f.Section == "config" && f.Severity == SeverityWarning && strings.Contains(f.Message, "schema") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected warning about missing version, findings: %+v", report.Findings)
+		t.Errorf("expected warning about missing schema, findings: %+v", report.Findings)
 	}
 }
 
-func TestDoctorVersionOne_Info(t *testing.T) {
+func TestDoctorSchemaOne_Info(t *testing.T) {
 	v := 1
-	cfg := &config.Config{Version: &v}
+	cfg := &config.Config{Schema: &v}
 	report := RunDoctor(cfg, DoctorOptions{Offline: true})
 
 	found := false
 	for _, f := range report.Findings {
-		if f.Section == "config" && f.Severity == SeverityInfo && strings.Contains(f.Message, "version: 1") {
+		if f.Section == "config" && f.Severity == SeverityInfo && strings.Contains(f.Message, "schema: 1") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected info about version 1, findings: %+v", report.Findings)
+		t.Errorf("expected info about schema 1, findings: %+v", report.Findings)
 	}
 }
 
-func TestDoctorCleanConfigWithVersion(t *testing.T) {
+func TestDoctorCleanConfigWithSchema(t *testing.T) {
 	v := 1
-	cfg := &config.Config{Version: &v}
+	cfg := &config.Config{Schema: &v}
 	report := RunDoctor(cfg, DoctorOptions{Offline: true})
 
 	if report.ExitCode != 0 {
-		t.Errorf("expected exit code 0 for clean config with version, got %d", report.ExitCode)
+		t.Errorf("expected exit code 0 for clean config with schema, got %d", report.ExitCode)
 	}
 }
 

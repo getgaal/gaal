@@ -320,12 +320,12 @@ mcps:
 }
 
 // ---------------------------------------------------------------------------
-// Version field
+// Schema field
 // ---------------------------------------------------------------------------
 
-func TestLoad_VersionExplicitOne(t *testing.T) {
+func TestLoad_SchemaExplicitOne(t *testing.T) {
 	p := writeYAML(t, `
-version: 1
+schema: 1
 skills:
   - source: owner/repo
 `)
@@ -333,12 +333,12 @@ skills:
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Version == nil || *cfg.Version != 1 {
-		t.Errorf("expected Version=1, got %v", cfg.Version)
+	if cfg.Schema == nil || *cfg.Schema != 1 {
+		t.Errorf("expected Schema=1, got %v", cfg.Schema)
 	}
 }
 
-func TestLoad_VersionMissing_DefaultsToNil(t *testing.T) {
+func TestLoad_SchemaMissing_DefaultsToNil(t *testing.T) {
 	p := writeYAML(t, `
 skills:
   - source: owner/repo
@@ -347,96 +347,96 @@ skills:
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	// Missing version is accepted (with a warning) and left as nil.
-	if cfg.Version != nil {
-		t.Errorf("expected Version=nil for missing field, got %d", *cfg.Version)
+	// Missing schema is accepted (with a warning) and left as nil.
+	if cfg.Schema != nil {
+		t.Errorf("expected Schema=nil for missing field, got %d", *cfg.Schema)
 	}
 }
 
-func TestLoad_VersionTwo_Rejected(t *testing.T) {
+func TestLoad_SchemaTwo_Rejected(t *testing.T) {
 	p := writeYAML(t, `
-version: 2
+schema: 2
 skills:
   - source: owner/repo
 `)
 	_, err := Load(p)
 	if err == nil {
-		t.Fatal("expected error for version: 2")
+		t.Fatal("expected error for schema: 2")
 	}
-	if !strings.Contains(err.Error(), "version 2") {
-		t.Errorf("error should mention version 2, got: %v", err)
+	if !strings.Contains(err.Error(), "schema 2") {
+		t.Errorf("error should mention schema 2, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "only understands version 1") {
-		t.Errorf("error should mention supported version, got: %v", err)
+	if !strings.Contains(err.Error(), "only understands schema 1") {
+		t.Errorf("error should mention supported schema, got: %v", err)
 	}
 }
 
-func TestLoad_VersionZero_Rejected(t *testing.T) {
+func TestLoad_SchemaZero_Rejected(t *testing.T) {
 	p := writeYAML(t, `
-version: 0
+schema: 0
 skills:
   - source: owner/repo
 `)
 	_, err := Load(p)
 	if err == nil {
-		t.Fatal("expected error for version: 0")
+		t.Fatal("expected error for schema: 0")
 	}
 	if !strings.Contains(err.Error(), "positive integer") {
 		t.Errorf("error should mention positive integer, got: %v", err)
 	}
 }
 
-func TestLoad_VersionNegative_Rejected(t *testing.T) {
+func TestLoad_SchemaNegative_Rejected(t *testing.T) {
 	p := writeYAML(t, `
-version: -1
+schema: -1
 skills:
   - source: owner/repo
 `)
 	_, err := Load(p)
 	if err == nil {
-		t.Fatal("expected error for version: -1")
+		t.Fatal("expected error for schema: -1")
 	}
 	if !strings.Contains(err.Error(), "positive integer") {
 		t.Errorf("error should mention positive integer, got: %v", err)
 	}
 }
 
-func TestLoad_VersionString_Rejected(t *testing.T) {
+func TestLoad_SchemaString_Rejected(t *testing.T) {
 	p := writeYAML(t, `
-version: "1"
+schema: "1"
 skills:
   - source: owner/repo
 `)
 	_, err := Load(p)
 	if err == nil {
-		t.Fatal("expected error for version: \"1\" (string)")
+		t.Fatal("expected error for schema: \"1\" (string)")
 	}
 }
 
-func TestLoad_VersionLatest_Rejected(t *testing.T) {
+func TestLoad_SchemaLatest_Rejected(t *testing.T) {
 	p := writeYAML(t, `
-version: latest
+schema: latest
 skills:
   - source: owner/repo
 `)
 	_, err := Load(p)
 	if err == nil {
-		t.Fatal("expected error for version: latest")
+		t.Fatal("expected error for schema: latest")
 	}
 }
 
-func TestLoad_VersionLargeNumber_Rejected(t *testing.T) {
+func TestLoad_SchemaLargeNumber_Rejected(t *testing.T) {
 	p := writeYAML(t, `
-version: 99
+schema: 99
 skills:
   - source: owner/repo
 `)
 	_, err := Load(p)
 	if err == nil {
-		t.Fatal("expected error for version: 99")
+		t.Fatal("expected error for schema: 99")
 	}
-	if !strings.Contains(err.Error(), "version 99") {
-		t.Errorf("error should mention the actual version number, got: %v", err)
+	if !strings.Contains(err.Error(), "schema 99") {
+		t.Errorf("error should mention the actual schema number, got: %v", err)
 	}
 }
 
@@ -564,23 +564,23 @@ func TestMergeFrom_NilRepositoriesInDst(t *testing.T) {
 	}
 }
 
-func TestMergeFrom_VersionSrcWins(t *testing.T) {
+func TestMergeFrom_SchemaSrcWins(t *testing.T) {
 	v1 := 1
 	dst := &Config{}
-	src := &Config{Version: &v1}
+	src := &Config{Schema: &v1}
 	dst.mergeFrom(src)
-	if dst.Version == nil || *dst.Version != 1 {
-		t.Errorf("expected Version=1 from src, got %v", dst.Version)
+	if dst.Schema == nil || *dst.Schema != 1 {
+		t.Errorf("expected Schema=1 from src, got %v", dst.Schema)
 	}
 }
 
-func TestMergeFrom_VersionDstPreservedWhenSrcNil(t *testing.T) {
+func TestMergeFrom_SchemaDstPreservedWhenSrcNil(t *testing.T) {
 	v1 := 1
-	dst := &Config{Version: &v1}
+	dst := &Config{Schema: &v1}
 	src := &Config{}
 	dst.mergeFrom(src)
-	if dst.Version == nil || *dst.Version != 1 {
-		t.Errorf("expected Version=1 preserved from dst, got %v", dst.Version)
+	if dst.Schema == nil || *dst.Schema != 1 {
+		t.Errorf("expected Schema=1 preserved from dst, got %v", dst.Schema)
 	}
 }
 
@@ -712,34 +712,34 @@ func TestTelemetryNotMerged(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// GenerateSchema — version constraints
+// GenerateSchema — schema constraints
 // ---------------------------------------------------------------------------
 
-func TestGenerateSchema_VersionRequired(t *testing.T) {
+func TestGenerateSchema_SchemaRequired(t *testing.T) {
 	data, err := GenerateSchema()
 	if err != nil {
 		t.Fatalf("GenerateSchema: %v", err)
 	}
-	schema := string(data)
+	s := string(data)
 
-	// version must appear in "required" at the top level.
-	if !strings.Contains(schema, `"version"`) {
-		t.Error("schema should contain version property")
+	// schema must appear in "required" at the top level.
+	if !strings.Contains(s, `"schema"`) {
+		t.Error("schema should contain schema property")
 	}
 
-	// Check that version is in the required list.
-	if !strings.Contains(schema, `"required"`) {
+	// Check that schema is in the required list.
+	if !strings.Contains(s, `"required"`) {
 		t.Error("schema should have a required list")
 	}
 }
 
-func TestGenerateSchema_VersionEnumOne(t *testing.T) {
+func TestGenerateSchema_SchemaEnumOne(t *testing.T) {
 	data, err := GenerateSchema()
 	if err != nil {
 		t.Fatalf("GenerateSchema: %v", err)
 	}
 
-	// Parse the schema JSON to check the version property's enum constraint.
+	// Parse the schema JSON to check the schema property's enum constraint.
 	var root map[string]any
 	if err := json.Unmarshal(data, &root); err != nil {
 		t.Fatalf("unmarshal schema: %v", err)
@@ -765,13 +765,13 @@ func TestGenerateSchema_VersionEnumOne(t *testing.T) {
 	if !ok {
 		t.Fatal("schema missing properties")
 	}
-	versionProp, ok := props["version"].(map[string]any)
+	schemaProp, ok := props["schema"].(map[string]any)
 	if !ok {
-		t.Fatal("schema missing version property")
+		t.Fatal("schema missing schema property")
 	}
-	enumVal, ok := versionProp["enum"]
+	enumVal, ok := schemaProp["enum"]
 	if !ok {
-		t.Fatal("version property missing enum constraint")
+		t.Fatal("schema property missing enum constraint")
 	}
 	enumSlice, ok := enumVal.([]any)
 	if !ok || len(enumSlice) != 1 {

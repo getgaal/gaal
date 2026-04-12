@@ -49,7 +49,7 @@ func RunDoctor(cfg *config.Config, opts DoctorOptions) *DoctorReport {
 	slog.Debug("running doctor checks", "offline", opts.Offline)
 
 	var findings []Finding
-	findings = append(findings, checkVersion(cfg)...)
+	findings = append(findings, checkSchema(cfg)...)
 	findings = append(findings, checkTelemetry(cfg)...)
 	findings = append(findings, checkSkillSources(cfg, opts.Offline)...)
 	findings = append(findings, checkMCPTargets(cfg)...)
@@ -73,15 +73,15 @@ func RunDoctor(cfg *config.Config, opts DoctorOptions) *DoctorReport {
 	}
 }
 
-// checkVersion reports the schema version status.
-func checkVersion(cfg *config.Config) []Finding {
-	if cfg.Version == nil {
+// checkSchema reports the schema version status.
+func checkSchema(cfg *config.Config) []Finding {
+	if cfg.Schema == nil {
 		return []Finding{
-			{Section: "config", Severity: SeverityWarning, Message: "config is missing 'version: 1'; this will be required in a future release"},
+			{Section: "config", Severity: SeverityWarning, Message: "config is missing 'schema: 1'; this will be required in a future release"},
 		}
 	}
 	return []Finding{
-		{Section: "config", Severity: SeverityInfo, Message: fmt.Sprintf("version: %d", *cfg.Version)},
+		{Section: "config", Severity: SeverityInfo, Message: fmt.Sprintf("schema: %d", *cfg.Schema)},
 	}
 }
 
