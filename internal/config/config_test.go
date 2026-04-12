@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -563,6 +564,26 @@ func TestMergeFrom_NilRepositoriesInDst(t *testing.T) {
 	}
 }
 
+func TestMergeFrom_VersionSrcWins(t *testing.T) {
+	v1 := 1
+	dst := &Config{}
+	src := &Config{Version: &v1}
+	dst.mergeFrom(src)
+	if dst.Version == nil || *dst.Version != 1 {
+		t.Errorf("expected Version=1 from src, got %v", dst.Version)
+	}
+}
+
+func TestMergeFrom_VersionDstPreservedWhenSrcNil(t *testing.T) {
+	v1 := 1
+	dst := &Config{Version: &v1}
+	src := &Config{}
+	dst.mergeFrom(src)
+	if dst.Version == nil || *dst.Version != 1 {
+		t.Errorf("expected Version=1 preserved from dst, got %v", dst.Version)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // expandPaths
 // ---------------------------------------------------------------------------
@@ -687,6 +708,62 @@ func TestTelemetryNotMerged(t *testing.T) {
 	// Telemetry is intentionally excluded from merging; higher config's nil wins.
 	if merged.Telemetry != nil {
 		t.Errorf("expected Telemetry to be nil after merge (higher has no telemetry), got %v", *merged.Telemetry)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GenerateSchema — version constraints
+// ---------------------------------------------------------------------------
+
+func TestGenerateSchema_VersionRequired(t *testing.T) {
+	data, err := GenerateSchema()
+	if err != nil {
+		t.Fatalf("GenerateSchema: %v", err)
+	}
+	schema := string(data)
+
+	// version must appear in "required" at the top level.
+	if !strings.Contains(schema, `"version"`) {
+		t.Error("schema should contain version property")
+	}
+
+	// Check that version is in the required list.
+	if !strings.Contains(schema, `"required"`) {
+		t.Error("schema should have a required list")
+	}
+}
+
+func TestGenerateSchema_VersionEnumOne(t *testing.T) {
+	data, err := GenerateSchema()
+	if err != nil {
+		t.Fatalf("GenerateSchema: %v", err)
+	}
+
+	// Parse the schema JSON to check the version property's enum constraint.
+	var schema map[string]any
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("unmarshal schema: %v", err)
+	}
+
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("schema missing properties")
+	}
+	versionProp, ok := props["version"].(map[string]any)
+	if !ok {
+		t.Fatal("schema missing version property")
+	}
+	enumVal, ok := versionProp["enum"]
+	if !ok {
+		t.Fatal("version property missing enum constraint")
+	}
+	enumSlice, ok := enumVal.([]any)
+	if !ok || len(enumSlice) != 1 {
+		t.Fatalf("expected enum with one element, got %v", enumVal)
+	}
+	// JSON numbers unmarshal as float64.
+	if enumSlice[0] != float64(1) {
+		t.Errorf("expected enum=[1], got enum=%v", enumSlice)
 	}
 }
 

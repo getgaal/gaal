@@ -266,6 +266,12 @@ func LoadChain(workspacePath string) (*Config, error) {
 //   - skills / mcps: appended (all entries from all levels are kept).
 func (c *Config) mergeFrom(src *Config) {
 	slog.Debug("merging config", "repos", len(src.Repositories), "skills", len(src.Skills), "mcps", len(src.MCPs))
+
+	// Version: higher-priority source wins when set.
+	if src.Version != nil {
+		c.Version = src.Version
+	}
+
 	// Repositories: map merge — src (higher priority) wins on key conflict.
 	if len(src.Repositories) > 0 {
 		if c.Repositories == nil {
