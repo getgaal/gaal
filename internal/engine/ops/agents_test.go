@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gaal/internal/core/agent"
+	"gaal/internal/engine/render"
 )
 
 func TestListAgents_AllHaveNames(t *testing.T) {
@@ -103,5 +104,80 @@ func TestListAgents_SourceField(t *testing.T) {
 				t.Errorf("agent %q: expected source=builtin, got %q", e.Name, e.Source)
 			}
 		}
+	}
+}
+
+func TestAgentDetail_Found(t *testing.T) {
+	home := t.TempDir()
+	workDir := t.TempDir()
+	detail, err := AgentDetail(home, workDir, "claude-code")
+	if err != nil {
+		t.Fatalf("AgentDetail: %v", err)
+	}
+	if detail.Name != "claude-code" {
+		t.Errorf("expected name=claude-code, got %q", detail.Name)
+	}
+	if detail.Source != "builtin" {
+		t.Errorf("expected source=builtin, got %q", detail.Source)
+	}
+	if !detail.MCPSupport {
+		t.Error("expected MCPSupport=true for claude-code")
+	}
+	if len(detail.Paths) == 0 {
+		t.Error("expected at least one path entry")
+	}
+}
+
+func TestAgentDetail_CaseInsensitive(t *testing.T) {
+	home := t.TempDir()
+	workDir := t.TempDir()
+	detail, err := AgentDetail(home, workDir, "Claude-Code")
+	if err != nil {
+		t.Fatalf("AgentDetail: %v", err)
+	}
+	if detail.Name != "claude-code" {
+		t.Errorf("expected canonical name claude-code, got %q", detail.Name)
+	}
+}
+
+func TestAgentDetail_NotFound(t *testing.T) {
+	_, err := AgentDetail(t.TempDir(), t.TempDir(), "nonexistent")
+	if err == nil {
+		t.Fatal("expected error for unknown agent")
+	}
+}
+
+func TestAgentDetail_SkillCount(t *testing.T) {
+	home := t.TempDir()
+	workDir := t.TempDir()
+
+	// Create a fake project skills dir with 2 SKILL.md files.
+	skillsDir := filepath.Join(workDir, ".claude", "skills")
+	for _, name := range []string{"alpha", "beta"} {
+		dir := filepath.Join(skillsDir, name)
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: "+name+"\n---\n"), 0o644)
+	}
+
+	detail, err := AgentDetail(home, workDir, "claude-code")
+	if err != nil {
+		t.Fatalf("AgentDetail: %v", err)
+	}
+
+	var projectPath *render.AgentPath
+	for i := range detail.Paths {
+		if detail.Paths[i].Label == "project" {
+			projectPath = &detail.Paths[i]
+			break
+		}
+	}
+	if projectPath == nil {
+		t.Fatal("no project path found in detail")
+	}
+	if !projectPath.Exists {
+		t.Error("expected project path to exist")
+	}
+	if projectPath.SkillCount != 2 {
+		t.Errorf("expected 2 skills, got %d", projectPath.SkillCount)
 	}
 }
