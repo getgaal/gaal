@@ -440,8 +440,8 @@ repositories:
 	}
 
 	merged := &Config{}
-	merged.mergeFrom(cfgLow)
-	merged.mergeFrom(cfgHigh)
+	merged.mergeFrom(cfgLow, ScopeGlobal)
+	merged.mergeFrom(cfgHigh, ScopeWorkspace)
 
 	got := merged.Repositories[sharedPath].URL
 	if got != "https://example.com/override.git" {
@@ -462,8 +462,8 @@ func TestMergeFrom_SkillsAccumulated(t *testing.T) {
 	cfgB, _ := Load(b)
 
 	merged := &Config{}
-	merged.mergeFrom(cfgA)
-	merged.mergeFrom(cfgB)
+	merged.mergeFrom(cfgA, ScopeGlobal)
+	merged.mergeFrom(cfgB, ScopeWorkspace)
 
 	if len(merged.Skills) != 2 {
 		t.Errorf("expected 2 skills, got %d", len(merged.Skills))
@@ -476,7 +476,7 @@ func TestMergeFrom_EmptySrc(t *testing.T) {
 			"/r1": {Type: "git", URL: "https://example.com/r1.git"},
 		},
 	}
-	base.mergeFrom(&Config{})
+	base.mergeFrom(&Config{}, ScopeWorkspace)
 	if len(base.Repositories) != 1 {
 		t.Errorf("expected 1 repo after merging empty src, got %d", len(base.Repositories))
 	}
@@ -489,7 +489,7 @@ func TestMergeFrom_NilRepositoriesInDst(t *testing.T) {
 			"/new": {Type: "git", URL: "https://example.com/new.git"},
 		},
 	}
-	dst.mergeFrom(src)
+	dst.mergeFrom(src, ScopeWorkspace)
 	if len(dst.Repositories) != 1 {
 		t.Errorf("expected 1 repo, got %d", len(dst.Repositories))
 	}
@@ -499,7 +499,7 @@ func TestMergeFrom_SchemaSrcWins(t *testing.T) {
 	v1 := 1
 	dst := &Config{}
 	src := &Config{Schema: &v1}
-	dst.mergeFrom(src)
+	dst.mergeFrom(src, ScopeWorkspace)
 	if dst.Schema == nil || *dst.Schema != 1 {
 		t.Errorf("expected Schema=1 from src, got %v", dst.Schema)
 	}
@@ -509,7 +509,7 @@ func TestMergeFrom_SchemaDstPreservedWhenSrcNil(t *testing.T) {
 	v1 := 1
 	dst := &Config{Schema: &v1}
 	src := &Config{}
-	dst.mergeFrom(src)
+	dst.mergeFrom(src, ScopeWorkspace)
 	if dst.Schema == nil || *dst.Schema != 1 {
 		t.Errorf("expected Schema=1 preserved from dst, got %v", dst.Schema)
 	}
@@ -565,8 +565,8 @@ func TestTelemetryCarriedFromLower(t *testing.T) {
 	}
 
 	merged := &Config{}
-	merged.mergeFrom(cfgLow)
-	merged.mergeFrom(cfgHigh)
+	merged.mergeFrom(cfgLow, ScopeGlobal)
+	merged.mergeFrom(cfgHigh, ScopeWorkspace)
 
 	// Higher level has nil Telemetry (not set) so lower's value is preserved.
 	if merged.Telemetry == nil {
@@ -577,35 +577,68 @@ func TestTelemetryCarriedFromLower(t *testing.T) {
 	}
 }
 
-func TestTelemetryHigherWins(t *testing.T) {
+// TestTelemetry_UserOverridesGlobal verifies that the user scope (≤ maxscope=user)
+// can override a telemetry value set at global scope.
+func TestTelemetry_UserOverridesGlobal(t *testing.T) {
 	dir := t.TempDir()
 
-	// lower level sets telemetry: true
-	lower := filepath.Join(dir, "lower.yaml")
-	os.WriteFile(lower, []byte("telemetry: true\n"), 0o644)
+	global := filepath.Join(dir, "global.yaml")
+	os.WriteFile(global, []byte("telemetry: true\n"), 0o644)
 
-	// higher level explicitly sets telemetry: false
-	higher := filepath.Join(dir, "higher.yaml")
-	os.WriteFile(higher, []byte("telemetry: false\n"), 0o644)
+	user := filepath.Join(dir, "user.yaml")
+	os.WriteFile(user, []byte("telemetry: false\n"), 0o644)
 
-	cfgLow, err := Load(lower)
+	cfgGlobal, err := Load(global)
 	if err != nil {
-		t.Fatalf("Load lower: %v", err)
+		t.Fatalf("Load global: %v", err)
 	}
-	cfgHigh, err := Load(higher)
+	cfgUser, err := Load(user)
 	if err != nil {
-		t.Fatalf("Load higher: %v", err)
+		t.Fatalf("Load user: %v", err)
 	}
 
 	merged := &Config{}
-	merged.mergeFrom(cfgLow)
-	merged.mergeFrom(cfgHigh)
+	merged.mergeFrom(cfgGlobal, ScopeGlobal)
+	merged.mergeFrom(cfgUser, ScopeUser)
 
 	if merged.Telemetry == nil {
 		t.Fatal("expected Telemetry to be non-nil, got nil")
 	}
 	if *merged.Telemetry {
-		t.Errorf("expected Telemetry=false (higher wins), got true")
+		t.Errorf("expected Telemetry=false (user overrides global), got true")
+	}
+}
+
+// TestTelemetry_WorkspaceCannotOverride verifies that ScopeWorkspace is blocked
+// by the maxscope=user annotation on Config.Telemetry.
+func TestTelemetry_WorkspaceCannotOverride(t *testing.T) {
+	dir := t.TempDir()
+
+	global := filepath.Join(dir, "global.yaml")
+	os.WriteFile(global, []byte("telemetry: true\n"), 0o644)
+
+	workspace := filepath.Join(dir, "workspace.yaml")
+	os.WriteFile(workspace, []byte("telemetry: false\n"), 0o644)
+
+	cfgGlobal, err := Load(global)
+	if err != nil {
+		t.Fatalf("Load global: %v", err)
+	}
+	cfgWorkspace, err := Load(workspace)
+	if err != nil {
+		t.Fatalf("Load workspace: %v", err)
+	}
+
+	merged := &Config{}
+	merged.mergeFrom(cfgGlobal, ScopeGlobal)
+	merged.mergeFrom(cfgWorkspace, ScopeWorkspace)
+
+	// ScopeWorkspace > maxscope=user: the workspace value must be ignored.
+	if merged.Telemetry == nil {
+		t.Fatal("expected Telemetry to be non-nil (global value carried), got nil")
+	}
+	if !*merged.Telemetry {
+		t.Errorf("expected Telemetry=true (workspace blocked, global value preserved), got false")
 	}
 }
 
@@ -774,8 +807,8 @@ func TestMergeFrom_SkillsDeduplicated(t *testing.T) {
 	cfgHigh, _ := Load(higher)
 
 	merged := &Config{}
-	merged.mergeFrom(cfgLow)
-	merged.mergeFrom(cfgHigh)
+	merged.mergeFrom(cfgLow, ScopeGlobal)
+	merged.mergeFrom(cfgHigh, ScopeWorkspace)
 
 	if len(merged.Skills) != 1 {
 		t.Errorf("expected 1 skill after cross-level dedup, got %d", len(merged.Skills))
@@ -809,8 +842,8 @@ func TestMergeFrom_MCPsDeduplicated(t *testing.T) {
 	cfgHigh, _ := Load(higher)
 
 	merged := &Config{}
-	merged.mergeFrom(cfgLow)
-	merged.mergeFrom(cfgHigh)
+	merged.mergeFrom(cfgLow, ScopeGlobal)
+	merged.mergeFrom(cfgHigh, ScopeWorkspace)
 
 	if len(merged.MCPs) != 1 {
 		t.Errorf("expected 1 MCP after cross-level dedup, got %d", len(merged.MCPs))

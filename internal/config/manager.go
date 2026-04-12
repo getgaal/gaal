@@ -23,7 +23,7 @@ type Config struct {
 	Repositories map[string]ConfigRepo `yaml:"repositories" json:"repositories,omitempty" jsonschema:"description=Map of workspace-relative paths to repository entries" validate:"dive"`
 	Skills       []ConfigSkill         `yaml:"skills"       json:"skills,omitempty"       jsonschema:"description=Skill sources to install into agent skill directories"   validate:"dive"`
 	MCPs         []ConfigMcp           `yaml:"mcps"         json:"mcps,omitempty"         jsonschema:"description=MCP server configuration entries to merge"             validate:"dive"`
-	Telemetry    *bool                 `yaml:"telemetry,omitempty" json:"telemetry,omitempty" jsonschema:"description=Opt-in anonymous usage telemetry (true/false)"`
+	Telemetry    *bool                 `yaml:"telemetry,omitempty" json:"telemetry,omitempty" jsonschema:"description=Opt-in anonymous usage telemetry (true/false)" gaal:"maxscope=user"`
 
 	// SourcePath is populated at runtime by Load and never written to disk.
 	// It holds the path of the file this Config was loaded from.
@@ -94,8 +94,9 @@ func (r *ResolvedConfig) SourcePaths() []string {
 // ── Loading ───────────────────────────────────────────────────────────────────
 
 // Merge rules (LoadChain):
-//   - version / telemetry: the highest-priority level that explicitly sets the
-//     field wins (nil = not set).
+//   - schema: the highest-priority level that explicitly sets the field wins.
+//   - telemetry: highest-priority level among global and user wins (workspace
+//     is excluded by the maxscope=user annotation on Config.Telemetry).
 //   - repositories: map merge — higher-priority entry wins on key conflict.
 //   - skills: upsert by Source — higher-priority level replaces any existing
 //     entry with the same Source.
@@ -145,12 +146,13 @@ func LoadChain(workspacePath string) (*ResolvedConfig, error) {
 	var levels LevelConfigs
 	type candidate struct {
 		path  string
+		scope ConfigScope
 		store **Config
 	}
 	candidates := []candidate{
-		{GlobalConfigFilePath(), &levels.Global},
-		{userConfigFilePath(), &levels.User},
-		{workspacePath, &levels.Workspace},
+		{GlobalConfigFilePath(), ScopeGlobal, &levels.Global},
+		{userConfigFilePath(), ScopeUser, &levels.User},
+		{workspacePath, ScopeWorkspace, &levels.Workspace},
 	}
 
 	merged := &Config{}
@@ -167,7 +169,7 @@ func LoadChain(workspacePath string) (*ResolvedConfig, error) {
 		}
 		slog.Debug("config file loaded", "path", c.path)
 		*c.store = cfg
-		merged.mergeFrom(cfg)
+		merged.mergeFrom(cfg, c.scope)
 		loaded++
 	}
 
@@ -224,22 +226,25 @@ func (Config) JSONSchemaExtend(s *jsonschema.Schema) {
 	s.Required = append(s.Required, "schema")
 }
 
-// mergeFrom merges src into c. src represents a higher-priority config level.
+// mergeFrom merges src into c. src represents a higher-priority config level
+// operating at the given scope.
 // Rules:
-//   - version / telemetry: src wins when explicitly set (non-nil).
+//   - schema: src wins when explicitly set (non-nil).
+//   - telemetry: src wins when explicitly set (non-nil) and scope ≤ maxscope
+//     declared on the field (currently ScopeUser — workspace cannot override).
 //   - repositories: map merge — src wins on key conflict.
 //   - skills: upsert by Source — src entry replaces any existing entry with
 //     the same Source.
 //   - mcps: upsert by Name — src entry replaces any existing entry with the
 //     same Name.
-func (c *Config) mergeFrom(src *Config) {
-	slog.Debug("merging config", "repos", len(src.Repositories), "skills", len(src.Skills), "mcps", len(src.MCPs))
+func (c *Config) mergeFrom(src *Config, scope ConfigScope) {
+	slog.Debug("merging config", "scope", scope, "repos", len(src.Repositories), "skills", len(src.Skills), "mcps", len(src.MCPs))
 
 	if src.Schema != nil {
 		c.Schema = src.Schema
 	}
 
-	if src.Telemetry != nil {
+	if src.Telemetry != nil && allowedAt("Telemetry", scope) {
 		c.Telemetry = src.Telemetry
 	}
 

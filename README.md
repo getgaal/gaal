@@ -289,38 +289,21 @@ gaal completion powershell | Out-String | Invoke-Expression
 
 ## Configuration reference
 
-See [`example.gaal.yaml`](example.gaal.yaml) for a fully annotated configuration.
+See [`docs/config.md`](docs/config.md) for the full technical reference:
+data model, file locations by OS, merge rules, scope restriction policy
+(including why workspace cannot override `telemetry`), schema generation,
+validation, and agent contribution rules.
 
-gaal merges up to three configuration files in order:
+**Quick overview — the three config levels (lowest → highest priority):**
 
 | Priority | File |
 |----------|------|
 | 1 — lowest | `/etc/gaal/config.yaml` (global) |
-| 2 | `$XDG_CONFIG_HOME/gaal/config.yaml` (user, defaults to `~/.config/gaal/config.yaml` on Linux and macOS) |
+| 2 | `$XDG_CONFIG_HOME/gaal/config.yaml` (user; defaults to `~/.config/gaal/config.yaml` on Linux / macOS) |
 | 3 — highest | `gaal.yaml` in CWD, or `--config` path |
 
-Merge rules (higher priority always wins):
-
-| Field | Rule |
-|-------|------|
-| `version` | Highest-priority file that explicitly sets it wins |
-| `telemetry` | Highest-priority file that explicitly sets it wins; omitting the field leaves the lower-level value intact |
-| `repositories` | Map merge — higher-priority entry wins on key conflict |
-| `skills` | Deduplicated by `source` — higher-priority level replaces any existing entry with the same source |
-| `mcps` | Deduplicated by `name` — higher-priority level replaces any existing entry with the same name |
-
-### Schema stability
-
-Every `gaal.yaml` file should declare `schema: 1` as its first field:
-
-```yaml
-schema: 1
-repositories: {}
-skills: []
-mcps: []
-```
-
-gaal commits to reading `schema: 1` configs forever. Future releases may add optional fields, but breaking changes will only ship under `schema: 2` (or higher) with a documented migration path. You can adopt gaal today knowing your config file will keep working.
+See [`example.gaal.yaml`](example.gaal.yaml) for a fully annotated
+configuration file.
 
 ### Agent registry customization
 

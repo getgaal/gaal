@@ -106,123 +106,47 @@ In `--service` mode, `engine.RunService()` wraps `RunOnce()` in a `time.Ticker` 
 
 ## Package `internal/config`
 
-### Configuration hierarchy
+> The complete reference for the configuration system — data model, file
+> locations, merge strategy, scope restriction policy, schema generation,
+> validation, and rules for future agents — lives in
+> [**docs/config.md**](config.md).
 
-`gaal` loads and merges up to three configuration files (lowest → highest priority):
-
-| Priority | Level | Linux | macOS | Windows |
-|----------|-------|-------|-------|---------|
-| 1 (lowest) | **Global** | `/etc/gaal/config.yaml` | `/etc/gaal/config.yaml` | `%PROGRAMDATA%\gaal\config.yaml` |
-| 2 | **User** | `$XDG_CONFIG_HOME/gaal/config.yaml` | `$XDG_CONFIG_HOME/gaal/config.yaml` (defaults to `~/.config/gaal/config.yaml`) | `%AppData%\gaal\config.yaml` |
-| 3 (highest) | **Workspace** | `--config` value (default `gaal.yaml` in CWD) | ← same | ← same |
-
-Missing files are silently skipped. At least one file must be present.
-
-### Merge strategy
-
-The FS access model follows a strict layering chain:
-
-```
-FS (system read) ← yaml.Unmarshal (Load) ← Global | User | Workspace ← mergeFrom (LoadChain) ← runtime Config
-```
-
-`Load()` parses and validates a single file; `LoadChain()` orchestrates the three levels and merges them into a single `Config`. The merged `Config` also carries `Config.Levels` (type `ConfigLevels`) which holds each individual level as loaded from disk before merging — useful for code that needs to inspect the raw per-level values.
-
-| Field | Rule |
-|-------|------|
-| `version` | Highest-priority file that explicitly sets it wins (nil = not set) |
-| `telemetry` | Highest-priority file that explicitly sets it wins; omitting the field leaves the lower-level value intact |
-| `repositories` | Map merge — higher-priority entry wins on key conflict |
-| `skills` | Upsert by `source` — higher-priority level replaces any existing entry with the same Source; no duplicates at any level |
-| `mcps` | Upsert by `name` — higher-priority level replaces any existing entry with the same Name; no duplicates at any level |
-
-Intra-file duplicates (same `source` or `name` appearing more than once within a single file) are silently dropped, keeping the first occurrence.
-
-### Path resolution
-
-`expandPaths()` is called per file, anchored to that file's own directory. Remote URLs and GitHub shorthands (`owner/repo`) are left untouched.
-
-### Main types
-
-Every field carries four tag families:
-
-| Tag family | Purpose |
-|------------|---------|
-| `yaml:"..."` | YAML deserialization key |
-| `json:"..."` | JSON key (used by the schema generator and JSON renderer) |
-| `jsonschema:"description=...,enum=..."` | Annotations emitted into the JSON Schema |
-| `validate:"..."` | Runtime validation rules (go-playground/validator) |
-
-Key validation rules:
-
-| Field | Rule |
-|-------|------|
-| `RepoConfig.Type` | `required,oneof=git hg svn bzr tar zip` |
-| `RepoConfig.URL` | `required` |
-| `SkillConfig.Source` | `required` |
-| `MCPConfig.Name` | `required` |
-| `MCPConfig.Target` | `required` |
-| `MCPConfig.Source` | `required_without=Inline` |
-| `MCPConfig.Inline` | `required_without=Source` |
-| `MCPInlineConfig.Command` | `required` |
-
-### Public API
+The package exposes three entry-points consumed by the rest of the codebase:
 
 | Symbol | Description |
 |--------|-------------|
-| `Load(path string) (*Config, error)` | Parse + validate + expand a single file; intra-file skills/MCPs deduplicated |
-| `LoadChain(workspacePath string) (*Config, error)` | Merge global → user → workspace; populates `Config.Levels` |
-| `GlobalConfigFilePath() string` | System-wide config path for the current OS |
-| `UserConfigFilePath() string` | Per-user config path (XDG-aware on Linux/macOS) |
-| `GenerateSchema() ([]byte, error)` | Return the JSON Schema for `Config` |
+| `Load(path string) (*Config, error)` | Parse + validate + expand a single file |
+| `LoadChain(workspacePath string) (*ResolvedConfig, error)` | Merge global → user → workspace |
+| `GenerateSchema() ([]byte, error)` | JSON Schema for `Config` |
 
-The private `validate()` method delegates entirely to `schema.DefaultValidator.Validate(c)`.
+OS-aware path helpers (`GlobalConfigFilePath`, `UserConfigFilePath`) and the
+`ConfigScope` type are also exported for diagnostics and wizard code.
 
 ---
 
 ## Package `internal/config/schema`
 
-A thin layer of **swappable abstractions** for schema generation and struct validation. Both implementations can be replaced at program start-up without touching any calling code — useful for testing or for switching the underlying library.
+A thin layer of **swappable abstractions** for schema generation and struct
+validation. See [docs/config.md — Schema Generation](config.md#schema-generation)
+and [docs/config.md — Validation](config.md#validation) for full details.
 
 ### `Generator` — JSON Schema generation
-
-```
-internal/config/schema/
-  generator.go           — interface Generator + var Default + Set() + Generate()
-  generator_invopop.go   — struct GeneratorInvopop backed by invopop/jsonschema
-  generator_test.go      — tests for the Generator interface and mock
-```
 
 | Symbol | Description |
 |--------|-------------|
 | `Generator` | `interface{ Generate(v any) ([]byte, error) }` |
 | `Default` | Active `Generator` instance (init: `NewGeneratorInvopop()`) |
 | `Set(g Generator)` | Replace the active instance |
-| `Generate(v any) ([]byte, error)` | Convenience wrapper around `Default` |
-| `GeneratorInvopop` | `invopop/jsonschema` Reflector with `AllowAdditionalProperties: false` |
-| `NewGeneratorInvopop() *GeneratorInvopop` | Constructor |
-
-The reflector produces a JSON Schema (draft-2020-12) with all type definitions in `$defs` and a `$ref` at root.
+| `Generate(v any) ([]byte, error)` | Convenience wrapper |
 
 ### `Validator` — struct validation
-
-```
-internal/config/schema/
-  validator.go              — interface Validator + var DefaultValidator + SetValidator() + Validate()
-  validator_playground.go   — struct PlaygroundValidator backed by go-playground/validator/v10
-  validator_test.go         — tests for the Validator interface and mock
-```
 
 | Symbol | Description |
 |--------|-------------|
 | `Validator` | `interface{ Validate(v any) error }` |
 | `DefaultValidator` | Active `Validator` instance (init: `NewPlaygroundValidator()`) |
 | `SetValidator(v Validator)` | Replace the active instance |
-| `Validate(v any) error` | Convenience wrapper around `DefaultValidator` |
-| `PlaygroundValidator` | Uses `go-playground/validator/v10`; field names come from the `yaml` struct tag |
-| `NewPlaygroundValidator() *PlaygroundValidator` | Constructor with `RegisterTagNameFunc` |
-
-Error messages reference the YAML field name (e.g. `type: required`) rather than the Go identifier.
+| `Validate(v any) error` | Convenience wrapper |
 
 ---
 

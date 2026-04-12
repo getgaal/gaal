@@ -17,7 +17,7 @@ const (
 	envProgramData    = "PROGRAMDATA"
 	defaultConfigHome = ".config" // fallback when XDG_CONFIG_HOME is unset
 
-	globalConfigPathUnix = "/etc/gaal/config.yaml"
+	globalConfigPathUnix = "/etc/gaal/config.yaml" // Shared by Unix and Darwin
 )
 
 // ── OS-aware config path resolution ──────────────────────────────────────────
