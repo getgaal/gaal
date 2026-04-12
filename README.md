@@ -320,7 +320,7 @@ skills: []
 mcps: []
 ```
 
-gaal Lite commits to reading `schema: 1` configs forever. Future releases may add optional fields, but breaking changes will only ship under `schema: 2` (or higher) with a documented migration path. You can adopt gaal Lite today knowing your config file will keep working.
+gaal commits to reading `schema: 1` configs forever. Future releases may add optional fields, but breaking changes will only ship under `schema: 2` (or higher) with a documented migration path. You can adopt gaal today knowing your config file will keep working.
 
 ### Agent registry customization
 

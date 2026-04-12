@@ -13,7 +13,7 @@
 #
 # Full reference:     docs/quick_start.md
 
-# gaal Lite config schema version — stable forever.
+# gaal config schema version — stable forever.
 schema: 1
 
 # ─────────────────────────────────────────────────────────────────────────────

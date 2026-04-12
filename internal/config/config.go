@@ -19,7 +19,7 @@ import (
 // It maps 1:1 with a single YAML file on disk; merging is handled by
 // LoadChain which returns a ResolvedConfig.
 type Config struct {
-	Schema       *int                  `yaml:"schema,omitempty" json:"schema,omitempty" jsonschema:"description=gaal Lite config schema version. Currently must be 1."`
+	Schema       *int                  `yaml:"schema,omitempty" json:"schema,omitempty" jsonschema:"description=gaal config schema version. Currently must be 1."`
 	Repositories map[string]ConfigRepo `yaml:"repositories" json:"repositories,omitempty" jsonschema:"description=Map of workspace-relative paths to repository entries" validate:"dive"`
 	Skills       []ConfigSkill         `yaml:"skills"       json:"skills,omitempty"       jsonschema:"description=Skill sources to install into agent skill directories"   validate:"dive"`
 	MCPs         []ConfigMcp           `yaml:"mcps"         json:"mcps,omitempty"         jsonschema:"description=MCP server configuration entries to merge"             validate:"dive"`
@@ -188,7 +188,7 @@ func (c *Config) validateSchema(path string) error {
 	}
 	if v != 1 {
 		return fmt.Errorf(
-			"%s declares schema %d, but this build of gaal lite only understands schema 1.\nUpgrade gaal lite, or check https://getgaal.com/schema for migration notes.",
+			"%s declares schema %d, but this build of gaal only understands schema 1.\nUpgrade gaal, or check https://getgaal.com/schema for migration notes.",
 			path, v,
 		)
 	}
