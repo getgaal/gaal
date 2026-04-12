@@ -16,10 +16,31 @@ import (
 
 // Config is the top-level gaal configuration.
 type Config struct {
+	Version      *int                  `yaml:"version,omitempty" json:"version,omitempty" jsonschema:"description=gaal Lite config schema version. Currently must be 1."`
 	Repositories map[string]RepoConfig `yaml:"repositories" json:"repositories,omitempty" jsonschema:"description=Map of workspace-relative paths to repository entries" validate:"dive"`
 	Skills       []SkillConfig         `yaml:"skills"       json:"skills,omitempty"       jsonschema:"description=Skill sources to install into agent skill directories"   validate:"dive"`
 	MCPs         []MCPConfig           `yaml:"mcps"         json:"mcps,omitempty"         jsonschema:"description=MCP server configuration entries to merge"             validate:"dive"`
 	Telemetry    *bool                 `yaml:"telemetry,omitempty" json:"telemetry,omitempty" jsonschema:"description=Opt-in anonymous usage telemetry (true/false)"`
+}
+
+// validateVersion checks the schema version field. Missing is tolerated (with a
+// warning) for backward compatibility; any value other than 1 is a hard error.
+func (c *Config) validateVersion(path string) error {
+	if c.Version == nil {
+		slog.Warn("config file is missing 'version: 1'; this will be required in a future release", "path", path)
+		return nil
+	}
+	v := *c.Version
+	if v <= 0 {
+		return fmt.Errorf("version must be a positive integer (got %d in %s)", v, path)
+	}
+	if v != 1 {
+		return fmt.Errorf(
+			"%s declares version %d, but this build of gaal lite only understands version 1.\nUpgrade gaal lite, or check https://getgaal.com/schema for migration notes.",
+			path, v,
+		)
+	}
+	return nil
 }
 
 // RepoConfig is a vcstool-compatible repository entry.
@@ -196,6 +217,10 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing YAML: %w", err)
+	}
+
+	if err := cfg.validateVersion(path); err != nil {
+		return nil, err
 	}
 
 	if err := cfg.validate(); err != nil {

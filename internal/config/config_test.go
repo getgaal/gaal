@@ -319,6 +319,127 @@ mcps:
 }
 
 // ---------------------------------------------------------------------------
+// Version field
+// ---------------------------------------------------------------------------
+
+func TestLoad_VersionExplicitOne(t *testing.T) {
+	p := writeYAML(t, `
+version: 1
+skills:
+  - source: owner/repo
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Version == nil || *cfg.Version != 1 {
+		t.Errorf("expected Version=1, got %v", cfg.Version)
+	}
+}
+
+func TestLoad_VersionMissing_DefaultsToNil(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Missing version is accepted (with a warning) and left as nil.
+	if cfg.Version != nil {
+		t.Errorf("expected Version=nil for missing field, got %d", *cfg.Version)
+	}
+}
+
+func TestLoad_VersionTwo_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: 2
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: 2")
+	}
+	if !strings.Contains(err.Error(), "version 2") {
+		t.Errorf("error should mention version 2, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "only understands version 1") {
+		t.Errorf("error should mention supported version, got: %v", err)
+	}
+}
+
+func TestLoad_VersionZero_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: 0
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: 0")
+	}
+	if !strings.Contains(err.Error(), "positive integer") {
+		t.Errorf("error should mention positive integer, got: %v", err)
+	}
+}
+
+func TestLoad_VersionNegative_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: -1
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: -1")
+	}
+	if !strings.Contains(err.Error(), "positive integer") {
+		t.Errorf("error should mention positive integer, got: %v", err)
+	}
+}
+
+func TestLoad_VersionString_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: "1"
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: \"1\" (string)")
+	}
+}
+
+func TestLoad_VersionLatest_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: latest
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: latest")
+	}
+}
+
+func TestLoad_VersionLargeNumber_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: 99
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: 99")
+	}
+	if !strings.Contains(err.Error(), "version 99") {
+		t.Errorf("error should mention the actual version number, got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // LoadChain
 // ---------------------------------------------------------------------------
 
