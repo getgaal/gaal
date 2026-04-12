@@ -722,14 +722,14 @@ func TestGenerateSchema_SchemaRequired(t *testing.T) {
 	}
 	s := string(data)
 
-	// schema must appear in "required" at the top level.
+	// "schema" must appear in "required" at the top level.
 	if !strings.Contains(s, `"schema"`) {
-		t.Error("schema should contain schema property")
+		t.Error("generated JSON Schema should contain a 'schema' property")
 	}
 
 	// Check that schema is in the required list.
 	if !strings.Contains(s, `"required"`) {
-		t.Error("schema should have a required list")
+		t.Error("generated JSON Schema should have a required list")
 	}
 }
 
