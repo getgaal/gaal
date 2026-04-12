@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -319,6 +320,127 @@ mcps:
 }
 
 // ---------------------------------------------------------------------------
+// Version field
+// ---------------------------------------------------------------------------
+
+func TestLoad_VersionExplicitOne(t *testing.T) {
+	p := writeYAML(t, `
+version: 1
+skills:
+  - source: owner/repo
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Version == nil || *cfg.Version != 1 {
+		t.Errorf("expected Version=1, got %v", cfg.Version)
+	}
+}
+
+func TestLoad_VersionMissing_DefaultsToNil(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Missing version is accepted (with a warning) and left as nil.
+	if cfg.Version != nil {
+		t.Errorf("expected Version=nil for missing field, got %d", *cfg.Version)
+	}
+}
+
+func TestLoad_VersionTwo_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: 2
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: 2")
+	}
+	if !strings.Contains(err.Error(), "version 2") {
+		t.Errorf("error should mention version 2, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "only understands version 1") {
+		t.Errorf("error should mention supported version, got: %v", err)
+	}
+}
+
+func TestLoad_VersionZero_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: 0
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: 0")
+	}
+	if !strings.Contains(err.Error(), "positive integer") {
+		t.Errorf("error should mention positive integer, got: %v", err)
+	}
+}
+
+func TestLoad_VersionNegative_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: -1
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: -1")
+	}
+	if !strings.Contains(err.Error(), "positive integer") {
+		t.Errorf("error should mention positive integer, got: %v", err)
+	}
+}
+
+func TestLoad_VersionString_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: "1"
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: \"1\" (string)")
+	}
+}
+
+func TestLoad_VersionLatest_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: latest
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: latest")
+	}
+}
+
+func TestLoad_VersionLargeNumber_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+version: 99
+skills:
+  - source: owner/repo
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected error for version: 99")
+	}
+	if !strings.Contains(err.Error(), "version 99") {
+		t.Errorf("error should mention the actual version number, got: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // LoadChain
 // ---------------------------------------------------------------------------
 
@@ -439,6 +561,26 @@ func TestMergeFrom_NilRepositoriesInDst(t *testing.T) {
 	dst.mergeFrom(src)
 	if len(dst.Repositories) != 1 {
 		t.Errorf("expected 1 repo, got %d", len(dst.Repositories))
+	}
+}
+
+func TestMergeFrom_VersionSrcWins(t *testing.T) {
+	v1 := 1
+	dst := &Config{}
+	src := &Config{Version: &v1}
+	dst.mergeFrom(src)
+	if dst.Version == nil || *dst.Version != 1 {
+		t.Errorf("expected Version=1 from src, got %v", dst.Version)
+	}
+}
+
+func TestMergeFrom_VersionDstPreservedWhenSrcNil(t *testing.T) {
+	v1 := 1
+	dst := &Config{Version: &v1}
+	src := &Config{}
+	dst.mergeFrom(src)
+	if dst.Version == nil || *dst.Version != 1 {
+		t.Errorf("expected Version=1 preserved from dst, got %v", dst.Version)
 	}
 }
 
@@ -566,6 +708,78 @@ func TestTelemetryNotMerged(t *testing.T) {
 	// Telemetry is intentionally excluded from merging; higher config's nil wins.
 	if merged.Telemetry != nil {
 		t.Errorf("expected Telemetry to be nil after merge (higher has no telemetry), got %v", *merged.Telemetry)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GenerateSchema — version constraints
+// ---------------------------------------------------------------------------
+
+func TestGenerateSchema_VersionRequired(t *testing.T) {
+	data, err := GenerateSchema()
+	if err != nil {
+		t.Fatalf("GenerateSchema: %v", err)
+	}
+	schema := string(data)
+
+	// version must appear in "required" at the top level.
+	if !strings.Contains(schema, `"version"`) {
+		t.Error("schema should contain version property")
+	}
+
+	// Check that version is in the required list.
+	if !strings.Contains(schema, `"required"`) {
+		t.Error("schema should have a required list")
+	}
+}
+
+func TestGenerateSchema_VersionEnumOne(t *testing.T) {
+	data, err := GenerateSchema()
+	if err != nil {
+		t.Fatalf("GenerateSchema: %v", err)
+	}
+
+	// Parse the schema JSON to check the version property's enum constraint.
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		t.Fatalf("unmarshal schema: %v", err)
+	}
+
+	// invopop/jsonschema places the Config definition under $defs/Config when
+	// DoNotReference is false (the default). The top-level schema is just a $ref.
+	// Try top-level properties first, then fall back to $defs/Config.
+	var configDef map[string]any
+	if props, ok := root["properties"]; ok {
+		configDef = root
+		_ = props
+	} else if defs, ok := root["$defs"].(map[string]any); ok {
+		if cfg, ok := defs["Config"].(map[string]any); ok {
+			configDef = cfg
+		}
+	}
+	if configDef == nil {
+		t.Fatal("schema missing properties (checked top-level and $defs/Config)")
+	}
+
+	props, ok := configDef["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("schema missing properties")
+	}
+	versionProp, ok := props["version"].(map[string]any)
+	if !ok {
+		t.Fatal("schema missing version property")
+	}
+	enumVal, ok := versionProp["enum"]
+	if !ok {
+		t.Fatal("version property missing enum constraint")
+	}
+	enumSlice, ok := enumVal.([]any)
+	if !ok || len(enumSlice) != 1 {
+		t.Fatalf("expected enum with one element, got %v", enumVal)
+	}
+	// JSON numbers unmarshal as float64.
+	if enumSlice[0] != float64(1) {
+		t.Errorf("expected enum=[1], got enum=%v", enumSlice)
 	}
 }
 

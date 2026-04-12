@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/invopop/jsonschema"
 	"gopkg.in/yaml.v3"
 
 	"gaal/internal/config/schema"
@@ -16,10 +17,42 @@ import (
 
 // Config is the top-level gaal configuration.
 type Config struct {
+	Version      *int                  `yaml:"version,omitempty" json:"version,omitempty" jsonschema:"description=gaal Lite config schema version. Currently must be 1."`
 	Repositories map[string]RepoConfig `yaml:"repositories" json:"repositories,omitempty" jsonschema:"description=Map of workspace-relative paths to repository entries" validate:"dive"`
 	Skills       []SkillConfig         `yaml:"skills"       json:"skills,omitempty"       jsonschema:"description=Skill sources to install into agent skill directories"   validate:"dive"`
 	MCPs         []MCPConfig           `yaml:"mcps"         json:"mcps,omitempty"         jsonschema:"description=MCP server configuration entries to merge"             validate:"dive"`
 	Telemetry    *bool                 `yaml:"telemetry,omitempty" json:"telemetry,omitempty" jsonschema:"description=Opt-in anonymous usage telemetry (true/false)"`
+}
+
+// validateVersion checks the schema version field. Missing is tolerated for
+// backward compatibility (the caller is responsible for warning once after
+// merging); any value other than 1 is a hard error.
+func (c *Config) validateVersion(path string) error {
+	if c.Version == nil {
+		return nil
+	}
+	v := *c.Version
+	if v <= 0 {
+		return fmt.Errorf("version must be a positive integer (got %d in %s)", v, path)
+	}
+	if v != 1 {
+		return fmt.Errorf(
+			"%s declares version %d, but this build of gaal lite only understands version 1.\nUpgrade gaal lite, or check https://getgaal.com/schema for migration notes.",
+			path, v,
+		)
+	}
+	return nil
+}
+
+// JSONSchemaExtend customises the generated JSON Schema for Config.
+// The schema is intentionally stricter than the runtime parser: version is
+// required (not optional-with-default) and constrained to exactly 1 so IDE
+// users get instant feedback.
+func (Config) JSONSchemaExtend(schema *jsonschema.Schema) {
+	if prop, ok := schema.Properties.Get("version"); ok {
+		prop.Enum = []any{1}
+	}
+	schema.Required = append(schema.Required, "version")
 }
 
 // RepoConfig is a vcstool-compatible repository entry.
@@ -198,6 +231,10 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing YAML: %w", err)
 	}
 
+	if err := cfg.validateVersion(path); err != nil {
+		return nil, err
+	}
+
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -233,6 +270,10 @@ func LoadChain(workspacePath string) (*Config, error) {
 		return nil, fmt.Errorf("no configuration file found (tried: %v)", candidates)
 	}
 
+	if merged.Version == nil {
+		slog.Warn("config is missing 'version: 1'; this will be required in a future release")
+	}
+
 	return merged, nil
 }
 
@@ -241,6 +282,12 @@ func LoadChain(workspacePath string) (*Config, error) {
 //   - skills / mcps: appended (all entries from all levels are kept).
 func (c *Config) mergeFrom(src *Config) {
 	slog.Debug("merging config", "repos", len(src.Repositories), "skills", len(src.Skills), "mcps", len(src.MCPs))
+
+	// Version: higher-priority source wins when set.
+	if src.Version != nil {
+		c.Version = src.Version
+	}
+
 	// Repositories: map merge — src (higher priority) wins on key conflict.
 	if len(src.Repositories) > 0 {
 		if c.Repositories == nil {
