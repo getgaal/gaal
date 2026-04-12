@@ -52,7 +52,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: true
+          # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
 
       - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
         env:
