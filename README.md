@@ -287,16 +287,16 @@ gaal merges up to three configuration files in order:
 
 ### Schema stability
 
-Every `gaal.yaml` file should declare `version: 1` as its first field:
+Every `gaal.yaml` file should declare `schema: 1` as its first field:
 
 ```yaml
-version: 1
+schema: 1
 repositories: {}
 skills: []
 mcps: []
 ```
 
-gaal Lite commits to reading `version: 1` configs forever. Future releases may add optional fields, but breaking changes will only ship under `version: 2` (or higher) with a documented migration path. You can adopt gaal Lite today knowing your config file will keep working.
+gaal Lite commits to reading `schema: 1` configs forever. Future releases may add optional fields, but breaking changes will only ship under `schema: 2` (or higher) with a documented migration path. You can adopt gaal Lite today knowing your config file will keep working.
 
 ### Agent registry customization
 
