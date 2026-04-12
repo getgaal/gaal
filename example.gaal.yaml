@@ -4,6 +4,11 @@
 # Run as service (every 10 min): gaal --service --interval 10m
 # Show status: gaal status
 
+# gaal Lite config schema version. Always 1 for gaal Lite.
+# This field is stable forever: future gaal Lite releases will always read
+# version: 1 files. Breaking changes will use version: 2 with a migration path.
+version: 1
+
 # ─────────────────────────────────────────────────────────────────────────────
 # repositories
 #
