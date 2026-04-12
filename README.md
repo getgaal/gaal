@@ -350,6 +350,14 @@ go install github.com/gmg-inc/gaal-lite@latest
 
 ---
 
+## Privacy
+
+gaal collects **no data by default**. You can opt in to anonymous usage
+telemetry on first run. See the [Privacy Policy](PRIVACY_POLICY.md) for
+full details on what is and isn't collected.
+
+---
+
 ## License
 
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
