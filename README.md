@@ -285,6 +285,16 @@ gaal merges up to three configuration files in order:
 | 2 | `$XDG_CONFIG_HOME/gaal/config.yaml` (user, defaults to `~/.config/gaal/config.yaml` on Linux and macOS) |
 | 3 — highest | `gaal.yaml` in CWD, or `--config` path |
 
+Merge rules (higher priority always wins):
+
+| Field | Rule |
+|-------|------|
+| `version` | Highest-priority file that explicitly sets it wins |
+| `telemetry` | Highest-priority file that explicitly sets it wins; omitting the field leaves the lower-level value intact |
+| `repositories` | Map merge — higher-priority entry wins on key conflict |
+| `skills` | Deduplicated by `source` — higher-priority level replaces any existing entry with the same source |
+| `mcps` | Deduplicated by `name` — higher-priority level replaces any existing entry with the same name |
+
 ### Schema stability
 
 Every `gaal.yaml` file should declare `version: 1` as its first field:

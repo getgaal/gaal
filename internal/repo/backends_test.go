@@ -28,7 +28,7 @@ func TestManager_Sync_Empty(t *testing.T) {
 func TestManager_Sync_ArchiveAlreadyCloned(t *testing.T) {
 	// Archive.Update is a no-op, so this tests the Update path.
 	existing := t.TempDir()
-	repos := map[string]config.RepoConfig{
+	repos := map[string]config.ConfigRepo{
 		existing: {Type: "tar", URL: "https://example.com/x.tar.gz"},
 	}
 	m := NewManager(repos)
@@ -38,7 +38,7 @@ func TestManager_Sync_ArchiveAlreadyCloned(t *testing.T) {
 }
 
 func TestManager_Sync_UnknownType(t *testing.T) {
-	repos := map[string]config.RepoConfig{
+	repos := map[string]config.ConfigRepo{
 		"/tmp/nope": {Type: "cvs", URL: "https://example.com/x"},
 	}
 	m := NewManager(repos)
@@ -48,7 +48,7 @@ func TestManager_Sync_UnknownType(t *testing.T) {
 }
 
 func TestManager_Status_NotCloned(t *testing.T) {
-	repos := map[string]config.RepoConfig{
+	repos := map[string]config.ConfigRepo{
 		"/tmp/not-cloned": {Type: "tar", URL: "https://example.com/x.tar.gz"},
 	}
 	m := NewManager(repos)
@@ -63,7 +63,7 @@ func TestManager_Status_NotCloned(t *testing.T) {
 
 func TestManager_Status_Cloned(t *testing.T) {
 	existing := t.TempDir()
-	repos := map[string]config.RepoConfig{
+	repos := map[string]config.ConfigRepo{
 		existing: {Type: "tar", URL: "https://example.com/x.tar.gz"},
 	}
 	m := NewManager(repos)
@@ -79,7 +79,7 @@ func TestManager_Status_Cloned(t *testing.T) {
 func TestManager_Status_CurrentVersionError(t *testing.T) {
 	existing := t.TempDir()
 	// tar archive: IsCloned=true, CurrentVersion returns "archive"
-	repos := map[string]config.RepoConfig{
+	repos := map[string]config.ConfigRepo{
 		existing: {Type: "tar", URL: "https://example.com/x.tar.gz", Version: "v1"},
 	}
 	m := NewManager(repos)
@@ -98,7 +98,7 @@ func TestManager_Status_CurrentVersionError(t *testing.T) {
 
 func TestManager_Status_DirtyFalse_Archive(t *testing.T) {
 	existing := t.TempDir()
-	repos := map[string]config.RepoConfig{
+	repos := map[string]config.ConfigRepo{
 		existing: {Type: "tar", URL: "https://example.com/x.tar.gz"},
 	}
 	m := NewManager(repos)

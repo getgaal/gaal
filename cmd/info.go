@@ -55,6 +55,6 @@ func runInfo(_ *cobra.Command, args []string) error {
 	}
 
 	telemetry.Track("info")
-	return engine.NewWithOptions(cfg, engineOpts).
+	return engine.NewWithOptions(cfg.Config, engineOpts).
 		Info(context.Background(), pkg, filter, engine.OutputFormat(outputFormat))
 }

@@ -24,11 +24,11 @@ type Status struct {
 
 // Manager handles the synchronisation of all repositories.
 type Manager struct {
-	repos map[string]config.RepoConfig
+	repos map[string]config.ConfigRepo
 }
 
 // NewManager creates a new repository manager.
-func NewManager(repos map[string]config.RepoConfig) *Manager {
+func NewManager(repos map[string]config.ConfigRepo) *Manager {
 	return &Manager{repos: repos}
 }
 
@@ -43,7 +43,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 
 	for path, cfg := range m.repos {
 		wg.Add(1)
-		go func(path string, cfg config.RepoConfig) {
+		go func(path string, cfg config.ConfigRepo) {
 			defer wg.Done()
 			if err := m.syncOne(ctx, path, cfg); err != nil {
 				errCh <- fmt.Errorf("repo %q: %w", path, err)
@@ -65,7 +65,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) syncOne(ctx context.Context, path string, cfg config.RepoConfig) error {
+func (m *Manager) syncOne(ctx context.Context, path string, cfg config.ConfigRepo) error {
 	slog.DebugContext(ctx, "syncing repository", "path", path, "type", cfg.Type, "version", cfg.Version)
 	backend, err := vcs.New(cfg.Type)
 	if err != nil {
@@ -90,7 +90,7 @@ func (m *Manager) Status(ctx context.Context) []Status {
 
 	for path, cfg := range m.repos {
 		wg.Add(1)
-		go func(path string, cfg config.RepoConfig) {
+		go func(path string, cfg config.ConfigRepo) {
 			defer wg.Done()
 
 			st := Status{

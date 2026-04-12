@@ -120,10 +120,23 @@ Missing files are silently skipped. At least one file must be present.
 
 ### Merge strategy
 
+The FS access model follows a strict layering chain:
+
+```
+FS (system read) ← yaml.Unmarshal (Load) ← Global | User | Workspace ← mergeFrom (LoadChain) ← runtime Config
+```
+
+`Load()` parses and validates a single file; `LoadChain()` orchestrates the three levels and merges them into a single `Config`. The merged `Config` also carries `Config.Levels` (type `ConfigLevels`) which holds each individual level as loaded from disk before merging — useful for code that needs to inspect the raw per-level values.
+
 | Field | Rule |
 |-------|------|
+| `version` | Highest-priority file that explicitly sets it wins (nil = not set) |
+| `telemetry` | Highest-priority file that explicitly sets it wins; omitting the field leaves the lower-level value intact |
 | `repositories` | Map merge — higher-priority entry wins on key conflict |
-| `skills` / `mcps` | Accumulated — all entries from all levels are concatenated |
+| `skills` | Upsert by `source` — higher-priority level replaces any existing entry with the same Source; no duplicates at any level |
+| `mcps` | Upsert by `name` — higher-priority level replaces any existing entry with the same Name; no duplicates at any level |
+
+Intra-file duplicates (same `source` or `name` appearing more than once within a single file) are silently dropped, keeping the first occurrence.
 
 ### Path resolution
 
@@ -157,8 +170,10 @@ Key validation rules:
 
 | Symbol | Description |
 |--------|-------------|
-| `Load(path string) (*Config, error)` | Parse + validate + expand a single file |
-| `LoadChain(workspacePath string) (*Config, error)` | Merge global → user → workspace |
+| `Load(path string) (*Config, error)` | Parse + validate + expand a single file; intra-file skills/MCPs deduplicated |
+| `LoadChain(workspacePath string) (*Config, error)` | Merge global → user → workspace; populates `Config.Levels` |
+| `GlobalConfigFilePath() string` | System-wide config path for the current OS |
+| `UserConfigFilePath() string` | Per-user config path (XDG-aware on Linux/macOS) |
 | `GenerateSchema() ([]byte, error)` | Return the JSON Schema for `Config` |
 
 The private `validate()` method delegates entirely to `schema.DefaultValidator.Validate(c)`.

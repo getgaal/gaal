@@ -65,7 +65,7 @@ func runMigrate(_ *cobra.Command, args []string) error {
 		url = args[0]
 	}
 
-	eng := engine.NewWithOptions(cfg, engineOpts)
+	eng := engine.NewWithOptions(cfg.Config, engineOpts)
 
 	result, err := eng.Migrate(migrateTarget, url, migrateDryRun)
 	if err != nil {

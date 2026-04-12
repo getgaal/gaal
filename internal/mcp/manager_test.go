@@ -154,11 +154,11 @@ func TestFetchRemoteEntry_EmptyMCPServers(t *testing.T) {
 
 func TestManager_Sync_Inline(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "mcp.json")
-	mcps := []config.MCPConfig{
+	mcps := []config.ConfigMcp{
 		{
 			Name:   "inline-server",
 			Target: target,
-			Inline: &config.MCPInlineConfig{
+			Inline: &config.ConfigMcpItem{
 				Command: "node",
 				Args:    []string{"server.js"},
 			},
@@ -174,7 +174,7 @@ func TestManager_Sync_Inline(t *testing.T) {
 }
 
 func TestManager_Sync_NoSourceOrInline(t *testing.T) {
-	mcps := []config.MCPConfig{
+	mcps := []config.ConfigMcp{
 		{Name: "bad", Target: filepath.Join(t.TempDir(), "mcp.json")},
 	}
 	m := NewManager(mcps)
@@ -185,7 +185,7 @@ func TestManager_Sync_NoSourceOrInline(t *testing.T) {
 }
 
 func TestManager_Status_Missing(t *testing.T) {
-	mcps := []config.MCPConfig{
+	mcps := []config.ConfigMcp{
 		{Name: "srv", Target: "/no/such/file.json"},
 	}
 	m := NewManager(mcps)
@@ -201,7 +201,7 @@ func TestManager_Status_Missing(t *testing.T) {
 func TestManager_Status_Present(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "mcp.json")
 	os.WriteFile(target, []byte(`{"mcpServers":{"my-srv":{"command":"cmd"}}}`), 0o644)
-	mcps := []config.MCPConfig{
+	mcps := []config.ConfigMcp{
 		{Name: "my-srv", Target: target},
 	}
 	m := NewManager(mcps)
@@ -224,7 +224,7 @@ func TestManager_Sync_WithSource(t *testing.T) {
 	defer srv.Close()
 
 	target := filepath.Join(t.TempDir(), "mcp.json")
-	mcps := []config.MCPConfig{
+	mcps := []config.ConfigMcp{
 		{Name: "my-srv", Source: srv.URL, Target: target},
 	}
 	m := NewManager(mcps)
@@ -309,11 +309,11 @@ func TestManager_Sync_SkipsUninstalledAgentTarget(t *testing.T) {
 	parent := filepath.Join(root, ".zencoder")
 	target := filepath.Join(parent, "mcp.json")
 
-	mcps := []config.MCPConfig{
+	mcps := []config.ConfigMcp{
 		{
 			Name:   "srv",
 			Target: target,
-			Inline: &config.MCPInlineConfig{Command: "node"},
+			Inline: &config.ConfigMcpItem{Command: "node"},
 		},
 	}
 	m := NewManager(mcps)
@@ -331,7 +331,7 @@ func TestManager_Sync_SkipsUninstalledAgentTarget(t *testing.T) {
 func TestManager_Status_InvalidJSON(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "mcp.json")
 	os.WriteFile(target, []byte(`invalid json {{{`), 0o644)
-	mcps := []config.MCPConfig{
+	mcps := []config.ConfigMcp{
 		{Name: "srv", Target: target},
 	}
 	m := NewManager(mcps)
@@ -397,11 +397,11 @@ func TestManager_Status_DirtyInline(t *testing.T) {
 	// Store a different command than what is configured.
 	os.WriteFile(target, []byte(`{"mcpServers":{"srv":{"command":"old-cmd"}}}`), 0o644)
 
-	mcps := []config.MCPConfig{
+	mcps := []config.ConfigMcp{
 		{
 			Name:   "srv",
 			Target: target,
-			Inline: &config.MCPInlineConfig{Command: "new-cmd"},
+			Inline: &config.ConfigMcpItem{Command: "new-cmd"},
 		},
 	}
 	m := NewManager(mcps)
@@ -421,11 +421,11 @@ func TestManager_Status_CleanInline(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "mcp.json")
 	os.WriteFile(target, []byte(`{"mcpServers":{"srv":{"command":"node","args":["server.js"]}}}`), 0o644)
 
-	mcps := []config.MCPConfig{
+	mcps := []config.ConfigMcp{
 		{
 			Name:   "srv",
 			Target: target,
-			Inline: &config.MCPInlineConfig{Command: "node", Args: []string{"server.js"}},
+			Inline: &config.ConfigMcpItem{Command: "node", Args: []string{"server.js"}},
 		},
 	}
 	m := NewManager(mcps)
@@ -443,7 +443,7 @@ func TestManager_Status_SourceNoInline_NoDirtyCheck(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "mcp.json")
 	os.WriteFile(target, []byte(`{"mcpServers":{"srv":{"command":"something"}}}`), 0o644)
 
-	mcps := []config.MCPConfig{
+	mcps := []config.ConfigMcp{
 		{Name: "srv", Target: target, Source: "https://example.com/mcp.json"},
 	}
 	m := NewManager(mcps)

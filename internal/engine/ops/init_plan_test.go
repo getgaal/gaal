@@ -73,7 +73,7 @@ func TestBuildPlan_DoNotGroupAcrossSources(t *testing.T) {
 }
 
 func TestBuildPlan_MCPsNotGrouped(t *testing.T) {
-	inline := &config.MCPInlineConfig{Command: "uvx", Args: []string{"mcp-server-git"}}
+	inline := &config.ConfigMcpItem{Command: "uvx", Args: []string{"mcp-server-git"}}
 	cands := []Candidate{
 		{Kind: CandidateMCP, AgentName: "claude-code", MCPName: "a", MCPTarget: "~/.claude.json", MCPInline: inline},
 		{Kind: CandidateMCP, AgentName: "claude-code", MCPName: "b", MCPTarget: "~/.claude.json", MCPInline: inline},

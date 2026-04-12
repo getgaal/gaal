@@ -39,11 +39,11 @@ type Status struct {
 
 // Manager handles MCP server configuration files.
 type Manager struct {
-	mcps []config.MCPConfig
+	mcps []config.ConfigMcp
 }
 
 // NewManager creates a new MCP manager.
-func NewManager(mcps []config.MCPConfig) *Manager {
+func NewManager(mcps []config.ConfigMcp) *Manager {
 	return &Manager{mcps: mcps}
 }
 
@@ -57,7 +57,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) syncOne(ctx context.Context, mc config.MCPConfig) error {
+func (m *Manager) syncOne(ctx context.Context, mc config.ConfigMcp) error {
 	slog.DebugContext(ctx, "syncing mcp entry", "name", mc.Name, "target", mc.Target)
 	var entry serverEntry
 
@@ -263,7 +263,7 @@ func serverEntryEqual(a, b serverEntry) bool {
 // LoadServers reads the given MCP config file and returns the full inline
 // definition of every server found in the "mcpServers" object, keyed by name.
 // Returns nil, nil when the file does not exist or has no "mcpServers" entry.
-func LoadServers(configFile string) (map[string]config.MCPInlineConfig, error) {
+func LoadServers(configFile string) (map[string]config.ConfigMcpItem, error) {
 	slog.Debug("loading mcp servers", "file", configFile)
 	data, err := os.ReadFile(configFile)
 	if err != nil {
@@ -288,9 +288,9 @@ func LoadServers(configFile string) (map[string]config.MCPInlineConfig, error) {
 		return nil, fmt.Errorf("parsing mcpServers in %s: %w", configFile, err)
 	}
 
-	out := make(map[string]config.MCPInlineConfig, len(servers))
+	out := make(map[string]config.ConfigMcpItem, len(servers))
 	for name, s := range servers {
-		out[name] = config.MCPInlineConfig{
+		out[name] = config.ConfigMcpItem{
 			Command: s.Command,
 			Args:    s.Args,
 			Env:     s.Env,

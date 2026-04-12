@@ -62,7 +62,7 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 
 		// Telemetry: resolve consent state and initialise.
 		if !skipTelemetry(cmd) {
-			userCfg := loadUserTelemetryConfig()
+			userCfg := loadMergedTelemetryConfig()
 			var promptFn func() (bool, error)
 			if term.IsTerminal(int(os.Stdin.Fd())) {
 				promptFn = showConsentPrompt
@@ -176,10 +176,11 @@ func skipTelemetry(cmd *cobra.Command) bool {
 		(cmd.HasParent() && cmd.Parent().Name() == "completion")
 }
 
-// loadUserTelemetryConfig reads the telemetry field from the user config
-// file without going through the full config merge chain.
-func loadUserTelemetryConfig() *bool {
-	cfg, err := config.Load(config.UserConfigFilePath())
+// loadMergedTelemetryConfig reads the telemetry field from the merged config
+// chain (global -> user -> workspace). Errors are silently ignored; the
+// caller treats nil as "no consent recorded".
+func loadMergedTelemetryConfig() *bool {
+	cfg, err := config.LoadChain(cfgFile)
 	if err != nil {
 		return nil
 	}

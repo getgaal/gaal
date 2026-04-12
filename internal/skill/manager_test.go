@@ -244,7 +244,7 @@ func TestIsLocalPath(t *testing.T) {
 
 func TestManager_Status_UnknownAgent(t *testing.T) {
 	sourceDir := t.TempDir()
-	skills := []config.SkillConfig{
+	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"unknown-agent-xyz"}},
 	}
 	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())
@@ -259,7 +259,7 @@ func TestManager_Status_UnknownAgent(t *testing.T) {
 
 func TestManager_Status_SourceNotCached(t *testing.T) {
 	// Non-local source that has never been downloaded.
-	skills := []config.SkillConfig{
+	skills := []config.ConfigSkill{
 		{Source: "owner/never-downloaded-repo", Agents: []string{"claude-code"}},
 	}
 	workDir := t.TempDir()
@@ -288,7 +288,7 @@ func TestManager_Status_InstalledAndMissing(t *testing.T) {
 	claudeSkillsDir := filepath.Join(workDir, ".claude", "skills")
 	os.MkdirAll(filepath.Join(claudeSkillsDir, "skill-a"), 0o755) // installed
 
-	skills := []config.SkillConfig{
+	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
 	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
@@ -333,7 +333,7 @@ func TestManager_Sync_UnknownAgent_SkipsWithWarn(t *testing.T) {
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-skill\n---\n"), 0o644)
 
-	skills := []config.SkillConfig{
+	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"unknown-agent-xyz"}},
 	}
 	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())
@@ -424,7 +424,7 @@ func TestSyncAgents_ExplicitList_ProjectScope_FiltersUninstalled(t *testing.T) {
 	// zencoder is NOT installed — .zencoder/ does not exist.
 
 	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
-	got := m.syncAgents(config.SkillConfig{
+	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"claude-code", "zencoder"},
 		Global: false,
@@ -448,7 +448,7 @@ func TestSyncAgents_ExplicitList_GlobalScope_FiltersUninstalled(t *testing.T) {
 	// zencoder is NOT installed — ~/.zencoder/ does not exist.
 
 	m := NewManager(nil, t.TempDir(), home, t.TempDir())
-	got := m.syncAgents(config.SkillConfig{
+	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"claude-code", "zencoder"},
 		Global: true,
@@ -465,7 +465,7 @@ func TestSyncAgents_ExplicitList_GlobalScope_FiltersUninstalled(t *testing.T) {
 func TestSyncAgents_ExplicitList_AllUninstalled_ReturnsEmpty(t *testing.T) {
 	workDir := t.TempDir() // fresh, no agent dirs
 	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
-	got := m.syncAgents(config.SkillConfig{
+	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"zencoder", "kilo"},
 		Global: false,
@@ -482,7 +482,7 @@ func TestSyncAgents_Wildcard_StillWorks(t *testing.T) {
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
 	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
-	got := m.syncAgents(config.SkillConfig{
+	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"*"},
 		Global: false,
@@ -574,7 +574,7 @@ func TestManager_Status_ModifiedSkill(t *testing.T) {
 	os.MkdirAll(skillDst, 0o755)
 	os.WriteFile(filepath.Join(skillDst, "SKILL.md"), []byte("user modified"), 0o644)
 
-	skills := []config.SkillConfig{
+	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
 	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
@@ -612,7 +612,7 @@ func TestManager_Status_CleanSkill(t *testing.T) {
 	os.MkdirAll(skillDst, 0o755)
 	os.WriteFile(filepath.Join(skillDst, "SKILL.md"), content, 0o644)
 
-	skills := []config.SkillConfig{
+	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
 	m := NewManager(skills, t.TempDir(), "/home/user", workDir)

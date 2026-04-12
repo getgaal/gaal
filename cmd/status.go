@@ -33,6 +33,6 @@ func runStatus(_ *cobra.Command, _ []string) error {
 	}
 
 	telemetry.Track("status")
-	return engine.NewWithOptions(cfg, engineOpts).
+	return engine.NewWithOptions(cfg.Config, engineOpts).
 		Status(context.Background(), engine.OutputFormat(outputFormat))
 }

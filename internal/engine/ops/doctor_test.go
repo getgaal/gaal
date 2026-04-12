@@ -67,7 +67,7 @@ func TestDoctorCleanConfigWithVersion(t *testing.T) {
 
 func TestDoctorSkillSourceLocalMissing(t *testing.T) {
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: "/nonexistent/path/that/does/not/exist", Agents: []string{"claude-code"}},
 		},
 	}
@@ -92,7 +92,7 @@ func TestDoctorSkillSourceLocalMissing(t *testing.T) {
 func TestDoctorSkillSourceLocalExists(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: dir, Agents: []string{"claude-code"}},
 		},
 	}
@@ -112,7 +112,7 @@ func TestDoctorSkillSourceRemoteReachable(t *testing.T) {
 	defer srv.Close()
 
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: srv.URL, Agents: []string{"claude-code"}},
 		},
 	}
@@ -132,7 +132,7 @@ func TestDoctorSkillSourceRemoteUnreachable(t *testing.T) {
 	defer srv.Close()
 
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: srv.URL, Agents: []string{"claude-code"}},
 		},
 	}
@@ -152,7 +152,7 @@ func TestDoctorSkillSourceRemoteUnreachable(t *testing.T) {
 
 func TestDoctorOfflineSkipsNetwork(t *testing.T) {
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: "owner/repo", Agents: []string{"claude-code"}},
 		},
 	}
@@ -171,7 +171,7 @@ func TestDoctorMCPTargetValid(t *testing.T) {
 	os.WriteFile(target, []byte(`{"mcpServers": {}}`), 0o644)
 
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{Name: "test", Target: target},
 		},
 	}
@@ -190,7 +190,7 @@ func TestDoctorMCPTargetInvalidJSON(t *testing.T) {
 	os.WriteFile(target, []byte(`not valid json`), 0o644)
 
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{Name: "test", Target: target},
 		},
 	}
@@ -219,7 +219,7 @@ func TestDoctorMCPTargetOutsideHome(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{Name: "test", Target: target},
 		},
 	}
@@ -243,7 +243,7 @@ func TestDoctorExitCodeWarnings(t *testing.T) {
 	os.WriteFile(target, []byte(`not json`), 0o644)
 
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{Name: "test", Target: target},
 		},
 	}

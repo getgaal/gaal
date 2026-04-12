@@ -99,6 +99,8 @@ mcps:
 | `mcps` | `target` | Absolute path to the agent JSON config file |
 | `mcps` | `inline` | Inline server definition (mutually exclusive with `source`) |
 | `mcps` | `source` | URL to a remote JSON file containing an `mcpServers` block |
+| `mcps` | `merge` | `true` (default) = upsert into existing file; `false` = overwrite the whole file |
+| _(top-level)_ | `telemetry` | `true` / `false`: opt in/out of anonymous usage telemetry; can be set at any config level |
 
 Supported agent names: `amp`, `claude-code`, `cursor`, `github-copilot`, `cline`, `roo`, `codex`, `continue`, `gemini-cli`, `goose`, `kilo`, `kiro-cli`, `opencode`, `openhands`, `trae`, `warp`, `windsurf`, and more. Run `gaal info agent` for the full list.
 

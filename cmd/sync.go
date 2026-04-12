@@ -49,7 +49,7 @@ func runSync(_ *cobra.Command, _ []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	eng := engine.NewWithOptions(cfg, engineOpts)
+	eng := engine.NewWithOptions(cfg.Config, engineOpts)
 
 	if service {
 		slog.Info("service mode started", "interval", interval, "config", cfgFile)

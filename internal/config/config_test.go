@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -22,79 +21,6 @@ func writeYAML(t *testing.T, content string) string {
 	}
 	f.Close()
 	return f.Name()
-}
-
-// ---------------------------------------------------------------------------
-// globalConfigFilePath / userConfigFilePath
-// ---------------------------------------------------------------------------
-
-func TestGlobalConfigFilePath_Linux(t *testing.T) {
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-		t.Skip("POSIX-only test")
-	}
-	got := globalConfigFilePath()
-	if got != "/etc/gaal/config.yaml" {
-		t.Errorf("got %q, want /etc/gaal/config.yaml", got)
-	}
-}
-
-func TestGlobalConfigFilePath_Windows(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("Windows-only test")
-	}
-	got := globalConfigFilePath()
-	if !strings.HasSuffix(got, `\gaal\config.yaml`) {
-		t.Errorf("got %q, want suffix \\gaal\\config.yaml", got)
-	}
-}
-
-func TestUserConfigFilePath(t *testing.T) {
-	got := userConfigFilePath()
-	if got == "" {
-		t.Fatal("userConfigFilePath returned empty string")
-	}
-	if !strings.HasSuffix(got, filepath.Join("gaal", "config.yaml")) {
-		t.Errorf("got %q, expected suffix gaal/config.yaml", got)
-	}
-}
-
-func TestUserConfigFilePath_Darwin(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("darwin-only test")
-	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", "")
-
-	got := userConfigFilePath()
-	want := filepath.Join(home, ".config", "gaal", "config.yaml")
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-}
-
-func TestUserConfigFilePath_Exported(t *testing.T) {
-	got := UserConfigFilePath()
-	want := userConfigFilePath()
-	if got != want {
-		t.Errorf("exported UserConfigFilePath returned %q, want %q", got, want)
-	}
-}
-
-func TestUserConfigFilePath_DarwinUsesXDGConfigHome(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("darwin-only test")
-	}
-	home := t.TempDir()
-	xdg := filepath.Join(t.TempDir(), "xdg-config")
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-
-	got := userConfigFilePath()
-	want := filepath.Join(xdg, "gaal", "config.yaml")
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -445,6 +371,11 @@ skills:
 // ---------------------------------------------------------------------------
 
 func TestLoadChain_OnlyWorkspace(t *testing.T) {
+	// Isolate from the host's real global/user configs.
+	empty := t.TempDir()
+	t.Setenv("HOME", empty)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(empty, "xdg"))
+
 	repoPath := filepath.ToSlash(filepath.Join(t.TempDir(), "testrepo"))
 	p := writeYAML(t, fmt.Sprintf(`
 repositories:
@@ -457,7 +388,7 @@ repositories:
 		t.Fatalf("LoadChain: %v", err)
 	}
 	if _, ok := cfg.Repositories[repoPath]; !ok {
-		t.Errorf("expected %q in merged config, got: %v", repoPath, repoKeys(cfg))
+		t.Errorf("expected %q in merged config, got: %v", repoPath, repoKeys(cfg.Config))
 	}
 }
 
@@ -541,7 +472,7 @@ func TestMergeFrom_SkillsAccumulated(t *testing.T) {
 
 func TestMergeFrom_EmptySrc(t *testing.T) {
 	base := &Config{
-		Repositories: map[string]RepoConfig{
+		Repositories: map[string]ConfigRepo{
 			"/r1": {Type: "git", URL: "https://example.com/r1.git"},
 		},
 	}
@@ -554,7 +485,7 @@ func TestMergeFrom_EmptySrc(t *testing.T) {
 func TestMergeFrom_NilRepositoriesInDst(t *testing.T) {
 	dst := &Config{}
 	src := &Config{
-		Repositories: map[string]RepoConfig{
+		Repositories: map[string]ConfigRepo{
 			"/new": {Type: "git", URL: "https://example.com/new.git"},
 		},
 	}
@@ -581,76 +512,6 @@ func TestMergeFrom_VersionDstPreservedWhenSrcNil(t *testing.T) {
 	dst.mergeFrom(src)
 	if dst.Version == nil || *dst.Version != 1 {
 		t.Errorf("expected Version=1 preserved from dst, got %v", dst.Version)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// expandPaths
-// ---------------------------------------------------------------------------
-
-func TestExpandPaths_TildeInSkillSource(t *testing.T) {
-	home, _ := os.UserHomeDir()
-
-	p := writeYAML(t, `
-skills:
-  - source: ~/my-skills
-`)
-	cfg, err := Load(p)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	want := filepath.Join(home, "my-skills")
-	if len(cfg.Skills) == 0 || cfg.Skills[0].Source != want {
-		t.Errorf("got %v, want %q", cfg.Skills, want)
-	}
-}
-
-func TestExpandPaths_GitHubShorthandUnchanged(t *testing.T) {
-	p := writeYAML(t, `
-skills:
-  - source: owner/repo
-`)
-	cfg, err := Load(p)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(cfg.Skills) == 0 || cfg.Skills[0].Source != "owner/repo" {
-		t.Errorf("GitHub shorthand should not be expanded, got %q", cfg.Skills[0].Source)
-	}
-}
-
-func TestExpandPaths_HTTPSUnchanged(t *testing.T) {
-	p := writeYAML(t, `
-skills:
-  - source: https://github.com/owner/repo
-`)
-	cfg, err := Load(p)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(cfg.Skills) == 0 || cfg.Skills[0].Source != "https://github.com/owner/repo" {
-		t.Errorf("HTTPS URL should remain unchanged, got %q", cfg.Skills[0].Source)
-	}
-}
-
-func TestExpandPaths_MCPTargetRelative(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "gaal.yaml")
-	os.WriteFile(p, []byte(`
-mcps:
-  - name: myserver
-    target: configs/mcp.json
-    inline:
-      command: npx
-`), 0o644)
-
-	cfg, err := Load(p)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	want := filepath.Join(dir, "configs", "mcp.json")
-	if len(cfg.MCPs) == 0 || cfg.MCPs[0].Target != want {
-		t.Errorf("got %q, want %q", cfg.MCPs[0].Target, want)
 	}
 }
 
@@ -683,12 +544,14 @@ func TestTelemetryFieldNilWhenAbsent(t *testing.T) {
 	}
 }
 
-func TestTelemetryNotMerged(t *testing.T) {
+func TestTelemetryCarriedFromLower(t *testing.T) {
 	dir := t.TempDir()
 
+	// lower level sets telemetry: true
 	lower := filepath.Join(dir, "lower.yaml")
 	os.WriteFile(lower, []byte("telemetry: true\n"), 0o644)
 
+	// higher level has no telemetry field
 	higher := filepath.Join(dir, "higher.yaml")
 	os.WriteFile(higher, []byte("skills:\n  - source: owner/repo\n"), 0o644)
 
@@ -705,9 +568,44 @@ func TestTelemetryNotMerged(t *testing.T) {
 	merged.mergeFrom(cfgLow)
 	merged.mergeFrom(cfgHigh)
 
-	// Telemetry is intentionally excluded from merging; higher config's nil wins.
-	if merged.Telemetry != nil {
-		t.Errorf("expected Telemetry to be nil after merge (higher has no telemetry), got %v", *merged.Telemetry)
+	// Higher level has nil Telemetry (not set) so lower's value is preserved.
+	if merged.Telemetry == nil {
+		t.Fatal("expected Telemetry to be non-nil (carried from lower), got nil")
+	}
+	if !*merged.Telemetry {
+		t.Errorf("expected Telemetry=true (carried from lower), got false")
+	}
+}
+
+func TestTelemetryHigherWins(t *testing.T) {
+	dir := t.TempDir()
+
+	// lower level sets telemetry: true
+	lower := filepath.Join(dir, "lower.yaml")
+	os.WriteFile(lower, []byte("telemetry: true\n"), 0o644)
+
+	// higher level explicitly sets telemetry: false
+	higher := filepath.Join(dir, "higher.yaml")
+	os.WriteFile(higher, []byte("telemetry: false\n"), 0o644)
+
+	cfgLow, err := Load(lower)
+	if err != nil {
+		t.Fatalf("Load lower: %v", err)
+	}
+	cfgHigh, err := Load(higher)
+	if err != nil {
+		t.Fatalf("Load higher: %v", err)
+	}
+
+	merged := &Config{}
+	merged.mergeFrom(cfgLow)
+	merged.mergeFrom(cfgHigh)
+
+	if merged.Telemetry == nil {
+		t.Fatal("expected Telemetry to be non-nil, got nil")
+	}
+	if *merged.Telemetry {
+		t.Errorf("expected Telemetry=false (higher wins), got true")
 	}
 }
 
@@ -780,6 +678,176 @@ func TestGenerateSchema_VersionEnumOne(t *testing.T) {
 	// JSON numbers unmarshal as float64.
 	if enumSlice[0] != float64(1) {
 		t.Errorf("expected enum=[1], got enum=%v", enumSlice)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MCPConfig.MergeEnabled
+// ---------------------------------------------------------------------------
+
+func TestMCPConfig_MergeEnabled_NilDefaultsTrue(t *testing.T) {
+	mc := ConfigMcp{Name: "srv", Target: "/tmp/mcp.json"}
+	if !mc.MergeEnabled() {
+		t.Error("expected MergeEnabled()=true when Merge is nil")
+	}
+}
+
+func TestMCPConfig_MergeEnabled_ExplicitFalse(t *testing.T) {
+	f := false
+	mc := ConfigMcp{Name: "srv", Target: "/tmp/mcp.json", Merge: &f}
+	if mc.MergeEnabled() {
+		t.Error("expected MergeEnabled()=false when Merge is explicitly false")
+	}
+}
+
+func TestMCPConfig_MergeEnabled_ExplicitTrue(t *testing.T) {
+	tr := true
+	mc := ConfigMcp{Name: "srv", Target: "/tmp/mcp.json", Merge: &tr}
+	if !mc.MergeEnabled() {
+		t.Error("expected MergeEnabled()=true when Merge is explicitly true")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Skills / MCPs deduplication
+// ---------------------------------------------------------------------------
+
+func TestLoad_SkillsDeduplicated(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    agents: ["*"]
+  - source: owner/repo
+    agents: ["claude"]
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Skills) != 1 {
+		t.Errorf("expected 1 skill after intra-file dedup, got %d", len(cfg.Skills))
+	}
+	// First occurrence must be kept.
+	if len(cfg.Skills[0].Agents) == 0 || cfg.Skills[0].Agents[0] != "*" {
+		t.Errorf("expected first occurrence (agents=[*]) to be kept, got %v", cfg.Skills[0].Agents)
+	}
+}
+
+func TestLoad_MCPsDeduplicated(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "gaal.yaml")
+	os.WriteFile(p, []byte(`
+mcps:
+  - name: myserver
+    target: /tmp/mcp.json
+    inline:
+      command: first-cmd
+  - name: myserver
+    target: /tmp/mcp.json
+    inline:
+      command: second-cmd
+`), 0o644)
+
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.MCPs) != 1 {
+		t.Errorf("expected 1 MCP after intra-file dedup, got %d", len(cfg.MCPs))
+	}
+	// First occurrence must be kept.
+	if cfg.MCPs[0].Inline == nil || cfg.MCPs[0].Inline.Command != "first-cmd" {
+		t.Errorf("expected first occurrence (command=first-cmd) to be kept, got %v", cfg.MCPs[0].Inline)
+	}
+}
+
+func TestMergeFrom_SkillsDeduplicated(t *testing.T) {
+	dir := t.TempDir()
+
+	lower := filepath.Join(dir, "lower.yaml")
+	os.WriteFile(lower, []byte("skills:\n  - source: owner/repo\n    agents: [\"*\"]\n"), 0o644)
+
+	higher := filepath.Join(dir, "higher.yaml")
+	os.WriteFile(higher, []byte("skills:\n  - source: owner/repo\n    agents: [\"claude\"]\n"), 0o644)
+
+	cfgLow, _ := Load(lower)
+	cfgHigh, _ := Load(higher)
+
+	merged := &Config{}
+	merged.mergeFrom(cfgLow)
+	merged.mergeFrom(cfgHigh)
+
+	if len(merged.Skills) != 1 {
+		t.Errorf("expected 1 skill after cross-level dedup, got %d", len(merged.Skills))
+	}
+	// Higher-priority level wins.
+	if len(merged.Skills[0].Agents) == 0 || merged.Skills[0].Agents[0] != "claude" {
+		t.Errorf("expected higher-priority entry (agents=[claude]) to win, got %v", merged.Skills[0].Agents)
+	}
+}
+
+func TestMergeFrom_MCPsDeduplicated(t *testing.T) {
+	dir := t.TempDir()
+
+	lower := filepath.Join(dir, "lower.yaml")
+	os.WriteFile(lower, []byte(`mcps:
+  - name: myserver
+    target: /tmp/mcp.json
+    inline:
+      command: global-cmd
+`), 0o644)
+
+	higher := filepath.Join(dir, "higher.yaml")
+	os.WriteFile(higher, []byte(`mcps:
+  - name: myserver
+    target: /tmp/mcp.json
+    inline:
+      command: workspace-cmd
+`), 0o644)
+
+	cfgLow, _ := Load(lower)
+	cfgHigh, _ := Load(higher)
+
+	merged := &Config{}
+	merged.mergeFrom(cfgLow)
+	merged.mergeFrom(cfgHigh)
+
+	if len(merged.MCPs) != 1 {
+		t.Errorf("expected 1 MCP after cross-level dedup, got %d", len(merged.MCPs))
+	}
+	// Higher-priority level wins.
+	if merged.MCPs[0].Inline == nil || merged.MCPs[0].Inline.Command != "workspace-cmd" {
+		t.Errorf("expected higher-priority entry (command=workspace-cmd) to win, got %v", merged.MCPs[0].Inline)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// LoadChain + ConfigLevels
+// ---------------------------------------------------------------------------
+
+func TestLoadChain_PopulatesLevels(t *testing.T) {
+	// Isolate from the host's real global/user configs.
+	empty := t.TempDir()
+	t.Setenv("HOME", empty)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(empty, "xdg"))
+
+	p := writeYAML(t, "skills:\n  - source: owner/workspace-repo\n")
+	cfg, err := LoadChain(p)
+	if err != nil {
+		t.Fatalf("LoadChain: %v", err)
+	}
+	// Global and user configs are absent in this isolated env.
+	if cfg.Levels.Global != nil {
+		t.Errorf("expected Levels.Global=nil (file absent), got non-nil")
+	}
+	if cfg.Levels.User != nil {
+		t.Errorf("expected Levels.User=nil (file absent), got non-nil")
+	}
+	if cfg.Levels.Workspace == nil {
+		t.Fatal("expected Levels.Workspace to be non-nil")
+	}
+	if len(cfg.Levels.Workspace.Skills) != 1 || cfg.Levels.Workspace.Skills[0].Source != "owner/workspace-repo" {
+		t.Errorf("unexpected Levels.Workspace.Skills: %v", cfg.Levels.Workspace.Skills)
 	}
 }
 

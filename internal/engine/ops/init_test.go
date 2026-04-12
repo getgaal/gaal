@@ -22,7 +22,7 @@ func TestInit_TemplateHasAllSections(t *testing.T) {
 func TestInitFromPlan_WritesValidYAMLWithPlanEntries(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "gaal.yaml")
 	plan := Plan{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{
 				Source: "anthropics/skills",
 				Agents: []string{"claude-code"},
@@ -30,11 +30,11 @@ func TestInitFromPlan_WritesValidYAMLWithPlanEntries(t *testing.T) {
 				Select: []string{"frontend-design", "skill-creator"},
 			},
 		},
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{
 				Name:   "filesystem",
 				Target: "~/.claude/mcp.json",
-				Inline: &config.MCPInlineConfig{
+				Inline: &config.ConfigMcpItem{
 					Command: "uvx",
 					Args:    []string{"mcp-server-filesystem", "/tmp"},
 				},

@@ -43,7 +43,7 @@ type Candidate struct {
 	// MCP fields (populated when Kind == CandidateMCP).
 	MCPName   string
 	MCPTarget string
-	MCPInline *config.MCPInlineConfig
+	MCPInline *config.ConfigMcpItem
 }
 
 // AgentSection groups candidates by their owning agent. The generic agent
@@ -64,8 +64,8 @@ type Candidates struct {
 
 // Plan is the resolved set of configuration entries to write to gaal.yaml.
 type Plan struct {
-	Skills []config.SkillConfig
-	MCPs   []config.MCPConfig
+	Skills []config.ConfigSkill
+	MCPs   []config.ConfigMcp
 }
 
 // BuildPlan converts a slice of user-selected candidates into a Plan.
@@ -82,7 +82,7 @@ func BuildPlan(selected []Candidate, scope Scope) Plan {
 	}
 	grouped := map[skillKey][]string{}
 	keys := []skillKey{}
-	var mcps []config.MCPConfig
+	var mcps []config.ConfigMcp
 
 	for _, c := range selected {
 		switch c.Kind {
@@ -93,7 +93,7 @@ func BuildPlan(selected []Candidate, scope Scope) Plan {
 			}
 			grouped[k] = append(grouped[k], c.SkillName)
 		case CandidateMCP:
-			entry := config.MCPConfig{
+			entry := config.ConfigMcp{
 				Name:   c.MCPName,
 				Target: c.MCPTarget,
 			}
@@ -112,10 +112,10 @@ func BuildPlan(selected []Candidate, scope Scope) Plan {
 		return keys[i].source < keys[j].source
 	})
 
-	skills := make([]config.SkillConfig, 0, len(keys))
+	skills := make([]config.ConfigSkill, 0, len(keys))
 	for _, k := range keys {
 		names := dedupSorted(grouped[k])
-		skills = append(skills, config.SkillConfig{
+		skills = append(skills, config.ConfigSkill{
 			Source: k.source,
 			Agents: []string{k.agent},
 			Global: global,

@@ -93,7 +93,7 @@ func TestManager_Sync_LocalSource_WithSkills(t *testing.T) {
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: cool-skill\n---\n"), 0o644)
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
-	skills := []config.SkillConfig{
+	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
 	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
@@ -108,7 +108,7 @@ func TestManager_Sync_LocalSource_WithSkills(t *testing.T) {
 
 func TestManager_Sync_NoSkillsFound(t *testing.T) {
 	sourceDir := t.TempDir()
-	skills := []config.SkillConfig{
+	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}},
 	}
 	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())
@@ -119,7 +119,7 @@ func TestManager_Sync_NoSkillsFound(t *testing.T) {
 
 func TestResolveAgents_ExplicitList(t *testing.T) {
 	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir())
-	sc := config.SkillConfig{Agents: []string{"claude-code", "cursor"}}
+	sc := config.ConfigSkill{Agents: []string{"claude-code", "cursor"}}
 	agents := m.resolveAgents(sc)
 	if len(agents) != 2 {
 		t.Errorf("expected 2 agents, got %d: %v", len(agents), agents)
@@ -130,7 +130,7 @@ func TestResolveAgents_Wildcard(t *testing.T) {
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
 	m := NewManager(nil, t.TempDir(), "/home/user", workDir)
-	sc := config.SkillConfig{Agents: []string{"*"}}
+	sc := config.ConfigSkill{Agents: []string{"*"}}
 	agents := m.resolveAgents(sc)
 	found := false
 	for _, a := range agents {
@@ -147,7 +147,7 @@ func TestResolveAgents_Empty(t *testing.T) {
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".roo"), 0o755)
 	m := NewManager(nil, t.TempDir(), "/home/user", workDir)
-	sc := config.SkillConfig{Agents: nil}
+	sc := config.ConfigSkill{Agents: nil}
 	agents := m.resolveAgents(sc)
 	found := false
 	for _, a := range agents {
@@ -224,7 +224,7 @@ func TestManager_Sync_PreCachedRemoteSource(t *testing.T) {
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
 
-	skills := []config.SkillConfig{
+	skills := []config.ConfigSkill{
 		{Source: "owner/pre-cached", Agents: []string{"claude-code"}, Global: false},
 	}
 	m := NewManager(skills, cacheDir, "/home/user", workDir)
@@ -242,7 +242,7 @@ func TestManager_Sync_PreCachedRemoteSource(t *testing.T) {
 
 func TestManager_Sync_CloneError(t *testing.T) {
 	// Use a URL that will fail immediately (connection refused on localhost:1).
-	skills := []config.SkillConfig{
+	skills := []config.ConfigSkill{
 		{Source: "http://localhost:1/not-a-repo.git", Agents: []string{"claude-code"}},
 	}
 	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())

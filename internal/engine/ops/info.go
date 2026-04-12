@@ -201,7 +201,7 @@ func matchFilter(name, filter string) bool {
 }
 
 // renderRepoInfo prints a detailed card for each repository entry.
-func renderRepoInfo(w io.Writer, cfgRepos map[string]config.RepoConfig, entries []render.RepoEntry, filter string) error {
+func renderRepoInfo(w io.Writer, cfgRepos map[string]config.ConfigRepo, entries []render.RepoEntry, filter string) error {
 	slog.Debug("rendering repo info", "count", len(entries), "filter", filter)
 
 	if len(entries) == 0 {
@@ -259,7 +259,7 @@ func renderRepoInfo(w io.Writer, cfgRepos map[string]config.RepoConfig, entries 
 }
 
 // renderSkillInfo prints a detailed card for each skill config entry.
-func renderSkillInfo(w io.Writer, cfgSkills []config.SkillConfig, entries []render.SkillEntry, filter string) error {
+func renderSkillInfo(w io.Writer, cfgSkills []config.ConfigSkill, entries []render.SkillEntry, filter string) error {
 	slog.Debug("rendering skill info", "count", len(cfgSkills), "filter", filter)
 
 	if len(cfgSkills) == 0 {
@@ -269,7 +269,7 @@ func renderSkillInfo(w io.Writer, cfgSkills []config.SkillConfig, entries []rend
 	}
 
 	// Apply filter.
-	filtered := make([]config.SkillConfig, 0, len(cfgSkills))
+	filtered := make([]config.ConfigSkill, 0, len(cfgSkills))
 	for _, sc := range cfgSkills {
 		if matchFilter(sc.Source, filter) {
 			filtered = append(filtered, sc)
@@ -448,7 +448,7 @@ func renderAgentInfo(w io.Writer, entries []render.AgentEntry, filter string) er
 }
 
 // renderMCPInfo prints a detailed card for each MCP config entry.
-func renderMCPInfo(w io.Writer, cfgMCPs []config.MCPConfig, entries []render.MCPEntry, filter string) error {
+func renderMCPInfo(w io.Writer, cfgMCPs []config.ConfigMcp, entries []render.MCPEntry, filter string) error {
 	slog.Debug("rendering mcp info", "count", len(cfgMCPs), "filter", filter)
 
 	if len(cfgMCPs) == 0 {
@@ -458,7 +458,7 @@ func renderMCPInfo(w io.Writer, cfgMCPs []config.MCPConfig, entries []render.MCP
 	}
 
 	// Apply filter.
-	filtered := make([]config.MCPConfig, 0, len(cfgMCPs))
+	filtered := make([]config.ConfigMcp, 0, len(cfgMCPs))
 	for _, mc := range cfgMCPs {
 		if matchFilter(mc.Name, filter) {
 			filtered = append(filtered, mc)
@@ -489,7 +489,7 @@ func renderMCPInfo(w io.Writer, cfgMCPs []config.MCPConfig, entries []render.MCP
 		}
 
 		mergeStr := pterm.FgDarkGray.Sprint("false")
-		if mc.Merge {
+		if mc.MergeEnabled() {
 			mergeStr = pterm.FgGreen.Sprint("true")
 		}
 		lines = append(lines, kvLine("Merge", mergeStr))

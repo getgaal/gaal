@@ -53,14 +53,10 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	cfg, err := config.LoadChain(cfgFile)
 	if err != nil {
 		telemetry.TrackError("doctor", err)
-		cfg = &config.Config{}
+		cfg = &config.ResolvedConfig{Config: &config.Config{}}
 	}
 
-	// Telemetry field is excluded from config merging, so read it
-	// directly from the user config file.
-	cfg.Telemetry = loadUserTelemetryConfig()
-
-	eng := engine.NewWithOptions(cfg, engineOpts)
+	eng := engine.NewWithOptions(cfg.Config, engineOpts)
 	report := eng.Doctor(ops.DoctorOptions{Offline: doctorOffline})
 
 	if outputFormat == "json" {

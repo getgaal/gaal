@@ -141,7 +141,7 @@ func filterSkillsByScope(in []render.AuditSkillEntry, scope Scope) []render.Audi
 type initMCPEntry struct {
 	agent   string
 	file    string
-	servers map[string]config.MCPInlineConfig
+	servers map[string]config.ConfigMcpItem
 }
 
 // collectInitMCPs walks every registered agent, resolves its MCP config path,
@@ -164,7 +164,7 @@ func collectInitMCPs(ctx context.Context, home string) ([]initMCPEntry, error) {
 				"agent", a.Name, "file", cfgFile, "err", err)
 			continue
 		}
-		supported := map[string]config.MCPInlineConfig{}
+		supported := map[string]config.ConfigMcpItem{}
 		for name, inline := range servers {
 			if inline.Command == "" {
 				slog.DebugContext(ctx, "skipping mcp server without command",
