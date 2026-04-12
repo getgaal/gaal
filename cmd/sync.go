@@ -46,9 +46,6 @@ func runSync(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("--dry-run and --service are incompatible: a dry-run service loop is meaningless")
 	}
 
-	if resolvedCfg == nil {
-		return fmt.Errorf("loading config: %w", resolvedCfgErr)
-	}
 	cfg := resolvedCfg
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

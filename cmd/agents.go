@@ -33,6 +33,7 @@ Examples:
   gaal agents --installed    # only agents detected on this machine
   gaal agents cursor         # detailed view for one agent`,
 	SilenceUsage: true,
+	Annotations:  map[string]string{"config": "optional"},
 	Args:         cobra.MaximumNArgs(1),
 	RunE:         runAgents,
 }

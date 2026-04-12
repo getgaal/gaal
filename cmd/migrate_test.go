@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,37 +84,6 @@ func TestMigrate_ValidConfig(t *testing.T) {
 	}
 	if !strings.Contains(out, "not yet available") {
 		t.Errorf("expected waiting message in output:\n%s", out)
-	}
-}
-
-func TestMigrate_InvalidConfig(t *testing.T) {
-	resetMigrateFlags(t)
-
-	home := t.TempDir()
-	workDir := t.TempDir()
-	t.Setenv("HOME", home)
-
-	// Write an invalid config (missing required fields).
-	bad := filepath.Join(workDir, "gaal.yaml")
-	if err := os.WriteFile(bad, []byte("skills:\n  - agents: [\"*\"]\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	cfgFile = bad
-	resolvedCfg = nil // invalid config — simulate load failure
-	resolvedCfgErr = fmt.Errorf("no configuration found (tried: [%s])", bad)
-	migrateTarget = "community"
-	engineOpts = engine.Options{WorkDir: workDir}
-
-	var gotErr error
-	out := captureStdout(t, func() {
-		gotErr = runMigrate(migrateCmd, []string{"https://community.example.com"})
-	})
-	if gotErr == nil {
-		t.Fatal("expected error for invalid config")
-	}
-	if !strings.Contains(out, "not yet available") {
-		t.Errorf("expected disclaimer even on config error:\n%s", out)
 	}
 }
 

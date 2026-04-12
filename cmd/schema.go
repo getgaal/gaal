@@ -29,6 +29,7 @@ Examples:
   # Write to a file for IDE integration
   gaal schema -f schema.json`,
 	SilenceUsage: true,
+	Annotations:  map[string]string{"config": "optional"},
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		slog.Debug("generating config JSON Schema")
 		data, err := config.GenerateSchema()

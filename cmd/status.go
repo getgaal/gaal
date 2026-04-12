@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -25,9 +24,6 @@ func init() {
 }
 
 func runStatus(_ *cobra.Command, _ []string) error {
-	if resolvedCfg == nil {
-		return fmt.Errorf("loading config: %w", resolvedCfgErr)
-	}
 	cfg := resolvedCfg
 
 	telemetry.Track("status")

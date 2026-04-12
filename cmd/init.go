@@ -40,8 +40,7 @@ selection and is ready for "gaal sync".
 
 Use --scope and --import-all to run non-interactively (for CI or scripts).
 Use --force to overwrite an existing configuration file.`,
-	SilenceUsage: true,
-	RunE:         runInit,
+	SilenceUsage: true, Annotations: map[string]string{"config": "optional"}, RunE: runInit,
 }
 
 func init() {

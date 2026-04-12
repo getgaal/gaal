@@ -39,6 +39,7 @@ Exit codes:
   1  warnings found
   2  errors found`,
 	SilenceUsage: true,
+	Annotations:  map[string]string{"config": "optional"},
 	RunE:         runDoctor,
 }
 

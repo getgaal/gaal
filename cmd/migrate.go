@@ -52,10 +52,6 @@ func printDisclaimer() {
 }
 
 func runMigrate(_ *cobra.Command, args []string) error {
-	if resolvedCfg == nil {
-		printDisclaimer()
-		return fmt.Errorf("loading config: %w", resolvedCfgErr)
-	}
 	cfg := resolvedCfg
 
 	var url string

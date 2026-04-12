@@ -71,6 +71,13 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 		// Always capture the error so sub-commands can surface the real cause.
 		resolvedCfg, resolvedCfgErr = config.LoadChain(cfgFile)
 
+		// Commands annotated with configOptional tolerate a missing/invalid
+		// config (e.g. doctor, agents, version). All others fail fast here so
+		// individual sub-commands do not need to repeat the nil check.
+		if resolvedCfgErr != nil && cmd.Annotations["config"] != "optional" {
+			return fmt.Errorf("loading config: %w", resolvedCfgErr)
+		}
+
 		// Telemetry: resolve consent state and initialise.
 		if !skipTelemetry(cmd) {
 			userCfg := loadMergedTelemetryConfig()
