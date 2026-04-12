@@ -8,6 +8,7 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/engine"
+	"gaal/internal/telemetry"
 )
 
 var infoCmd = &cobra.Command{
@@ -49,9 +50,11 @@ func runInfo(_ *cobra.Command, args []string) error {
 
 	cfg, err := config.LoadChain(cfgFile)
 	if err != nil {
+		telemetry.TrackError("info", err)
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	telemetry.Track("info")
 	return engine.NewWithOptions(cfg, engineOpts).
 		Info(context.Background(), pkg, filter, engine.OutputFormat(outputFormat))
 }

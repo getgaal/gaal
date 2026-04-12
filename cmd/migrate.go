@@ -7,6 +7,7 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/engine"
+	"gaal/internal/telemetry"
 )
 
 var (
@@ -54,6 +55,7 @@ func printDisclaimer() {
 func runMigrate(_ *cobra.Command, args []string) error {
 	cfg, err := config.LoadChain(cfgFile)
 	if err != nil {
+		telemetry.TrackError("migrate", err)
 		printDisclaimer()
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -67,9 +69,13 @@ func runMigrate(_ *cobra.Command, args []string) error {
 
 	result, err := eng.Migrate(migrateTarget, url, migrateDryRun)
 	if err != nil {
+		telemetry.TrackError("migrate", err)
 		printDisclaimer()
 		return err
 	}
+
+	telemetry.Track("migrate")
+	telemetry.TrackCustom("Migration", nil)
 
 	if migrateDryRun {
 		fmt.Println("[dry-run] No changes will be made.")

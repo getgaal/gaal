@@ -16,6 +16,7 @@ import (
 	"gaal/internal/config"
 	"gaal/internal/engine"
 	"gaal/internal/engine/ops"
+	"gaal/internal/telemetry"
 )
 
 var (
@@ -57,6 +58,8 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
+	telemetry.Track("init")
 
 	isTTY := term.IsTerminal(int(os.Stdin.Fd()))
 

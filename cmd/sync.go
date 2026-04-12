@@ -13,6 +13,7 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/engine"
+	"gaal/internal/telemetry"
 )
 
 var (
@@ -41,6 +42,7 @@ func init() {
 func runSync(_ *cobra.Command, _ []string) error {
 	cfg, err := config.LoadChain(cfgFile)
 	if err != nil {
+		telemetry.TrackError("sync", err)
 		return fmt.Errorf("loading config: %w", err)
 	}
 
@@ -51,9 +53,16 @@ func runSync(_ *cobra.Command, _ []string) error {
 
 	if service {
 		slog.Info("service mode started", "interval", interval, "config", cfgFile)
+		telemetry.Track("sync")
 		return eng.RunService(ctx, interval)
 	}
 
 	slog.Info("one-shot sync", "config", cfgFile)
-	return eng.RunOnce(ctx)
+	if err := eng.RunOnce(ctx); err != nil {
+		telemetry.TrackError("sync", err)
+		return err
+	}
+	telemetry.Track("sync")
+	telemetry.TrackFirstSync(0)
+	return nil
 }
