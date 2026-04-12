@@ -24,11 +24,11 @@ type Config struct {
 	Telemetry    *bool                 `yaml:"telemetry,omitempty" json:"telemetry,omitempty" jsonschema:"description=Opt-in anonymous usage telemetry (true/false)"`
 }
 
-// validateVersion checks the schema version field. Missing is tolerated (with a
-// warning) for backward compatibility; any value other than 1 is a hard error.
+// validateVersion checks the schema version field. Missing is tolerated for
+// backward compatibility (the caller is responsible for warning once after
+// merging); any value other than 1 is a hard error.
 func (c *Config) validateVersion(path string) error {
 	if c.Version == nil {
-		slog.Warn("config file is missing 'version: 1'; this will be required in a future release", "path", path)
 		return nil
 	}
 	v := *c.Version
@@ -268,6 +268,10 @@ func LoadChain(workspacePath string) (*Config, error) {
 
 	if loaded == 0 {
 		return nil, fmt.Errorf("no configuration file found (tried: %v)", candidates)
+	}
+
+	if merged.Version == nil {
+		slog.Warn("config is missing 'version: 1'; this will be required in a future release")
 	}
 
 	return merged, nil
