@@ -216,3 +216,8 @@ func (e *Engine) InitFromPlan(dest string, plan ops.Plan, force bool) error {
 func (e *Engine) Migrate(target, url string, dryRun bool) (*ops.MigrateResult, error) {
 	return ops.Migrate(e.cfg, target, url, dryRun)
 }
+
+// Doctor runs sanity checks and returns a diagnostic report.
+func (e *Engine) Doctor(opts ops.DoctorOptions) *ops.DoctorReport {
+	return ops.RunDoctor(e.cfg, opts)
+}
