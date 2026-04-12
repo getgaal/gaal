@@ -285,6 +285,19 @@ gaal merges up to three configuration files in order:
 | 2 | `$XDG_CONFIG_HOME/gaal/config.yaml` (user, defaults to `~/.config/gaal/config.yaml` on Linux and macOS) |
 | 3 — highest | `gaal.yaml` in CWD, or `--config` path |
 
+### Schema stability
+
+Every `gaal.yaml` file should declare `version: 1` as its first field:
+
+```yaml
+version: 1
+repositories: {}
+skills: []
+mcps: []
+```
+
+gaal Lite commits to reading `version: 1` configs forever. Future releases may add optional fields, but breaking changes will only ship under `version: 2` (or higher) with a documented migration path. You can adopt gaal Lite today knowing your config file will keep working.
+
 ### Agent registry customization
 
 gaal ships with a built-in registry of supported coding agents (claude-code, github-copilot, cursor, windsurf, …). You can extend it with your own agent definitions by creating a file at:
