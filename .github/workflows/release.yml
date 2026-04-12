@@ -93,11 +93,17 @@ jobs:
         run: |
           echo "=== Search list ==="
           security list-keychains -d user
-          echo "=== All codesigning identities ==="
-          security find-identity -v -p codesigning
-          echo "=== All identities (any policy) ==="
-          security find-identity -v
-          IDENTITY=$(security find-identity -v -p codesigning \
+          echo "=== Certs in signing_temp keychain (PEM) ==="
+          security find-certificate -a -p signing_temp.keychain || echo "(none)"
+          echo "=== Certs in signing_temp keychain (subject only) ==="
+          security find-certificate -a signing_temp.keychain 2>&1 | grep -E '"labl"|"subj"' || echo "(none)"
+          echo "=== All identities (find-identity, no -v) ==="
+          security find-identity signing_temp.keychain
+          echo "=== All identities (find-identity -v) ==="
+          security find-identity -v signing_temp.keychain
+          echo "=== All codesigning identities (-v -p codesigning) ==="
+          security find-identity -v -p codesigning signing_temp.keychain
+          IDENTITY=$(security find-identity -v -p codesigning signing_temp.keychain \
             | grep "Developer ID Application" | head -1 \
             | sed 's/.*"\(.*\)"/\1/')
           if [ -z "$IDENTITY" ]; then
