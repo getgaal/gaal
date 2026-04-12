@@ -37,7 +37,7 @@ const (
 // build-constraint files:
 //   platform_windows.go  (build: windows)
 //   platform_darwin.go   (build: darwin)
-//   platform_other.go    (build: !windows && !darwin)
+//   platform_unix.go    (build: !windows && !darwin)
 
 // UserConfigFilePath is the exported accessor for the per-user config path.
 // It is used by callers outside this package (e.g. the init wizard and

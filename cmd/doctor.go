@@ -57,7 +57,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	}
 
 	eng := engine.NewWithOptions(cfg.Config, engineOpts)
-	report := eng.Doctor(ops.DoctorOptions{Offline: doctorOffline, ConfigFiles: cfg.SourcePaths(), Levels: cfg.Levels})
+	report := eng.Doctor(ops.DoctorOptions{Offline: doctorOffline, Levels: cfg.Levels})
 
 	if outputFormat == "json" {
 		return renderDoctorJSON(report, !doctorNoUpsell)
