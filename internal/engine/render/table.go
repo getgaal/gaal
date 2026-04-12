@@ -391,20 +391,25 @@ func (tr *tableRenderer) mcpTable(w io.Writer, entries []MCPEntry, termW int) er
 
 func (tr *tableRenderer) agentTable(w io.Writer, entries []AgentEntry, termW int) error {
 	tr.section(w, "Supported Agents", len(entries))
-	// Fixed: AGENT(20) = 20; 3 variable path columns share the rest.
-	vw := varColWidth(termW, 4, 3, 20)
+	// Fixed: AGENT(20) + INSTALLED(11) = 31; 3 variable path columns share the rest.
+	vw := varColWidth(termW, 5, 3, 31)
 	if vw < 14 {
 		vw = 14
 	}
 
-	data := pterm.TableData{{"AGENT", "PROJECT SKILLS DIR", "GLOBAL SKILLS DIR", "PROJECT MCP CONFIG"}}
+	data := pterm.TableData{{"AGENT", "INSTALLED", "PROJECT SKILLS DIR", "GLOBAL SKILLS DIR", "PROJECT MCP CONFIG"}}
 	for _, e := range entries {
+		installed := pterm.FgDarkGray.Sprint("—")
+		if e.Installed {
+			installed = pterm.FgGreen.Sprint("✓")
+		}
 		mcpCfg := e.ProjectMCPConfigFile
 		if mcpCfg == "" {
 			mcpCfg = "—"
 		}
 		data = append(data, []string{
 			e.Name,
+			installed,
 			trunc(e.ProjectSkillsDir, vw),
 			trunc(e.GlobalSkillsDir, vw),
 			trunc(mcpCfg, vw),
