@@ -88,23 +88,29 @@ jobs:
           p12-file-base64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
 
-      - name: Install Apple Developer ID intermediate CA
+      - name: Install Apple Developer ID CA chain
         if: matrix.goos == 'darwin'
         run: |
-          # The Developer ID Application leaf cert requires the
-          # "Developer ID Certification Authority G2" intermediate to build
-          # a trusted chain. GitHub-hosted runners ship it; fresh self-hosted
-          # Macs may not. See https://www.apple.com/certificateauthority/
+          # The Developer ID Application leaf cert needs both the G2
+          # intermediate AND the Apple Root CA to build a trusted chain.
+          # GitHub-hosted macOS runners ship them; a fresh self-hosted Mac
+          # may not have them in a keychain codesign consults.
+          # See https://www.apple.com/certificateauthority/
           curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
             https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
-          SUBJECT=$(openssl x509 -in "$RUNNER_TEMP/DeveloperIDG2CA.cer" -inform DER -noout -subject)
-          echo "Downloaded intermediate: $SUBJECT"
-          if ! echo "$SUBJECT" | grep -q "Apple Inc"; then
-            echo "::error::Downloaded intermediate is not from Apple Inc"
-            exit 1
-          fi
-          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k signing_temp.keychain
-          rm "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          curl -fsSL -o "$RUNNER_TEMP/AppleIncRootCertificate.cer" \
+            https://www.apple.com/appleca/AppleIncRootCertificate.cer
+
+          for CER in "$RUNNER_TEMP/DeveloperIDG2CA.cer" "$RUNNER_TEMP/AppleIncRootCertificate.cer"; do
+            SUBJECT=$(openssl x509 -in "$CER" -inform DER -noout -subject)
+            echo "Installing: $SUBJECT"
+            if ! echo "$SUBJECT" | grep -q "Apple Inc"; then
+              echo "::error::$CER is not from Apple Inc"
+              exit 1
+            fi
+            security import "$CER" -k signing_temp.keychain
+          done
+          rm "$RUNNER_TEMP/DeveloperIDG2CA.cer" "$RUNNER_TEMP/AppleIncRootCertificate.cer"
 
       - name: Resolve signing identity
         if: matrix.goos == 'darwin'
