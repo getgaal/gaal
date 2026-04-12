@@ -102,6 +102,20 @@ gaal sync
 
 Clones or updates all repositories, installs skills, and upserts MCP entries.
 
+### Dry-run (preview changes)
+
+```bash
+gaal sync --dry-run
+```
+
+Runs the full sync planning pipeline but performs no writes to disk.
+Prints what sync *would* do — which repos would be cloned or updated,
+which skills would be installed, and which MCP entries would be created.
+
+Supports `--output table|json` and `--sandbox`. Incompatible with `--service`.
+
+Exit codes: **0** = nothing to change, **1** = changes pending, **2** = error.
+
 ### Continuous service mode
 
 ```bash
@@ -297,16 +311,16 @@ Merge rules (higher priority always wins):
 
 ### Schema stability
 
-Every `gaal.yaml` file should declare `version: 1` as its first field:
+Every `gaal.yaml` file should declare `schema: 1` as its first field:
 
 ```yaml
-version: 1
+schema: 1
 repositories: {}
 skills: []
 mcps: []
 ```
 
-gaal Lite commits to reading `version: 1` configs forever. Future releases may add optional fields, but breaking changes will only ship under `version: 2` (or higher) with a documented migration path. You can adopt gaal Lite today knowing your config file will keep working.
+gaal Lite commits to reading `schema: 1` configs forever. Future releases may add optional fields, but breaking changes will only ship under `schema: 2` (or higher) with a documented migration path. You can adopt gaal Lite today knowing your config file will keep working.
 
 ### Agent registry customization
 

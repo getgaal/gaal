@@ -245,6 +245,134 @@ func TestCollect_IncludesAgents(t *testing.T) {
 	}
 }
 
+func TestDryRun_EmptyConfig(t *testing.T) {
+	cfg := &config.Config{}
+	e := New(cfg)
+	var plan *PlanReport
+	var dryRunErr error
+	captureStdout(t, func() {
+		plan, dryRunErr = e.DryRun(context.Background(), FormatTable)
+	})
+	if dryRunErr != nil {
+		t.Fatalf("DryRun on empty config should succeed, got: %v", dryRunErr)
+	}
+	if plan.HasChanges {
+		t.Error("empty config should have no changes")
+	}
+	if plan.HasErrors {
+		t.Error("empty config should have no errors")
+	}
+}
+
+func TestDryRun_EmptyConfig_JSON(t *testing.T) {
+	cfg := &config.Config{}
+	e := New(cfg)
+	var plan *PlanReport
+	var dryRunErr error
+	out := captureStdout(t, func() {
+		plan, dryRunErr = e.DryRun(context.Background(), FormatJSON)
+	})
+	if dryRunErr != nil {
+		t.Fatalf("DryRun JSON on empty config should succeed, got: %v", dryRunErr)
+	}
+	if plan.HasChanges {
+		t.Error("empty config should have no changes")
+	}
+	if len(out) == 0 {
+		t.Error("expected JSON output, got empty string")
+	}
+}
+
+func TestDryRun_WithRepo_NotCloned(t *testing.T) {
+	// Point at a directory that does NOT exist yet so IsCloned returns false.
+	missingDir := filepath.Join(t.TempDir(), "nonexistent")
+	cfg := &config.Config{
+		Repositories: map[string]config.ConfigRepo{
+			missingDir: {Type: "tar", URL: "https://example.com/archive.tar.gz"},
+		},
+	}
+	e := New(cfg)
+	var plan *PlanReport
+	var dryRunErr error
+	captureStdout(t, func() {
+		plan, dryRunErr = e.DryRun(context.Background(), FormatTable)
+	})
+	if dryRunErr != nil {
+		t.Fatalf("DryRun: %v", dryRunErr)
+	}
+	if !plan.HasChanges {
+		t.Error("expected HasChanges=true for not-cloned repo")
+	}
+}
+
+func TestDryRun_WithRepo_AlreadyCloned(t *testing.T) {
+	// Existing dir means IsCloned returns true for archive type; Update is a no-op.
+	existing := t.TempDir()
+	cfg := &config.Config{
+		Repositories: map[string]config.ConfigRepo{
+			existing: {Type: "tar", URL: "https://example.com/archive.tar.gz"},
+		},
+	}
+	e := New(cfg)
+	var plan *PlanReport
+	var dryRunErr error
+	captureStdout(t, func() {
+		plan, dryRunErr = e.DryRun(context.Background(), FormatTable)
+	})
+	if dryRunErr != nil {
+		t.Fatalf("DryRun: %v", dryRunErr)
+	}
+	if plan.HasChanges {
+		t.Error("expected HasChanges=false for already-cloned repo")
+	}
+}
+
+func TestDryRun_WithRepoError(t *testing.T) {
+	cfg := &config.Config{
+		Repositories: map[string]config.ConfigRepo{
+			"/some/path": {Type: "unknown-vcs-type", URL: "https://example.com/x"},
+		},
+	}
+	e := New(cfg)
+	var plan *PlanReport
+	var dryRunErr error
+	captureStdout(t, func() {
+		plan, dryRunErr = e.DryRun(context.Background(), FormatTable)
+	})
+	if dryRunErr != nil {
+		t.Fatalf("DryRun should not error, the plan should contain errors: %v", dryRunErr)
+	}
+	if !plan.HasErrors {
+		t.Error("expected HasErrors=true for unknown VCS type")
+	}
+}
+
+func TestDryRun_WithMCP_Absent(t *testing.T) {
+	// Target file doesn't exist yet → MCP is absent → plan should show create.
+	target := filepath.Join(t.TempDir(), "mcp.json")
+	cfg := &config.Config{
+		MCPs: []config.ConfigMcp{
+			{
+				Name:   "test-mcp",
+				Target: target,
+				Inline: &config.ConfigMcpItem{Command: "node"},
+			},
+		},
+	}
+	e := New(cfg)
+	var plan *PlanReport
+	var dryRunErr error
+	captureStdout(t, func() {
+		plan, dryRunErr = e.DryRun(context.Background(), FormatTable)
+	})
+	if dryRunErr != nil {
+		t.Fatalf("DryRun: %v", dryRunErr)
+	}
+	if !plan.HasChanges {
+		t.Error("expected HasChanges=true for absent MCP")
+	}
+}
+
 func TestCollect_AgentsSorted(t *testing.T) {
 	cfg := &config.Config{}
 	e := New(cfg)

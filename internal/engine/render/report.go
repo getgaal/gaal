@@ -85,6 +85,55 @@ type StatusReport struct {
 	Agents       []AgentEntry `json:"agents"`
 }
 
+// PlanAction describes what sync would do for a given resource.
+type PlanAction string
+
+const (
+	PlanNoOp   PlanAction = "no_change"
+	PlanClone  PlanAction = "clone"
+	PlanUpdate PlanAction = "update"
+	PlanCreate PlanAction = "create"
+	PlanError  PlanAction = "error"
+)
+
+// PlanRepoEntry describes the planned action for a single repository.
+type PlanRepoEntry struct {
+	Path    string     `json:"path"`
+	Type    string     `json:"type"`
+	Action  PlanAction `json:"action"`
+	URL     string     `json:"url,omitempty"`
+	Current string     `json:"current,omitempty"`
+	Want    string     `json:"want,omitempty"`
+	Error   string     `json:"error,omitempty"`
+}
+
+// PlanSkillEntry describes the planned action for a single skill config.
+type PlanSkillEntry struct {
+	Source  string     `json:"source"`
+	Agent   string     `json:"agent"`
+	Action  PlanAction `json:"action"`
+	Install []string   `json:"install,omitempty"`
+	Update  []string   `json:"update,omitempty"`
+	Error   string     `json:"error,omitempty"`
+}
+
+// PlanMCPEntry describes the planned action for a single MCP entry.
+type PlanMCPEntry struct {
+	Name   string     `json:"name"`
+	Target string     `json:"target"`
+	Action PlanAction `json:"action"`
+	Error  string     `json:"error,omitempty"`
+}
+
+// PlanReport aggregates the planned actions for all managed resources.
+type PlanReport struct {
+	Repositories []PlanRepoEntry  `json:"repositories"`
+	Skills       []PlanSkillEntry `json:"skills"`
+	MCPs         []PlanMCPEntry   `json:"mcps"`
+	HasChanges   bool             `json:"has_changes"`
+	HasErrors    bool             `json:"has_errors"`
+}
+
 // AuditSkillEntry holds the metadata of a single skill discovered during audit.
 type AuditSkillEntry struct {
 	Name string `json:"name"`

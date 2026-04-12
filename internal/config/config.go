@@ -19,7 +19,7 @@ import (
 // It maps 1:1 with a single YAML file on disk; merging is handled by
 // LoadChain which returns a ResolvedConfig.
 type Config struct {
-	Version      *int                  `yaml:"version,omitempty" json:"version,omitempty" jsonschema:"description=gaal Lite config schema version. Currently must be 1."`
+	Schema       *int                  `yaml:"schema,omitempty" json:"schema,omitempty" jsonschema:"description=gaal Lite config schema version. Currently must be 1."`
 	Repositories map[string]ConfigRepo `yaml:"repositories" json:"repositories,omitempty" jsonschema:"description=Map of workspace-relative paths to repository entries" validate:"dive"`
 	Skills       []ConfigSkill         `yaml:"skills"       json:"skills,omitempty"       jsonschema:"description=Skill sources to install into agent skill directories"   validate:"dive"`
 	MCPs         []ConfigMcp           `yaml:"mcps"         json:"mcps,omitempty"         jsonschema:"description=MCP server configuration entries to merge"             validate:"dive"`
@@ -101,7 +101,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing YAML: %w", err)
 	}
 
-	if err := cfg.validateVersion(path); err != nil {
+	if err := cfg.validateSchema(path); err != nil {
 		return nil, err
 	}
 
@@ -160,7 +160,7 @@ func LoadChain(workspacePath string) (*ResolvedConfig, error) {
 		return nil, fmt.Errorf("no configuration file found (tried: %v)", paths)
 	}
 
-	if merged.Version == nil {
+	if merged.Schema == nil {
 		slog.Warn("config is missing 'version: 1'; this will be required in a future release")
 	}
 
@@ -175,20 +175,20 @@ func GenerateSchema() ([]byte, error) {
 
 // ── Config methods ────────────────────────────────────────────────────────────
 
-// validateVersion checks the schema version field. Missing is tolerated for
+// validateSchema checks the schema version field. Missing is tolerated for
 // backward compatibility (the caller is responsible for warning once after
 // merging); any value other than 1 is a hard error.
-func (c *Config) validateVersion(path string) error {
-	if c.Version == nil {
+func (c *Config) validateSchema(path string) error {
+	if c.Schema == nil {
 		return nil
 	}
-	v := *c.Version
+	v := *c.Schema
 	if v <= 0 {
-		return fmt.Errorf("version must be a positive integer (got %d in %s)", v, path)
+		return fmt.Errorf("schema must be a positive integer (got %d in %s)", v, path)
 	}
 	if v != 1 {
 		return fmt.Errorf(
-			"%s declares version %d, but this build of gaal lite only understands version 1.\nUpgrade gaal lite, or check https://getgaal.com/schema for migration notes.",
+			"%s declares schema %d, but this build of gaal lite only understands schema 1.\nUpgrade gaal lite, or check https://getgaal.com/schema for migration notes.",
 			path, v,
 		)
 	}
@@ -196,14 +196,14 @@ func (c *Config) validateVersion(path string) error {
 }
 
 // JSONSchemaExtend customises the generated JSON Schema for Config.
-// The schema is intentionally stricter than the runtime parser: version is
+// The schema is intentionally stricter than the runtime parser: schema is
 // required (not optional-with-default) and constrained to exactly 1 so IDE
 // users get instant feedback.
-func (Config) JSONSchemaExtend(schema *jsonschema.Schema) {
-	if prop, ok := schema.Properties.Get("version"); ok {
+func (Config) JSONSchemaExtend(s *jsonschema.Schema) {
+	if prop, ok := s.Properties.Get("schema"); ok {
 		prop.Enum = []any{1}
 	}
-	schema.Required = append(schema.Required, "version")
+	s.Required = append(s.Required, "schema")
 }
 
 // mergeFrom merges src into c. src represents a higher-priority config level.
@@ -217,8 +217,8 @@ func (Config) JSONSchemaExtend(schema *jsonschema.Schema) {
 func (c *Config) mergeFrom(src *Config) {
 	slog.Debug("merging config", "repos", len(src.Repositories), "skills", len(src.Skills), "mcps", len(src.MCPs))
 
-	if src.Version != nil {
-		c.Version = src.Version
+	if src.Schema != nil {
+		c.Schema = src.Schema
 	}
 
 	if src.Telemetry != nil {
