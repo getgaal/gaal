@@ -26,6 +26,8 @@ type (
 	SkillEntry      = render.SkillEntry
 	MCPEntry        = render.MCPEntry
 	AgentEntry      = render.AgentEntry
+	AgentDetail     = render.AgentDetail
+	AgentPath       = render.AgentPath
 	AuditReport     = render.AuditReport
 	AuditSkillEntry = render.AuditSkillEntry
 	AuditMCPEntry   = render.AuditMCPEntry
