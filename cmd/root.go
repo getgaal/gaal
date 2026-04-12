@@ -74,6 +74,12 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 
 		return nil
 	},
+	// PersistentPostRunE runs after every sub-command. Waits briefly for
+	// in-flight telemetry events to complete before the process exits.
+	PersistentPostRunE: func(_ *cobra.Command, _ []string) error {
+		telemetry.Shutdown()
+		return nil
+	},
 	// No RunE: invoking gaal without a sub-command prints the banner (via
 	// PersistentPreRunE) then lists the available commands.
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -84,6 +90,7 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 // Execute is the entry-point called by main.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
+		telemetry.Shutdown()
 		os.Exit(1)
 	}
 }

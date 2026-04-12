@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"gaal/internal/config"
 	"gaal/internal/core/agent"
@@ -21,6 +23,7 @@ var (
 	baseProps  map[string]string
 	statePath  string
 	appVersion string
+	pending    sync.WaitGroup
 )
 
 // milestoneState tracks which one-time events have already been sent.
@@ -94,6 +97,24 @@ func newClient(version string) *client {
 	}
 }
 
+// Shutdown waits up to 2 seconds for in-flight telemetry events to complete.
+// Call from the root command before exiting.
+func Shutdown() {
+	if !enabled {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		pending.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		slog.Debug("telemetry shutdown timed out, some events may be lost")
+	}
+}
+
 // Track sends a pageview event for the given command in a fire-and-forget
 // goroutine.
 func Track(command string) {
@@ -103,7 +124,9 @@ func Track(command string) {
 	props := copyProps(baseProps)
 	url := "app://gaal-lite/cmd/" + command
 	slog.Debug("telemetry", "event", "pageview", "url", url, "props", props)
+	pending.Add(1)
 	go func() {
+		defer pending.Done()
 		p := plausiblePayload{
 			Name:   "pageview",
 			URL:    url,
@@ -128,7 +151,9 @@ func TrackCustom(name string, extra map[string]string) {
 	}
 	url := "app://gaal-lite/custom/" + name
 	slog.Debug("telemetry", "event", name, "url", url, "props", props)
+	pending.Add(1)
 	go func() {
+		defer pending.Done()
 		p := plausiblePayload{
 			Name:   name,
 			URL:    url,
