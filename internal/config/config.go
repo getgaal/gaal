@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/invopop/jsonschema"
 	"gopkg.in/yaml.v3"
 
 	"gaal/internal/config/schema"
@@ -41,6 +42,17 @@ func (c *Config) validateVersion(path string) error {
 		)
 	}
 	return nil
+}
+
+// JSONSchemaExtend customises the generated JSON Schema for Config.
+// The schema is intentionally stricter than the runtime parser: version is
+// required (not optional-with-default) and constrained to exactly 1 so IDE
+// users get instant feedback.
+func (Config) JSONSchemaExtend(schema *jsonschema.Schema) {
+	if prop, ok := schema.Properties.Get("version"); ok {
+		prop.Enum = []any{1}
+	}
+	schema.Required = append(schema.Required, "version")
 }
 
 // RepoConfig is a vcstool-compatible repository entry.

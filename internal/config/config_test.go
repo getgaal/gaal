@@ -740,12 +740,28 @@ func TestGenerateSchema_VersionEnumOne(t *testing.T) {
 	}
 
 	// Parse the schema JSON to check the version property's enum constraint.
-	var schema map[string]any
-	if err := json.Unmarshal(data, &schema); err != nil {
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
 		t.Fatalf("unmarshal schema: %v", err)
 	}
 
-	props, ok := schema["properties"].(map[string]any)
+	// invopop/jsonschema places the Config definition under $defs/Config when
+	// DoNotReference is false (the default). The top-level schema is just a $ref.
+	// Try top-level properties first, then fall back to $defs/Config.
+	var configDef map[string]any
+	if props, ok := root["properties"]; ok {
+		configDef = root
+		_ = props
+	} else if defs, ok := root["$defs"].(map[string]any); ok {
+		if cfg, ok := defs["Config"].(map[string]any); ok {
+			configDef = cfg
+		}
+	}
+	if configDef == nil {
+		t.Fatal("schema missing properties (checked top-level and $defs/Config)")
+	}
+
+	props, ok := configDef["properties"].(map[string]any)
 	if !ok {
 		t.Fatal("schema missing properties")
 	}
