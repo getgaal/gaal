@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gaal/internal/config"
 	"gaal/internal/engine"
 	"gaal/internal/telemetry"
 )
@@ -47,16 +46,12 @@ func runSync(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("--dry-run and --service are incompatible: a dry-run service loop is meaningless")
 	}
 
-	cfg, err := config.LoadChain(cfgFile)
-	if err != nil {
-		telemetry.TrackError("sync", err)
-		return fmt.Errorf("loading config: %w", err)
-	}
+	cfg := resolvedCfg
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	eng := engine.NewWithOptions(cfg, engineOpts)
+	eng := engine.NewWithOptions(cfg.Config, engineOpts)
 
 	if dryRun {
 		slog.Info("dry-run mode", "config", cfgFile)

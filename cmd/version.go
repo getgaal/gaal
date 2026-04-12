@@ -17,8 +17,9 @@ var (
 )
 
 var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print version information",
+	Use:         "version",
+	Short:       "Print version information",
+	Annotations: map[string]string{"config": "optional"},
 	RunE: func(_ *cobra.Command, _ []string) error {
 		if outputFormat == "json" {
 			return json.NewEncoder(os.Stdout).Encode(struct {

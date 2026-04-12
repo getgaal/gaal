@@ -30,7 +30,7 @@ func TestRenderRepoInfo_Empty(t *testing.T) {
 }
 
 func TestRenderRepoInfo_WithEntry(t *testing.T) {
-	cfgRepos := map[string]config.RepoConfig{
+	cfgRepos := map[string]config.ConfigRepo{
 		"/workspace/myrepo": {Type: "git", URL: "https://github.com/foo/bar", Version: "main"},
 	}
 	entries := []render.RepoEntry{
@@ -56,7 +56,7 @@ func TestRenderRepoInfo_WithEntry(t *testing.T) {
 }
 
 func TestRenderRepoInfo_DirtyEntry(t *testing.T) {
-	cfgRepos := map[string]config.RepoConfig{
+	cfgRepos := map[string]config.ConfigRepo{
 		"/ws/repo": {Type: "git", URL: "https://example.com/repo"},
 	}
 	entries := []render.RepoEntry{
@@ -73,7 +73,7 @@ func TestRenderRepoInfo_DirtyEntry(t *testing.T) {
 }
 
 func TestRenderRepoInfo_ErrorEntry(t *testing.T) {
-	cfgRepos := map[string]config.RepoConfig{
+	cfgRepos := map[string]config.ConfigRepo{
 		"/ws/broken": {Type: "git", URL: "https://example.com/broken"},
 	}
 	entries := []render.RepoEntry{
@@ -106,7 +106,7 @@ func TestRenderSkillInfo_Empty(t *testing.T) {
 }
 
 func TestRenderSkillInfo_WithEntry(t *testing.T) {
-	cfgSkills := []config.SkillConfig{
+	cfgSkills := []config.ConfigSkill{
 		{Source: "github.com/foo/skills", Agents: []string{"claude-code"}, Global: false},
 	}
 	entries := []render.SkillEntry{
@@ -130,7 +130,7 @@ func TestRenderSkillInfo_WithEntry(t *testing.T) {
 }
 
 func TestRenderSkillInfo_MissingAndModified(t *testing.T) {
-	cfgSkills := []config.SkillConfig{
+	cfgSkills := []config.ConfigSkill{
 		{Source: "local/skills", Agents: []string{"cursor"}},
 	}
 	entries := []render.SkillEntry{
@@ -155,7 +155,7 @@ func TestRenderSkillInfo_MissingAndModified(t *testing.T) {
 }
 
 func TestRenderSkillInfo_GlobalScope(t *testing.T) {
-	cfgSkills := []config.SkillConfig{
+	cfgSkills := []config.ConfigSkill{
 		{Source: "remote/skills", Global: true},
 	}
 	var buf bytes.Buffer
@@ -186,12 +186,12 @@ func TestRenderMCPInfo_Empty(t *testing.T) {
 
 func TestRenderMCPInfo_WithInline(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "mcp.json")
-	cfgMCPs := []config.MCPConfig{
+	cfgMCPs := []config.ConfigMcp{
 		{
 			Name:   "my-server",
 			Target: target,
-			Merge:  true,
-			Inline: &config.MCPInlineConfig{
+			Merge:  func() *bool { b := true; return &b }(),
+			Inline: &config.ConfigMcpItem{
 				Command: "node",
 				Args:    []string{"server.js", "--port=3000"},
 				Env:     map[string]string{"API_KEY": "secret"},
@@ -215,7 +215,7 @@ func TestRenderMCPInfo_WithInline(t *testing.T) {
 
 func TestRenderMCPInfo_DirtyEntry(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "mcp.json")
-	cfgMCPs := []config.MCPConfig{
+	cfgMCPs := []config.ConfigMcp{
 		{Name: "dirty-server", Target: target},
 	}
 	entries := []render.MCPEntry{
@@ -233,7 +233,7 @@ func TestRenderMCPInfo_DirtyEntry(t *testing.T) {
 
 func TestRenderMCPInfo_WithSource(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "mcp.json")
-	cfgMCPs := []config.MCPConfig{
+	cfgMCPs := []config.ConfigMcp{
 		{Name: "remote-server", Target: target, Source: "https://example.com/mcp.json"},
 	}
 	var buf bytes.Buffer

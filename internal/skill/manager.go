@@ -77,15 +77,15 @@ type Status struct {
 
 // Manager handles skill installation and updates.
 type Manager struct {
-	skills   []config.SkillConfig
+	skills   []config.ConfigSkill
 	cacheDir string // root of the local skill cache
 	home     string // expanded user home directory
 	workDir  string // project working directory (for project-scoped installs)
 }
 
-// NewManager creates a new skill manager.
+// NewManager creates a new skill Manager.
 // cacheDir is where remote sources are cloned/downloaded (e.g. ~/.cache/gaal/skills).
-func NewManager(skills []config.SkillConfig, cacheDir, home, workDir string) *Manager {
+func NewManager(skills []config.ConfigSkill, cacheDir, home, workDir string) *Manager {
 	return &Manager{
 		skills:   skills,
 		cacheDir: cacheDir,
@@ -104,7 +104,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) syncOne(ctx context.Context, sc config.SkillConfig) error {
+func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
 	slog.DebugContext(ctx, "syncing skill source", "source", sc.Source, "global", sc.Global)
 	// 1. Resolve the source to a local directory.
 	sourceDir, err := m.resolveSource(ctx, sc.Source)
@@ -205,7 +205,7 @@ func (m *Manager) resolveSource(ctx context.Context, source string) (string, err
 // wildcard "*" expands to every installed agent; explicit lists are returned
 // as-is. This is the "as-configured" view used by Status to surface
 // misconfiguration to the user (e.g. unknown agent names).
-func (m *Manager) resolveAgents(sc config.SkillConfig) []string {
+func (m *Manager) resolveAgents(sc config.ConfigSkill) []string {
 	if len(sc.Agents) == 0 || (len(sc.Agents) == 1 && sc.Agents[0] == "*") {
 		return m.detectInstalledAgents(sc.Global)
 	}
@@ -216,7 +216,7 @@ func (m *Manager) resolveAgents(sc config.SkillConfig) []string {
 // on this machine. Sync uses this to guarantee it never materialises an
 // agent-owned directory as a side effect — uninstalled entries in an
 // explicit list are dropped with a warning.
-func (m *Manager) syncAgents(sc config.SkillConfig) []string {
+func (m *Manager) syncAgents(sc config.ConfigSkill) []string {
 	resolved := m.resolveAgents(sc)
 	out := make([]string, 0, len(resolved))
 	for _, a := range resolved {

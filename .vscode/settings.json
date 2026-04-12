@@ -23,6 +23,7 @@
     "source": true,
     "history": true,
     "clear": true,
+    "gofmt": true
   },
   "makefile.configureOnOpen": false,
   "yaml.schemas": {

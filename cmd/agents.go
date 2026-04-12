@@ -33,6 +33,7 @@ Examples:
   gaal agents --installed    # only agents detected on this machine
   gaal agents cursor         # detailed view for one agent`,
 	SilenceUsage: true,
+	Annotations:  map[string]string{"config": "optional"},
 	Args:         cobra.MaximumNArgs(1),
 	RunE:         runAgents,
 }
@@ -108,17 +109,7 @@ func renderAgentsTable(w io.Writer, entries []render.AgentEntry) error {
 		})
 	}
 
-	s, err := pterm.DefaultTable.
-		WithHasHeader(true).
-		WithSeparator(" │ ").
-		WithHeaderStyle(pterm.NewStyle(pterm.Bold, pterm.FgLightWhite)).
-		WithData(data).
-		Srender()
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(w, s)
-	return nil
+	return render.BoxedTable(w, data)
 }
 
 func runAgentDetail(eng *engine.Engine, w io.Writer, name string, format engine.OutputFormat) error {

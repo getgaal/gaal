@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"os"
 	"testing"
+
+	"gaal/internal/config"
 )
 
 // captureStdout redirects os.Stdout to an os.Pipe for the duration of fn,
@@ -30,4 +32,25 @@ func captureStdout(t *testing.T, fn func()) string {
 	<-done
 	r.Close()
 	return buf.String()
+}
+
+// setConfig sets cfgFile and loads resolvedCfg from path, mimicking what
+// PersistentPreRunE does at runtime. Registers cleanup to restore both.
+func setConfig(t *testing.T, path string) {
+	t.Helper()
+	orig := cfgFile
+	origResolved := resolvedCfg
+	origErr := resolvedCfgErr
+	t.Cleanup(func() {
+		cfgFile = orig
+		resolvedCfg = origResolved
+		resolvedCfgErr = origErr
+	})
+	cfgFile = path
+	rc, err := config.LoadChain(path)
+	if err != nil {
+		t.Fatalf("setConfig: %v", err)
+	}
+	resolvedCfg = rc
+	resolvedCfgErr = nil
 }

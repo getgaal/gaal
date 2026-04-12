@@ -127,7 +127,7 @@ func renderPlanYAML(plan Plan) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func writeSkillsBlock(buf *bytes.Buffer, skills []config.SkillConfig) error {
+func writeSkillsBlock(buf *bytes.Buffer, skills []config.ConfigSkill) error {
 	if len(skills) == 0 {
 		buf.WriteString("skills: []\n")
 		return nil
@@ -140,7 +140,7 @@ func writeSkillsBlock(buf *bytes.Buffer, skills []config.SkillConfig) error {
 	return nil
 }
 
-func writeMCPsBlock(buf *bytes.Buffer, mcps []config.MCPConfig) error {
+func writeMCPsBlock(buf *bytes.Buffer, mcps []config.ConfigMcp) error {
 	if len(mcps) == 0 {
 		buf.WriteString("mcps: []\n")
 		return nil

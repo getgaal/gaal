@@ -3,7 +3,7 @@
 package schema
 
 // Generator generates a JSON Schema for an arbitrary Go value.
-// The returned bytes are a valid JSON document conforming to JSON Schema draft-07.
+// The returned bytes are a valid JSON document conforming to JSON Schema draft 2020-12.
 //
 // The default implementation uses [invopop/jsonschema] ([NewGeneratorInvopop]).
 // Swap it at program start-up with [Set].

@@ -32,15 +32,28 @@ type Finding struct {
 	Message  string   `json:"message"`
 }
 
+// ConfigLevelSummary summarises what one configuration level contributes.
+type ConfigLevelSummary struct {
+	Label  string `json:"label"`            // "global", "user", "workspace"
+	Path   string `json:"path,omitempty"`   // path of the file; empty when absent
+	Loaded bool   `json:"loaded"`           // false when the file does not exist
+	Repos  int    `json:"repos,omitempty"`  // number of repository entries
+	Skills int    `json:"skills,omitempty"` // number of skill entries
+	MCPs   int    `json:"mcps,omitempty"`   // number of MCP entries
+	Schema *int   `json:"schema,omitempty"` // schema version; nil if missing
+}
+
 // DoctorReport is the structured output of the doctor check pipeline.
 type DoctorReport struct {
-	Findings []Finding `json:"findings"`
-	ExitCode int       `json:"exit_code"`
+	Findings     []Finding            `json:"findings"`
+	ConfigLevels []ConfigLevelSummary `json:"config_levels,omitempty"`
+	ExitCode     int                  `json:"exit_code"`
 }
 
 // DoctorOptions configures the doctor check behaviour.
 type DoctorOptions struct {
 	Offline bool
+	Levels  config.LevelConfigs // individual config levels before merging
 }
 
 // RunDoctor executes all sanity checks against the given config and returns
@@ -49,7 +62,7 @@ func RunDoctor(cfg *config.Config, opts DoctorOptions) *DoctorReport {
 	slog.Debug("running doctor checks", "offline", opts.Offline)
 
 	var findings []Finding
-	findings = append(findings, checkSchema(cfg)...)
+	findings = append(findings, checkSchema(opts.Levels, cfg.Schema)...)
 	findings = append(findings, checkTelemetry(cfg)...)
 	findings = append(findings, checkSkillSources(cfg, opts.Offline)...)
 	findings = append(findings, checkMCPTargets(cfg)...)
@@ -68,21 +81,77 @@ func RunDoctor(cfg *config.Config, opts DoctorOptions) *DoctorReport {
 	}
 
 	return &DoctorReport{
-		Findings: findings,
-		ExitCode: exitCode,
+		Findings:     findings,
+		ConfigLevels: buildConfigLevels(opts.Levels),
+		ExitCode:     exitCode,
 	}
 }
 
-// checkSchema reports the schema version status.
-func checkSchema(cfg *config.Config) []Finding {
-	if cfg.Schema == nil {
-		return []Finding{
-			{Section: "config", Severity: SeverityWarning, Message: "config is missing 'schema: 1'; this will be required in a future release"},
+// buildConfigLevels converts a LevelConfigs into a slice of ConfigLevelSummary,
+// one entry per level, regardless of whether the file was present.
+func buildConfigLevels(levels config.LevelConfigs) []ConfigLevelSummary {
+	slog.Debug("building config level summaries")
+	type entry struct {
+		label string
+		cfg   *config.Config
+	}
+	entries := []entry{
+		{"global", levels.Global},
+		{"user", levels.User},
+		{"workspace", levels.Workspace},
+	}
+	summaries := make([]ConfigLevelSummary, 0, len(entries))
+	for _, e := range entries {
+		if e.cfg == nil {
+			summaries = append(summaries, ConfigLevelSummary{Label: e.label})
+			continue
+		}
+		summaries = append(summaries, ConfigLevelSummary{
+			Label:  e.label,
+			Path:   e.cfg.SourcePath,
+			Loaded: true,
+			Repos:  len(e.cfg.Repositories),
+			Skills: len(e.cfg.Skills),
+			MCPs:   len(e.cfg.MCPs),
+			Schema: e.cfg.Schema,
+		})
+	}
+	return summaries
+}
+
+// checkSchema reports the schema version status on a per-level basis:
+// every loaded config level that is missing the schema field generates one
+// warning. When all loaded levels carry the field, a single info finding
+// with the merged schema version is returned instead.
+func checkSchema(levels config.LevelConfigs, mergedSchema *int) []Finding {
+	type levelEntry struct {
+		cfg *config.Config
+	}
+	all := []levelEntry{{levels.Global}, {levels.User}, {levels.Workspace}}
+
+	var findings []Finding
+	for _, e := range all {
+		if e.cfg == nil {
+			continue // level not loaded
+		}
+		if e.cfg.Schema == nil {
+			findings = append(findings, Finding{
+				Section:  "config",
+				Severity: SeverityWarning,
+				Message:  fmt.Sprintf("config is missing 'schema: 1'; this will be required in a future release (file: %s)", e.cfg.SourcePath),
+			})
 		}
 	}
-	return []Finding{
-		{Section: "config", Severity: SeverityInfo, Message: fmt.Sprintf("schema: %d", *cfg.Schema)},
+	if len(findings) > 0 {
+		return findings
 	}
+	// All loaded levels have schema set — report the merged value.
+	if mergedSchema != nil {
+		return []Finding{
+			{Section: "config", Severity: SeverityInfo, Message: fmt.Sprintf("schema: %d", *mergedSchema)},
+		}
+	}
+	return nil
 }
 
 // checkTelemetry reports the current telemetry state as an info finding.

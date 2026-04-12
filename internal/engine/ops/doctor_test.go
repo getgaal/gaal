@@ -14,17 +14,19 @@ import (
 
 func TestDoctorCleanConfig(t *testing.T) {
 	cfg := &config.Config{}
-	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+	ws := &config.Config{SourcePath: "gaal.yaml"} // Schema nil in workspace
+	report := RunDoctor(cfg, DoctorOptions{Offline: true, Levels: config.LevelConfigs{Workspace: ws}})
 
-	// Empty config has no Schema → warning, so exit code is 1.
+	// Workspace config missing schema → warning → exit code 1.
 	if report.ExitCode != 1 {
 		t.Errorf("expected exit code 1 for config without schema, got %d", report.ExitCode)
 	}
 }
 
 func TestDoctorSchemaMissing_Warning(t *testing.T) {
-	cfg := &config.Config{} // Schema is nil
-	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+	cfg := &config.Config{}                       // merged schema is nil
+	ws := &config.Config{SourcePath: "gaal.yaml"} // Schema nil in workspace
+	report := RunDoctor(cfg, DoctorOptions{Offline: true, Levels: config.LevelConfigs{Workspace: ws}})
 
 	found := false
 	for _, f := range report.Findings {
@@ -41,7 +43,8 @@ func TestDoctorSchemaMissing_Warning(t *testing.T) {
 func TestDoctorSchemaOne_Info(t *testing.T) {
 	v := 1
 	cfg := &config.Config{Schema: &v}
-	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+	ws := &config.Config{Schema: &v, SourcePath: "gaal.yaml"}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true, Levels: config.LevelConfigs{Workspace: ws}})
 
 	found := false
 	for _, f := range report.Findings {
@@ -58,16 +61,46 @@ func TestDoctorSchemaOne_Info(t *testing.T) {
 func TestDoctorCleanConfigWithSchema(t *testing.T) {
 	v := 1
 	cfg := &config.Config{Schema: &v}
-	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+	ws := &config.Config{Schema: &v, SourcePath: "gaal.yaml"}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true, Levels: config.LevelConfigs{Workspace: ws}})
 
 	if report.ExitCode != 0 {
 		t.Errorf("expected exit code 0 for clean config with schema, got %d", report.ExitCode)
 	}
 }
 
+// TestDoctorSchema_MissingInOneLevel is the case the old implementation got
+// wrong: the global level carries schema but the workspace level does not.
+// Only the workspace file should trigger a warning; no global warning.
+func TestDoctorSchema_MissingInOneLevel(t *testing.T) {
+	v := 1
+	globalCfg := &config.Config{Schema: &v, SourcePath: "/etc/gaal/config.yaml"}
+	wsCfg := &config.Config{SourcePath: "gaal.yaml"} // workspace missing schema
+	merged := &config.Config{Schema: &v}             // merged inherits from global
+
+	levels := config.LevelConfigs{Global: globalCfg, Workspace: wsCfg}
+	report := RunDoctor(merged, DoctorOptions{Offline: true, Levels: levels})
+
+	var schemaFindings []Finding
+	for _, f := range report.Findings {
+		if f.Section == "config" && strings.Contains(f.Message, "schema") {
+			schemaFindings = append(schemaFindings, f)
+		}
+	}
+	if len(schemaFindings) != 1 {
+		t.Fatalf("expected exactly 1 schema finding (workspace only), got %d: %+v", len(schemaFindings), schemaFindings)
+	}
+	if schemaFindings[0].Severity != SeverityWarning {
+		t.Errorf("expected warning severity, got %s", schemaFindings[0].Severity)
+	}
+	if !strings.Contains(schemaFindings[0].Message, "gaal.yaml") {
+		t.Errorf("expected finding to reference workspace file, got: %s", schemaFindings[0].Message)
+	}
+}
+
 func TestDoctorSkillSourceLocalMissing(t *testing.T) {
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: "/nonexistent/path/that/does/not/exist", Agents: []string{"claude-code"}},
 		},
 	}
@@ -92,7 +125,7 @@ func TestDoctorSkillSourceLocalMissing(t *testing.T) {
 func TestDoctorSkillSourceLocalExists(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: dir, Agents: []string{"claude-code"}},
 		},
 	}
@@ -112,7 +145,7 @@ func TestDoctorSkillSourceRemoteReachable(t *testing.T) {
 	defer srv.Close()
 
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: srv.URL, Agents: []string{"claude-code"}},
 		},
 	}
@@ -132,7 +165,7 @@ func TestDoctorSkillSourceRemoteUnreachable(t *testing.T) {
 	defer srv.Close()
 
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: srv.URL, Agents: []string{"claude-code"}},
 		},
 	}
@@ -152,7 +185,7 @@ func TestDoctorSkillSourceRemoteUnreachable(t *testing.T) {
 
 func TestDoctorOfflineSkipsNetwork(t *testing.T) {
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: "owner/repo", Agents: []string{"claude-code"}},
 		},
 	}
@@ -171,7 +204,7 @@ func TestDoctorMCPTargetValid(t *testing.T) {
 	os.WriteFile(target, []byte(`{"mcpServers": {}}`), 0o644)
 
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{Name: "test", Target: target},
 		},
 	}
@@ -190,7 +223,7 @@ func TestDoctorMCPTargetInvalidJSON(t *testing.T) {
 	os.WriteFile(target, []byte(`not valid json`), 0o644)
 
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{Name: "test", Target: target},
 		},
 	}
@@ -219,7 +252,7 @@ func TestDoctorMCPTargetOutsideHome(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{Name: "test", Target: target},
 		},
 	}
@@ -243,7 +276,7 @@ func TestDoctorExitCodeWarnings(t *testing.T) {
 	os.WriteFile(target, []byte(`not json`), 0o644)
 
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{Name: "test", Target: target},
 		},
 	}

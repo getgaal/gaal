@@ -56,7 +56,7 @@ func TestRunOnce_WithRepository_NoNetwork(t *testing.T) {
 	existing := t.TempDir()
 
 	cfg := &config.Config{
-		Repositories: map[string]config.RepoConfig{
+		Repositories: map[string]config.ConfigRepo{
 			existing: {
 				Type: "tar",
 				URL:  "https://example.com/unused.tar.gz",
@@ -92,7 +92,7 @@ func TestRunOnce_WithSkills_LocalSource(t *testing.T) {
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
 
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: sourceDir, Agents: []string{"claude-code"}},
 		},
 	}
@@ -105,11 +105,11 @@ func TestRunOnce_WithSkills_LocalSource(t *testing.T) {
 func TestRunOnce_WithMCP_Inline(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "mcp.json")
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{
 				Name:   "test-mcp",
 				Target: target,
-				Inline: &config.MCPInlineConfig{Command: "node"},
+				Inline: &config.ConfigMcpItem{Command: "node"},
 			},
 		},
 	}
@@ -122,7 +122,7 @@ func TestRunOnce_WithMCP_Inline(t *testing.T) {
 func TestStatus_WithRepos(t *testing.T) {
 	existing := t.TempDir()
 	cfg := &config.Config{
-		Repositories: map[string]config.RepoConfig{
+		Repositories: map[string]config.ConfigRepo{
 			existing: {Type: "tar", URL: "https://example.com/x.tar.gz"},
 		},
 	}
@@ -141,7 +141,7 @@ func TestStatus_WithMCPs(t *testing.T) {
 	os.WriteFile(target, []byte(`{"mcpServers":{"s":{"command":"c"}}}`), 0o644)
 
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{Name: "s", Target: target},
 		},
 	}
@@ -179,7 +179,7 @@ func TestRunService_TickFires(t *testing.T) {
 func TestRunOnce_ErrorAccumulation(t *testing.T) {
 	// A MCP config with no source and no inline triggers an error in syncOne.
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{Name: "bad", Target: filepath.Join(t.TempDir(), "mcp.json")},
 		},
 	}
@@ -193,7 +193,7 @@ func TestRunOnce_ErrorAccumulation(t *testing.T) {
 func TestStatus_WithRepoError(t *testing.T) {
 	// Unknown repo type causes repos.Status to return an error status entry.
 	cfg := &config.Config{
-		Repositories: map[string]config.RepoConfig{
+		Repositories: map[string]config.ConfigRepo{
 			"/some/path": {Type: "unknown-vcs-type", URL: "https://example.com/x"},
 		},
 	}
@@ -210,7 +210,7 @@ func TestStatus_WithRepoError(t *testing.T) {
 func TestStatus_WithSkillError(t *testing.T) {
 	// Unknown agent name causes skills.Status to return an error status entry.
 	cfg := &config.Config{
-		Skills: []config.SkillConfig{
+		Skills: []config.ConfigSkill{
 			{Source: t.TempDir(), Agents: []string{"unknown-agent-xyz"}},
 		},
 	}
@@ -287,7 +287,7 @@ func TestDryRun_WithRepo_NotCloned(t *testing.T) {
 	// Point at a directory that does NOT exist yet so IsCloned returns false.
 	missingDir := filepath.Join(t.TempDir(), "nonexistent")
 	cfg := &config.Config{
-		Repositories: map[string]config.RepoConfig{
+		Repositories: map[string]config.ConfigRepo{
 			missingDir: {Type: "tar", URL: "https://example.com/archive.tar.gz"},
 		},
 	}
@@ -309,7 +309,7 @@ func TestDryRun_WithRepo_AlreadyCloned(t *testing.T) {
 	// Existing dir means IsCloned returns true for archive type; Update is a no-op.
 	existing := t.TempDir()
 	cfg := &config.Config{
-		Repositories: map[string]config.RepoConfig{
+		Repositories: map[string]config.ConfigRepo{
 			existing: {Type: "tar", URL: "https://example.com/archive.tar.gz"},
 		},
 	}
@@ -329,7 +329,7 @@ func TestDryRun_WithRepo_AlreadyCloned(t *testing.T) {
 
 func TestDryRun_WithRepoError(t *testing.T) {
 	cfg := &config.Config{
-		Repositories: map[string]config.RepoConfig{
+		Repositories: map[string]config.ConfigRepo{
 			"/some/path": {Type: "unknown-vcs-type", URL: "https://example.com/x"},
 		},
 	}
@@ -351,11 +351,11 @@ func TestDryRun_WithMCP_Absent(t *testing.T) {
 	// Target file doesn't exist yet → MCP is absent → plan should show create.
 	target := filepath.Join(t.TempDir(), "mcp.json")
 	cfg := &config.Config{
-		MCPs: []config.MCPConfig{
+		MCPs: []config.ConfigMcp{
 			{
 				Name:   "test-mcp",
 				Target: target,
-				Inline: &config.MCPInlineConfig{Command: "node"},
+				Inline: &config.ConfigMcpItem{Command: "node"},
 			},
 		},
 	}

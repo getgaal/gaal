@@ -27,6 +27,13 @@ var (
 
 	// engineOpts is populated by PersistentPreRunE and shared by all sub-commands.
 	engineOpts engine.Options
+
+	// resolvedCfg is loaded once in PersistentPreRunE and shared by all sub-commands
+	// to avoid calling LoadChain multiple times per invocation.
+	resolvedCfg *config.ResolvedConfig
+	// resolvedCfgErr holds the error (if any) from LoadChain so that
+	// sub-commands can surface the real cause instead of a generic message.
+	resolvedCfgErr error
 )
 
 var rootCmd = &cobra.Command{
@@ -60,9 +67,20 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 		}
 		engineOpts = opts
 
+		// Load config once and cache it for all sub-commands and telemetry.
+		// Always capture the error so sub-commands can surface the real cause.
+		resolvedCfg, resolvedCfgErr = config.LoadChain(cfgFile)
+
+		// Commands annotated with configOptional tolerate a missing/invalid
+		// config (e.g. doctor, agents, version). All others fail fast here so
+		// individual sub-commands do not need to repeat the nil check.
+		if resolvedCfgErr != nil && cmd.Annotations["config"] != "optional" {
+			return fmt.Errorf("loading config: %w", resolvedCfgErr)
+		}
+
 		// Telemetry: resolve consent state and initialise.
 		if !skipTelemetry(cmd) {
-			userCfg := loadUserTelemetryConfig()
+			userCfg := loadMergedTelemetryConfig()
 			var promptFn func() (bool, error)
 			if term.IsTerminal(int(os.Stdin.Fd())) {
 				promptFn = showConsentPrompt
@@ -176,14 +194,19 @@ func skipTelemetry(cmd *cobra.Command) bool {
 		(cmd.HasParent() && cmd.Parent().Name() == "completion")
 }
 
-// loadUserTelemetryConfig reads the telemetry field from the user config
-// file without going through the full config merge chain.
-func loadUserTelemetryConfig() *bool {
-	cfg, err := config.Load(config.UserConfigFilePath())
-	if err != nil {
-		return nil
+// loadMergedTelemetryConfig reads the telemetry consent from the already-loaded
+// config. When the full chain failed to load (resolvedCfg == nil), it falls back
+// to reading only the per-user config file so that a missing workspace file does
+// not mask a previously saved consent decision.
+func loadMergedTelemetryConfig() *bool {
+	if resolvedCfg != nil {
+		return resolvedCfg.Telemetry
 	}
-	return cfg.Telemetry
+	// Full chain failed — try user config only for telemetry consent.
+	if uc, err := config.Load(config.UserConfigFilePath()); err == nil {
+		return uc.Telemetry
+	}
+	return nil
 }
 
 // showConsentPrompt displays the opt-in telemetry prompt.

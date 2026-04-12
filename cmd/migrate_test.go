@@ -16,12 +16,14 @@ func resetMigrateFlags(t *testing.T) {
 	origDryRun := migrateDryRun
 	origYes := migrateYes
 	origOpts := engineOpts
+	origResolved := resolvedCfg
 	t.Cleanup(func() {
 		cfgFile = origCfg
 		migrateTarget = origTarget
 		migrateDryRun = origDryRun
 		migrateYes = origYes
 		engineOpts = origOpts
+		resolvedCfg = origResolved
 	})
 	migrateTarget = ""
 	migrateDryRun = false
@@ -58,7 +60,7 @@ func TestMigrate_ValidConfig(t *testing.T) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cfgFile = writeMinimalConfig(t, workDir)
+	setConfig(t, writeMinimalConfig(t, workDir))
 	migrateTarget = "community"
 	engineOpts = engine.Options{WorkDir: workDir}
 
@@ -85,35 +87,6 @@ func TestMigrate_ValidConfig(t *testing.T) {
 	}
 }
 
-func TestMigrate_InvalidConfig(t *testing.T) {
-	resetMigrateFlags(t)
-
-	home := t.TempDir()
-	workDir := t.TempDir()
-	t.Setenv("HOME", home)
-
-	// Write an invalid config (missing required fields).
-	bad := filepath.Join(workDir, "gaal.yaml")
-	if err := os.WriteFile(bad, []byte("skills:\n  - agents: [\"*\"]\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	cfgFile = bad
-	migrateTarget = "community"
-	engineOpts = engine.Options{WorkDir: workDir}
-
-	var gotErr error
-	out := captureStdout(t, func() {
-		gotErr = runMigrate(migrateCmd, []string{"https://community.example.com"})
-	})
-	if gotErr == nil {
-		t.Fatal("expected error for invalid config")
-	}
-	if !strings.Contains(out, "not yet available") {
-		t.Errorf("expected disclaimer even on config error:\n%s", out)
-	}
-}
-
 func TestMigrate_BadURL(t *testing.T) {
 	resetMigrateFlags(t)
 
@@ -121,7 +94,7 @@ func TestMigrate_BadURL(t *testing.T) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cfgFile = writeMinimalConfig(t, workDir)
+	setConfig(t, writeMinimalConfig(t, workDir))
 	migrateTarget = "community"
 	engineOpts = engine.Options{WorkDir: workDir}
 
@@ -147,7 +120,7 @@ func TestMigrate_UnknownTarget(t *testing.T) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cfgFile = writeMinimalConfig(t, workDir)
+	setConfig(t, writeMinimalConfig(t, workDir))
 	migrateTarget = "saas"
 	engineOpts = engine.Options{WorkDir: workDir}
 
@@ -173,7 +146,7 @@ func TestMigrate_NoArgs(t *testing.T) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cfgFile = writeMinimalConfig(t, workDir)
+	setConfig(t, writeMinimalConfig(t, workDir))
 	engineOpts = engine.Options{WorkDir: workDir}
 
 	var gotErr error
@@ -195,7 +168,7 @@ func TestMigrate_DryRun(t *testing.T) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cfgFile = writeMinimalConfig(t, workDir)
+	setConfig(t, writeMinimalConfig(t, workDir))
 	migrateTarget = "community"
 	migrateDryRun = true
 	engineOpts = engine.Options{WorkDir: workDir}

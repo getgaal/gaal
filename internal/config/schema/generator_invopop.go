@@ -28,7 +28,7 @@ func NewGeneratorInvopop() *GeneratorInvopop {
 	return &GeneratorInvopop{reflector: r}
 }
 
-// Generate reflects v and returns a pretty-printed JSON Schema (draft-07).
+// Generate reflects v and returns a pretty-printed JSON Schema (draft 2020-12).
 func (p *GeneratorInvopop) Generate(v any) ([]byte, error) {
 	s := p.reflector.Reflect(v)
 	out, err := json.MarshalIndent(s, "", "  ")

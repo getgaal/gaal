@@ -88,6 +88,11 @@ mcps:
 
 ### Configuration reference
 
+For the complete field reference, merge rules, scope restriction policy, and
+agent rules, see [**docs/config.md**](config.md).
+
+Quick reference:
+
 | Section | Key | Description |
 |---------|-----|-------------|
 | `repositories` | `type` | `git`, `hg`, `svn`, `bzr`, `tar`, `zip` |
@@ -99,6 +104,8 @@ mcps:
 | `mcps` | `target` | Absolute path to the agent JSON config file |
 | `mcps` | `inline` | Inline server definition (mutually exclusive with `source`) |
 | `mcps` | `source` | URL to a remote JSON file containing an `mcpServers` block |
+| `mcps` | `merge` | `true` (default) = upsert; `false` = overwrite |
+| _(top-level)_ | `telemetry` | `true` / `false`: opt in/out of anonymous usage telemetry (only `global` and `user` config files; workspace cannot override — see [docs/config.md](config.md#scope-restriction-policy)) |
 
 Supported agent names: `amp`, `claude-code`, `cursor`, `github-copilot`, `cline`, `roo`, `codex`, `continue`, `gemini-cli`, `goose`, `kilo`, `kiro-cli`, `opencode`, `openhands`, `trae`, `warp`, `windsurf`, and more. Run `gaal info agent` for the full list.
 

@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gaal/internal/config"
 	"gaal/internal/engine"
 	"gaal/internal/telemetry"
 )
@@ -53,19 +52,14 @@ func printDisclaimer() {
 }
 
 func runMigrate(_ *cobra.Command, args []string) error {
-	cfg, err := config.LoadChain(cfgFile)
-	if err != nil {
-		telemetry.TrackError("migrate", err)
-		printDisclaimer()
-		return fmt.Errorf("loading config: %w", err)
-	}
+	cfg := resolvedCfg
 
 	var url string
 	if len(args) > 0 {
 		url = args[0]
 	}
 
-	eng := engine.NewWithOptions(cfg, engineOpts)
+	eng := engine.NewWithOptions(cfg.Config, engineOpts)
 
 	result, err := eng.Migrate(migrateTarget, url, migrateDryRun)
 	if err != nil {

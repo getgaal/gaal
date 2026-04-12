@@ -23,8 +23,7 @@ Three source types are reported:
   package-manager – skills installed by the agent's own extension manager
 
 The command never modifies any file. It is safe to run at any time.`,
-	SilenceUsage: true,
-	RunE:         runAudit,
+	SilenceUsage: true, Annotations: map[string]string{"config": "optional"}, RunE: runAudit,
 }
 
 func init() {
