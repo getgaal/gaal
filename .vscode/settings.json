@@ -28,5 +28,8 @@
   "makefile.configureOnOpen": false,
   "yaml.schemas": {
     "./dist/schema.json": ["gaal.yaml", "*.gaal.yaml", ".gaal.yaml"]
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "davidanson.vscode-markdownlint"
   }
 }

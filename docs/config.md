@@ -7,16 +7,18 @@
 
 ---
 
-## Overview — Three Pillars
+## Overview — Five Pillars
 
-The configuration system rests on three pillars that are deliberately kept
+The configuration system rests on five pillars that are deliberately kept
 separate and independently swappable:
 
 | Pillar | Responsibility | Key package |
 |--------|---------------|-------------|
 | **Config** | Holds the configuration data; two representations: files on disk (offline) and `*Config` / `*ResolvedConfig` in memory (runtime) | `internal/config` |
-| **Schema** | Generates a JSON Schema that is always 1-to-1 with the runtime structs; used by IDEs for live YAML validation | `internal/config/schema` |
+| **Scope Policy** | Declares which config levels may override each field (`gaal:"maxscope="` tag); enforced declaratively at merge time | `internal/config` |
+| **Schema** | Generates a JSON Schema always 1-to-1 with the runtime structs; used by IDEs for live YAML validation | `internal/config/schema` |
 | **Validation** | Bridges memory ↔ files; guarantees perfectly consistent data at every load/merge boundary | `internal/config/schema` |
+| **Platform** | Resolves OS-specific config file paths; isolated from build constraints | `internal/config/platform` |
 
 The schema generator and validator are both **swappable abstractions** — the
 active implementation can be replaced at program start-up without touching any
@@ -229,43 +231,49 @@ const (
 
 ---
 
-## Schema Generation
+## Schema Sub-package (`internal/config/schema`)
 
-The `Generator` interface produces a JSON Schema (draft-2020-12) from the
-`Config` struct. The schema is always **1-to-1 with the runtime struct**;
-`JSONSchemaExtend` customises it post-generation to tighten the contract for
-IDE consumers (e.g. `schema` is marked `required` and constrained to `enum=[1]`).
+Schema generation and struct validation are isolated in their own package so
+that both concerns can be **swapped independently** without touching any calling
+code — useful for tests or for changing the underlying library.
 
-| Symbol | Description |
-|--------|-------------|
-| `schema.Generator` | `interface{ Generate(v any) ([]byte, error) }` |
-| `schema.Default` | Active `Generator` instance (init: `NewGeneratorInvopop()`) |
-| `schema.Set(g Generator)` | Replace the active instance (call before `GenerateSchema`) |
-| `schema.Generate(v any) ([]byte, error)` | Convenience wrapper |
-| `config.GenerateSchema() ([]byte, error)` | Public entry-point used by `gaal schema` |
+### Responsibilities
 
-The default implementation uses `github.com/invopop/jsonschema` with
-`AllowAdditionalProperties: false` — unknown YAML keys are rejected by
-schema-aware IDEs.
+| Concern | Interface | Default implementation |
+|---------|-----------|----------------------|
+| JSON Schema generation | `Generator` | `GeneratorInvopop` (invopop/jsonschema) |
+| Struct validation | `Validator` | `PlaygroundValidator` (go-playground/validator/v10) |
 
----
+### Generator
 
-## Validation
-
-The `Validator` interface validates any struct value using the `validate` struct
-tags. Errors reference YAML field names (e.g. `type: required`) rather than Go
-identifiers.
+Produces a JSON Schema (draft-2020-12) from any Go value. The schema is always
+**1-to-1 with the runtime struct**; `JSONSchemaExtend` on `Config` customises
+it post-generation (e.g. `schema` marked `required`, constrained to `enum=[1]`).
 
 | Symbol | Description |
 |--------|-------------|
-| `schema.Validator` | `interface{ Validate(v any) error }` |
-| `schema.DefaultValidator` | Active `Validator` instance (init: `NewPlaygroundValidator()`) |
-| `schema.SetValidator(v Validator)` | Replace the active instance |
-| `schema.Validate(v any) error` | Convenience wrapper |
+| `Generator` | `interface{ Generate(v any) ([]byte, error) }` |
+| `Default` | Active instance (init: `NewGeneratorInvopop()`) |
+| `Set(g Generator)` | Swap the active instance (call before `GenerateSchema`) |
+| `Generate(v any) ([]byte, error)` | Convenience wrapper around `Default` |
 
-The default implementation uses `github.com/go-playground/validator/v10`.
+Default behaviour of `GeneratorInvopop`: `AllowAdditionalProperties: false` —
+unknown YAML keys are rejected by schema-aware IDEs.
 
-Key validation rules:
+### Validator
+
+Validates any struct value using `validate` struct tags. Errors reference YAML
+field names (e.g. `type: required`) rather than Go identifiers, thanks to a
+custom `RegisterTagNameFunc` that reads the `yaml` tag.
+
+| Symbol | Description |
+|--------|-------------|
+| `Validator` | `interface{ Validate(v any) error }` |
+| `DefaultValidator` | Active instance (init: `NewPlaygroundValidator()`) |
+| `SetValidator(v Validator)` | Swap the active instance |
+| `Validate(v any) error` | Convenience wrapper around `DefaultValidator` |
+
+Key validation rules applied to `Config` structs:
 
 | Field | Rule |
 |-------|------|
@@ -276,6 +284,27 @@ Key validation rules:
 | `ConfigMcp.Target` | `required` |
 | `ConfigMcp.Source` | `required_without=Inline` |
 | `ConfigMcpItem.Command` | `required` |
+
+### Relationship with `internal/config`
+
+`internal/config` never imports the underlying libraries directly. Instead:
+
+```
+config.GenerateSchema()        — public entry-point (manager.go)
+  └─→ schema.Generate(v)       — convenience wrapper
+        └─→ schema.Default.Generate(v)   — GeneratorInvopop (swappable)
+
+config.Load() → cfg.validate()
+  └─→ schema.Validate(v)       — convenience wrapper
+        └─→ schema.DefaultValidator.Validate(v)  — PlaygroundValidator (swappable)
+```
+
+### Tests
+
+Tests live in `schema/generator_test.go` and `schema/validator_test.go`
+(package `schema_test`). They use lightweight stub structs to keep tests fully
+independent of `Config`. Swapping the active implementation is tested to ensure
+the abstraction boundary holds.
 
 ---
 
