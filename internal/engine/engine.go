@@ -26,6 +26,8 @@ type (
 	SkillEntry      = render.SkillEntry
 	MCPEntry        = render.MCPEntry
 	AgentEntry      = render.AgentEntry
+	AgentDetail     = render.AgentDetail
+	AgentPath       = render.AgentPath
 	AuditReport     = render.AuditReport
 	AuditSkillEntry = render.AuditSkillEntry
 	AuditMCPEntry   = render.AuditMCPEntry
@@ -180,6 +182,16 @@ func (e *Engine) Audit(ctx context.Context, format OutputFormat) error {
 // Info renders a detailed view for the given package type to stdout.
 func (e *Engine) Info(ctx context.Context, pkg, filter string, format OutputFormat) error {
 	return ops.Info(ctx, e.repos, e.skills, e.mcps, e.cfg, pkg, filter, format)
+}
+
+// ListAgents returns all registered agents with installed-detection.
+func (e *Engine) ListAgents() ([]render.AgentEntry, error) {
+	return ops.ListAgents(e.home, e.workDir)
+}
+
+// AgentDetail returns the full detail view for a single agent.
+func (e *Engine) AgentDetail(name string) (*render.AgentDetail, error) {
+	return ops.AgentDetail(e.home, e.workDir, name)
 }
 
 // Init writes the documented gaal.yaml skeleton to dest.

@@ -369,7 +369,6 @@ func buildSkillTree(e render.SkillEntry) []string {
 func renderAgentInfo(w io.Writer, entries []render.AgentEntry, filter string) error {
 	slog.Debug("rendering agent info", "count", len(entries), "filter", filter)
 
-	// Apply filter.
 	filtered := make([]render.AgentEntry, 0, len(entries))
 	for _, e := range entries {
 		if matchFilter(e.Name, filter) {
@@ -387,20 +386,30 @@ func renderAgentInfo(w io.Writer, entries []render.AgentEntry, filter string) er
 		return nil
 	}
 
+	sort.SliceStable(filtered, func(i, j int) bool {
+		if filtered[i].Installed != filtered[j].Installed {
+			return filtered[i].Installed
+		}
+		return filtered[i].Name < filtered[j].Name
+	})
+
 	infoSection(w, "Supported Agents", len(filtered), pterm.FgYellow)
 
-	// Source tag: builtin vs user-defined
 	builtinSet := make(map[string]struct{}, len(agent.Names()))
 	for _, n := range agent.Names() {
 		builtinSet[n] = struct{}{}
 	}
 
 	cards := make([]infoCard, 0, len(filtered))
-	for _, e := range entries {
-		if !matchFilter(e.Name, filter) {
-			continue
-		}
+	for _, e := range filtered {
 		lines := []string{}
+
+		installedStr := pterm.FgDarkGray.Sprint("no")
+		if e.Installed {
+			installedStr = pterm.FgGreen.Sprint("yes")
+		}
+		lines = append(lines, kvLine("Installed", installedStr))
+
 		if e.ProjectSkillsViaGeneric {
 			lines = append(lines, kvLine("Project", pterm.FgDarkGray.Sprintf("via generic convention (%s)", e.ProjectSkillsDir)))
 		} else if e.ProjectSkillsDir != "" {
@@ -422,7 +431,11 @@ func renderAgentInfo(w io.Writer, entries []render.AgentEntry, filter string) er
 		}
 
 		source := pterm.FgGreen.Sprint("builtin")
-		if _, ok := builtinSet[e.Name]; !ok {
+		if e.Source != "" {
+			if e.Source == "user" {
+				source = pterm.FgCyan.Sprint("user")
+			}
+		} else if _, ok := builtinSet[e.Name]; !ok {
 			source = pterm.FgCyan.Sprint("user")
 		}
 		lines = append(lines, kvLine("Source", source))

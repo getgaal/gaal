@@ -135,6 +135,18 @@ gaal info agent                          # list all registered agents
 gaal info agent cursor
 ```
 
+### List agents
+
+```bash
+gaal agents                  # all registered agents (installed first)
+gaal agents --installed      # only agents detected on this machine
+gaal agents cursor           # detailed view for one agent
+gaal agents -o json          # machine-readable output
+```
+
+Lists every registered coding agent and whether it is installed on this machine.
+Pass a name for a detailed view with search paths, skill counts, and MCP config.
+
 ### Generate the JSON Schema
 
 ```bash
@@ -275,7 +287,7 @@ agents:
     mcp_config_file: ~/.my-agent/mcp.json  # empty string if unsupported
 ```
 
-Use `gaal info agent` to list all registered agents (built-in + custom) and verify your additions.
+Use `gaal agents` to list all registered agents (built-in + custom) and verify your additions. `gaal info agent` provides the same information in an alternative layout.
 
 ---
 

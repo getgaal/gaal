@@ -235,18 +235,7 @@ func (m *Manager) syncAgents(sc config.SkillConfig) []string {
 // signal used by sync: we never create agent-owned directories as a side
 // effect of a sync run.
 func (m *Manager) isAgentInstalled(name string, global bool) bool {
-	dir, ok := SkillDir(name, global, m.home)
-	if !ok {
-		return false
-	}
-	checkDir := dir
-	if !global && !filepath.IsAbs(dir) {
-		checkDir = filepath.Join(m.workDir, filepath.Dir(dir))
-	} else {
-		checkDir = filepath.Dir(expandHome(dir, m.home))
-	}
-	_, err := os.Stat(checkDir)
-	return err == nil
+	return IsAgentInstalled(name, global, m.home, m.workDir)
 }
 
 // detectInstalledAgents returns every registered agent whose config-owning

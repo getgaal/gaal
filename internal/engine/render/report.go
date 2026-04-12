@@ -39,11 +39,33 @@ type SkillEntry struct {
 // AgentEntry holds the registry information for a supported agent.
 type AgentEntry struct {
 	Name                    string `json:"name"`
+	Installed               bool   `json:"installed"`
+	Source                  string `json:"source"`
 	ProjectSkillsDir        string `json:"project_skills_dir"`
 	GlobalSkillsDir         string `json:"global_skills_dir"`
 	ProjectMCPConfigFile    string `json:"project_mcp_config_file,omitempty"`
 	ProjectSkillsViaGeneric bool   `json:"project_skills_via_generic,omitempty"`
 	GlobalSkillsViaGeneric  bool   `json:"global_skills_via_generic,omitempty"`
+}
+
+// AgentPath describes a single search path for an agent's skills or config.
+type AgentPath struct {
+	Label      string `json:"label"`
+	Path       string `json:"path"`
+	Exists     bool   `json:"exists"`
+	SkillCount int    `json:"skill_count"`
+}
+
+// AgentDetail holds the full detail view for a single agent.
+type AgentDetail struct {
+	Name       string      `json:"name"`
+	Installed  bool        `json:"installed"`
+	Source     string      `json:"source"`
+	Paths      []AgentPath `json:"paths"`
+	MCPSupport bool        `json:"mcp_support"`
+	MCPConfig  string      `json:"mcp_config,omitempty"`
+	MCPExists  bool        `json:"mcp_exists,omitempty"`
+	Warnings   []string    `json:"warnings,omitempty"`
 }
 
 // MCPEntry holds the status of a single MCP server entry.

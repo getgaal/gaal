@@ -252,9 +252,28 @@ func TestCollect_AgentsSorted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect returned error: %v", err)
 	}
-	for i := 1; i < len(report.Agents); i++ {
-		if report.Agents[i].Name < report.Agents[i-1].Name {
-			t.Errorf("agents not sorted: %q before %q", report.Agents[i-1].Name, report.Agents[i].Name)
+	// Installed agents must precede uninstalled ones.
+	seenUninstalled := false
+	for _, a := range report.Agents {
+		if !a.Installed {
+			seenUninstalled = true
+		} else if seenUninstalled {
+			t.Errorf("installed agent %q appears after uninstalled agents", a.Name)
+		}
+	}
+	// Within each group, names must be sorted alphabetically.
+	var prevInstalled, prevUninstalled string
+	for _, a := range report.Agents {
+		if a.Installed {
+			if a.Name < prevInstalled {
+				t.Errorf("installed agents not sorted: %q after %q", a.Name, prevInstalled)
+			}
+			prevInstalled = a.Name
+		} else {
+			if a.Name < prevUninstalled {
+				t.Errorf("uninstalled agents not sorted: %q after %q", a.Name, prevUninstalled)
+			}
+			prevUninstalled = a.Name
 		}
 	}
 }
