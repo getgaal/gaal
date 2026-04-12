@@ -113,10 +113,10 @@ func (tr *tableRenderer) section(w io.Writer, title string, count int) {
 	fmt.Fprintf(w, "\n%s\n", styled)
 }
 
-// buildBorderLine builds a horizontal border of the given rune width,
+// BuildBorderLine builds a horizontal border of the given rune width,
 // placing junction at each position listed in junctions, surrounded by
 // left and right corner runes, and filled with fill everywhere else.
-func buildBorderLine(width int, junctions []int, left, right, junction, fill rune) string {
+func BuildBorderLine(width int, junctions []int, left, right, junction, fill rune) string {
 	runes := make([]rune, width)
 	for i := range runes {
 		runes[i] = fill
@@ -127,6 +127,14 @@ func buildBorderLine(width int, junctions []int, left, right, junction, fill run
 		}
 	}
 	return string(left) + string(runes) + string(right)
+}
+
+// BoxedTable renders data as a boxed pterm table with proper Unicode box-drawing
+// crossings (┌┬┐ / ├┼┤ / └┴┘). It is the package-level equivalent of
+// tableRenderer.ptermTable and is exported for use outside this package.
+func BoxedTable(w io.Writer, data pterm.TableData) error {
+	tr := &tableRenderer{}
+	return tr.ptermTable(w, data)
 }
 
 // ptermTable renders data as a boxed table with proper Unicode box-drawing crossings.
@@ -172,9 +180,9 @@ func (tr *tableRenderer) ptermTable(w io.Writer, data pterm.TableData) error {
 		}
 	}
 
-	top := buildBorderLine(rowWidth, sepPositions, '┌', '┐', '┬', '─')
-	headerSep := buildBorderLine(rowWidth, sepPositions, '├', '┤', '┼', '─')
-	bottom := buildBorderLine(rowWidth, sepPositions, '└', '┘', '┴', '─')
+	top := BuildBorderLine(rowWidth, sepPositions, '┌', '┐', '┬', '─')
+	headerSep := BuildBorderLine(rowWidth, sepPositions, '├', '┤', '┼', '─')
+	bottom := BuildBorderLine(rowWidth, sepPositions, '└', '┘', '┴', '─')
 
 	fmt.Fprintln(w, top)
 	for i, line := range lines {
