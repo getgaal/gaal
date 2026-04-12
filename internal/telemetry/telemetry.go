@@ -101,10 +101,12 @@ func Track(command string) {
 		return
 	}
 	props := copyProps(baseProps)
+	url := "app://gaal-lite/cmd/" + command
+	slog.Debug("telemetry", "event", "pageview", "url", url, "props", props)
 	go func() {
 		p := plausiblePayload{
 			Name:   "pageview",
-			URL:    "app://gaal-lite/cmd/" + command,
+			URL:    url,
 			Domain: plausibleDomain,
 			Props:  props,
 		}
@@ -124,10 +126,12 @@ func TrackCustom(name string, extra map[string]string) {
 	for k, v := range extra {
 		props[k] = v
 	}
+	url := "app://gaal-lite/custom/" + name
+	slog.Debug("telemetry", "event", name, "url", url, "props", props)
 	go func() {
 		p := plausiblePayload{
 			Name:   name,
-			URL:    "app://gaal-lite/custom/" + name,
+			URL:    url,
 			Domain: plausibleDomain,
 			Props:  props,
 		}
