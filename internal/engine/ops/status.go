@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 
-	"gaal/internal/core/agent"
 	"gaal/internal/engine/render"
 	"gaal/internal/mcp"
 	"gaal/internal/repo"
@@ -121,35 +120,15 @@ func collectMCPs(stats []mcp.Status) []render.MCPEntry {
 
 func collectAgents() ([]render.AgentEntry, error) {
 	slog.Debug("collecting agent entries")
-
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("resolving user home dir: %w", err)
 	}
-
-	list := agent.List()
-	entries := make([]render.AgentEntry, len(list))
-	for i, a := range list {
-		projectDir, ok := agent.SkillDir(a.Name, false, home)
-		if !ok {
-			return nil, fmt.Errorf("resolving project skills dir for agent %q", a.Name)
-		}
-
-		globalDir, ok := agent.SkillDir(a.Name, true, home)
-		if !ok {
-			return nil, fmt.Errorf("resolving global skills dir for agent %q", a.Name)
-		}
-
-		entries[i] = render.AgentEntry{
-			Name:                    a.Name,
-			ProjectSkillsDir:        projectDir,
-			GlobalSkillsDir:         globalDir,
-			ProjectMCPConfigFile:    a.Info.ProjectMCPConfigFile,
-			ProjectSkillsViaGeneric: a.Info.SupportsGenericProject,
-			GlobalSkillsViaGeneric:  a.Info.SupportsGenericGlobal,
-		}
+	workDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("resolving working dir: %w", err)
 	}
-	return entries, nil
+	return ListAgents(home, workDir)
 }
 
 // orDefault returns s if non-empty, otherwise def.
