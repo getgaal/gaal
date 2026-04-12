@@ -83,7 +83,7 @@ type Manager struct {
 	workDir  string // project working directory (for project-scoped installs)
 }
 
-// NewManager creates a new skill manager.
+// NewManager creates a new skill config.
 // cacheDir is where remote sources are cloned/downloaded (e.g. ~/.cache/gaal/skills).
 func NewManager(skills []config.ConfigSkill, cacheDir, home, workDir string) *Manager {
 	return &Manager{

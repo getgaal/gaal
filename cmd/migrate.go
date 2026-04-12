@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gaal/internal/config"
 	"gaal/internal/engine"
 	"gaal/internal/telemetry"
 )
@@ -53,12 +52,11 @@ func printDisclaimer() {
 }
 
 func runMigrate(_ *cobra.Command, args []string) error {
-	cfg, err := config.LoadChain(cfgFile)
-	if err != nil {
-		telemetry.TrackError("migrate", err)
+	if resolvedCfg == nil {
 		printDisclaimer()
-		return fmt.Errorf("loading config: %w", err)
+		return fmt.Errorf("loading config: no configuration found")
 	}
+	cfg := resolvedCfg
 
 	var url string
 	if len(args) > 0 {

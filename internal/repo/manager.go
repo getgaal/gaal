@@ -27,7 +27,7 @@ type Manager struct {
 	repos map[string]config.ConfigRepo
 }
 
-// NewManager creates a new repository manager.
+// NewManager creates a new repository config.
 func NewManager(repos map[string]config.ConfigRepo) *Manager {
 	return &Manager{repos: repos}
 }

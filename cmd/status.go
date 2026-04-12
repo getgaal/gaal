@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gaal/internal/config"
 	"gaal/internal/engine"
 	"gaal/internal/telemetry"
 )
@@ -26,11 +25,10 @@ func init() {
 }
 
 func runStatus(_ *cobra.Command, _ []string) error {
-	cfg, err := config.LoadChain(cfgFile)
-	if err != nil {
-		telemetry.TrackError("status", err)
-		return fmt.Errorf("loading config: %w", err)
+	if resolvedCfg == nil {
+		return fmt.Errorf("loading config: no configuration found")
 	}
+	cfg := resolvedCfg
 
 	telemetry.Track("status")
 	return engine.NewWithOptions(cfg.Config, engineOpts).

@@ -24,6 +24,10 @@ type Config struct {
 	Skills       []ConfigSkill         `yaml:"skills"       json:"skills,omitempty"       jsonschema:"description=Skill sources to install into agent skill directories"   validate:"dive"`
 	MCPs         []ConfigMcp           `yaml:"mcps"         json:"mcps,omitempty"         jsonschema:"description=MCP server configuration entries to merge"             validate:"dive"`
 	Telemetry    *bool                 `yaml:"telemetry,omitempty" json:"telemetry,omitempty" jsonschema:"description=Opt-in anonymous usage telemetry (true/false)"`
+
+	// SourcePath is populated at runtime by Load and never written to disk.
+	// It holds the path of the file this Config was loaded from.
+	SourcePath string `yaml:"-" json:"-" jsonschema:"-"`
 }
 
 // ConfigRepo is a vcstool-compatible repository entry.
@@ -67,12 +71,24 @@ type LevelConfigs struct {
 
 // ResolvedConfig is the result of LoadChain: the Config field carries the
 // fully merged configuration (the source of truth at runtime) and Levels
-// exposes each individual level as loaded from disk, before merging.
+// exposes each individual level as loaded from disk before merging.
 // ResolvedConfig embeds *Config so all field accesses (Repositories, Skills,
 // MCPs, Telemetry…) work directly without extra dereferencing.
 type ResolvedConfig struct {
 	*Config
 	Levels LevelConfigs
+}
+
+// SourcePaths returns the paths of all config files that were actually loaded,
+// derived by iterating the level configs (each carries its own SourcePath).
+func (r *ResolvedConfig) SourcePaths() []string {
+	var paths []string
+	for _, cfg := range []*Config{r.Levels.Global, r.Levels.User, r.Levels.Workspace} {
+		if cfg != nil {
+			paths = append(paths, cfg.SourcePath)
+		}
+	}
+	return paths
 }
 
 // ── Loading ───────────────────────────────────────────────────────────────────
@@ -111,6 +127,10 @@ func Load(path string) (*Config, error) {
 
 	cfg.expandPaths(filepath.Dir(path))
 	cfg.deduplicate()
+	cfg.SourcePath = path
+	if cfg.Schema == nil {
+		slog.Warn("config is missing 'schema: 1'; this will be required in a future release", "file", path)
+	}
 	return &cfg, nil
 }
 
@@ -160,11 +180,9 @@ func LoadChain(workspacePath string) (*ResolvedConfig, error) {
 		return nil, fmt.Errorf("no configuration file found (tried: %v)", paths)
 	}
 
-	if merged.Schema == nil {
-		slog.Warn("config is missing 'version: 1'; this will be required in a future release")
-	}
+	resolved := &ResolvedConfig{Config: merged, Levels: levels}
 
-	return &ResolvedConfig{Config: merged, Levels: levels}, nil
+	return resolved, nil
 }
 
 // GenerateSchema returns the JSON Schema (draft-07) for the Config type.

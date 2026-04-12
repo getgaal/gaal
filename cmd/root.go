@@ -27,6 +27,10 @@ var (
 
 	// engineOpts is populated by PersistentPreRunE and shared by all sub-commands.
 	engineOpts engine.Options
+
+	// resolvedCfg is loaded once in PersistentPreRunE and shared by all sub-commands
+	// to avoid calling LoadChain multiple times per invocation.
+	resolvedCfg *config.ResolvedConfig
 )
 
 var rootCmd = &cobra.Command{
@@ -59,6 +63,11 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 			return err
 		}
 		engineOpts = opts
+
+		// Load config once and cache it for all sub-commands and telemetry.
+		if rc, err := config.LoadChain(cfgFile); err == nil {
+			resolvedCfg = rc
+		}
 
 		// Telemetry: resolve consent state and initialise.
 		if !skipTelemetry(cmd) {
@@ -176,15 +185,12 @@ func skipTelemetry(cmd *cobra.Command) bool {
 		(cmd.HasParent() && cmd.Parent().Name() == "completion")
 }
 
-// loadMergedTelemetryConfig reads the telemetry field from the merged config
-// chain (global -> user -> workspace). Errors are silently ignored; the
-// caller treats nil as "no consent recorded".
+// loadMergedTelemetryConfig reads the telemetry consent from the already-loaded config.
 func loadMergedTelemetryConfig() *bool {
-	cfg, err := config.LoadChain(cfgFile)
-	if err != nil {
+	if resolvedCfg == nil {
 		return nil
 	}
-	return cfg.Telemetry
+	return resolvedCfg.Telemetry
 }
 
 // showConsentPrompt displays the opt-in telemetry prompt.

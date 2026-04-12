@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -50,14 +51,13 @@ func init() {
 func runDoctor(_ *cobra.Command, _ []string) error {
 	telemetry.Track("doctor")
 
-	cfg, err := config.LoadChain(cfgFile)
-	if err != nil {
-		telemetry.TrackError("doctor", err)
+	cfg := resolvedCfg
+	if cfg == nil {
 		cfg = &config.ResolvedConfig{Config: &config.Config{}}
 	}
 
 	eng := engine.NewWithOptions(cfg.Config, engineOpts)
-	report := eng.Doctor(ops.DoctorOptions{Offline: doctorOffline})
+	report := eng.Doctor(ops.DoctorOptions{Offline: doctorOffline, ConfigFiles: cfg.SourcePaths(), Levels: cfg.Levels})
 
 	if outputFormat == "json" {
 		return renderDoctorJSON(report, !doctorNoUpsell)
@@ -109,6 +109,9 @@ func renderDoctorTable(report *ops.DoctorReport) {
 			}
 			fmt.Printf("  %s  %s\n", icon, f.Message)
 		}
+		if section == "config" && len(report.ConfigLevels) > 0 {
+			renderConfigLevels(report.ConfigLevels)
+		}
 	}
 
 	fmt.Println()
@@ -119,6 +122,42 @@ func renderDoctorTable(report *ops.DoctorReport) {
 		pterm.Warning.Println("Checks completed with warnings")
 	case 2:
 		pterm.Error.Println("Checks completed with errors")
+	}
+}
+
+// renderConfigLevels prints a tree of the three configuration levels (global,
+// user, workspace) showing, for each level, its file path and a compact
+// summary of the entries it defines.
+func renderConfigLevels(levels []ops.ConfigLevelSummary) {
+	for i, lvl := range levels {
+		connector := "├─"
+		if i == len(levels)-1 {
+			connector = "└─"
+		}
+		label := pterm.NewStyle(pterm.Bold).Sprintf("%-10s", lvl.Label)
+		if !lvl.Loaded {
+			fmt.Printf("  %s %s %s\n", connector, label, pterm.FgGray.Sprint("(not found)"))
+			continue
+		}
+		var parts []string
+		if lvl.Repos > 0 {
+			parts = append(parts, fmt.Sprintf("%d repos", lvl.Repos))
+		}
+		if lvl.Skills > 0 {
+			parts = append(parts, fmt.Sprintf("%d skills", lvl.Skills))
+		}
+		if lvl.MCPs > 0 {
+			parts = append(parts, fmt.Sprintf("%d MCPs", lvl.MCPs))
+		}
+		var schemaStr string
+		if lvl.Schema == nil {
+			schemaStr = pterm.FgYellow.Sprint("schema missing")
+		} else {
+			schemaStr = pterm.FgGreen.Sprintf("schema: %d", *lvl.Schema)
+		}
+		parts = append(parts, schemaStr)
+		pathStr := pterm.FgGray.Sprint(lvl.Path)
+		fmt.Printf("  %s %s %s  %s\n", connector, label, pathStr, strings.Join(parts, " · "))
 	}
 }
 

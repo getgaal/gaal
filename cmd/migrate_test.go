@@ -16,12 +16,14 @@ func resetMigrateFlags(t *testing.T) {
 	origDryRun := migrateDryRun
 	origYes := migrateYes
 	origOpts := engineOpts
+	origResolved := resolvedCfg
 	t.Cleanup(func() {
 		cfgFile = origCfg
 		migrateTarget = origTarget
 		migrateDryRun = origDryRun
 		migrateYes = origYes
 		engineOpts = origOpts
+		resolvedCfg = origResolved
 	})
 	migrateTarget = ""
 	migrateDryRun = false
@@ -58,7 +60,7 @@ func TestMigrate_ValidConfig(t *testing.T) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cfgFile = writeMinimalConfig(t, workDir)
+	setConfig(t, writeMinimalConfig(t, workDir))
 	migrateTarget = "community"
 	engineOpts = engine.Options{WorkDir: workDir}
 
@@ -99,6 +101,7 @@ func TestMigrate_InvalidConfig(t *testing.T) {
 	}
 
 	cfgFile = bad
+	resolvedCfg = nil // invalid config — simulate load failure
 	migrateTarget = "community"
 	engineOpts = engine.Options{WorkDir: workDir}
 
@@ -121,7 +124,7 @@ func TestMigrate_BadURL(t *testing.T) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cfgFile = writeMinimalConfig(t, workDir)
+	setConfig(t, writeMinimalConfig(t, workDir))
 	migrateTarget = "community"
 	engineOpts = engine.Options{WorkDir: workDir}
 
@@ -147,7 +150,7 @@ func TestMigrate_UnknownTarget(t *testing.T) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cfgFile = writeMinimalConfig(t, workDir)
+	setConfig(t, writeMinimalConfig(t, workDir))
 	migrateTarget = "saas"
 	engineOpts = engine.Options{WorkDir: workDir}
 
@@ -173,7 +176,7 @@ func TestMigrate_NoArgs(t *testing.T) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cfgFile = writeMinimalConfig(t, workDir)
+	setConfig(t, writeMinimalConfig(t, workDir))
 	engineOpts = engine.Options{WorkDir: workDir}
 
 	var gotErr error
@@ -195,7 +198,7 @@ func TestMigrate_DryRun(t *testing.T) {
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
 
-	cfgFile = writeMinimalConfig(t, workDir)
+	setConfig(t, writeMinimalConfig(t, workDir))
 	migrateTarget = "community"
 	migrateDryRun = true
 	engineOpts = engine.Options{WorkDir: workDir}
