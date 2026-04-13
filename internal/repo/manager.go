@@ -24,12 +24,13 @@ type Status struct {
 
 // Manager handles the synchronisation of all repositories.
 type Manager struct {
-	repos map[string]config.ConfigRepo
+	repos    map[string]config.ConfigRepo
+	stateDir string // reserved for future snapshot use
 }
 
 // NewManager creates a new repository Manager.
-func NewManager(repos map[string]config.ConfigRepo) *Manager {
-	return &Manager{repos: repos}
+func NewManager(repos map[string]config.ConfigRepo, stateDir string) *Manager {
+	return &Manager{repos: repos, stateDir: stateDir}
 }
 
 // Sync clones or updates every repository in parallel.

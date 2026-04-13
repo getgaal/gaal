@@ -15,10 +15,10 @@ import (
 // The returned PlanReport describes every action that RunOnce would take.
 // This is the shared planner used by both `sync --dry-run` and the future
 // `diff` command.
-func SyncPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager) (*render.PlanReport, error) {
+func SyncPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string) (*render.PlanReport, error) {
 	slog.DebugContext(ctx, "computing sync plan")
 
-	report, err := Collect(ctx, repos, skills, mcps)
+	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir)
 	if err != nil {
 		return nil, err
 	}
@@ -58,8 +58,8 @@ func SyncPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, m
 }
 
 // RenderPlan computes and renders the sync plan to stdout.
-func RenderPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, format render.OutputFormat) (*render.PlanReport, error) {
-	plan, err := SyncPlan(ctx, repos, skills, mcps)
+func RenderPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string, format render.OutputFormat) (*render.PlanReport, error) {
+	plan, err := SyncPlan(ctx, repos, skills, mcps, home, workDir, stateDir)
 	if err != nil {
 		return nil, err
 	}

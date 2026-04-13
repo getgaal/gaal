@@ -19,6 +19,7 @@ var (
 	service  bool
 	interval time.Duration
 	dryRun   bool
+	prune    bool
 )
 
 var syncCmd = &cobra.Command{
@@ -38,12 +39,16 @@ func init() {
 	syncCmd.Flags().BoolVarP(&service, "service", "s", false, "run as a continuous service (daemon mode)")
 	syncCmd.Flags().DurationVarP(&interval, "interval", "i", 5*time.Minute, "polling interval in service mode")
 	syncCmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview what sync would do without writing anything")
+	syncCmd.Flags().BoolVar(&prune, "prune", false, "remove skills and MCP entries no longer declared in config")
 	rootCmd.AddCommand(syncCmd)
 }
 
 func runSync(_ *cobra.Command, _ []string) error {
 	if dryRun && service {
 		return fmt.Errorf("--dry-run and --service are incompatible: a dry-run service loop is meaningless")
+	}
+	if prune && service {
+		return fmt.Errorf("--prune and --service are incompatible: use one-shot mode for destructive operations")
 	}
 
 	cfg := resolvedCfg
@@ -81,6 +86,13 @@ func runSync(_ *cobra.Command, _ []string) error {
 	if err := eng.RunOnce(ctx); err != nil {
 		telemetry.TrackError("sync", err)
 		return err
+	}
+	if prune {
+		slog.Info("pruning orphan resources")
+		if err := eng.Prune(ctx); err != nil {
+			telemetry.TrackError("sync-prune", err)
+			return err
+		}
 	}
 	telemetry.Track("sync")
 	telemetry.TrackFirstSync(0)

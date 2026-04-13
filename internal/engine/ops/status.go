@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 
+	"gaal/internal/discover"
 	"gaal/internal/engine/render"
 	"gaal/internal/mcp"
 	"gaal/internal/repo"
@@ -13,27 +14,49 @@ import (
 )
 
 // Collect gathers the current status of all resources without side effects.
-func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager) (*render.StatusReport, error) {
-	slog.DebugContext(ctx, "collecting status")
+// It performs a FS-first scan via discover.Scan and then reconciles with any
+// config-declared resources from the managers, marking them as managed.
+func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string) (*render.StatusReport, error) {
+	slog.DebugContext(ctx, "collecting status", "home", home, "workDir", workDir)
+
+	// FS-first: discover what is actually installed.
+	discovered, err := discover.Scan(ctx, home, workDir, discover.ScanOptions{
+		IncludeWorkspace: true,
+		StateDir:         stateDir,
+	})
+	if err != nil {
+		slog.DebugContext(ctx, "discover scan error", "err", err)
+	}
+
 	agents, err := collectAgents()
 	if err != nil {
 		return nil, err
 	}
 
+	// Config-driven status (may add managed resources absent from FS scan).
+	configRepos := collectRepos(repos.Status(ctx))
+	configSkills := collectSkills(skills.Status(ctx))
+	configMCPs := collectMCPs(mcps.Status(ctx))
+
+	// Reconcile: mark config-declared resources as managed and merge
+	// FS-discovered unmanaged resources into the report.
+	repoEntries := reconcileRepos(configRepos, discovered)
+	skillEntries := reconcileSkills(configSkills, discovered)
+	mcpEntries := reconcileMCPs(configMCPs, discovered)
+
 	return &render.StatusReport{
-		Repositories: collectRepos(repos.Status(ctx)),
-		Skills:       collectSkills(skills.Status(ctx)),
-		MCPs:         collectMCPs(mcps.Status(ctx)),
+		Repositories: repoEntries,
+		Skills:       skillEntries,
+		MCPs:         mcpEntries,
 		Agents:       agents,
 	}, nil
 }
 
-// Status collects the current resource state and renders it to os.Stdout
-// using the specified format (FormatTable or FormatJSON).
-func Status(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, format render.OutputFormat) error {
+// Status collects the current resource state and renders it to os.Stdout.
+func Status(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string, format render.OutputFormat) error {
 	slog.DebugContext(ctx, "status requested", "format", format)
 
-	report, err := Collect(ctx, repos, skills, mcps)
+	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir)
 	if err != nil {
 		return err
 	}
@@ -44,6 +67,98 @@ func Status(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcp
 	}
 
 	return renderer.Render(os.Stdout, report)
+}
+
+// reconcileRepos merges config-driven repo entries with FS-discovered repos.
+// Config entries are kept as-is (already enriched with URL, version, etc.).
+// FS-discovered repos not in config are appended as unmanaged.
+func reconcileRepos(config []render.RepoEntry, resources []discover.Resource) []render.RepoEntry {
+	known := make(map[string]struct{}, len(config))
+	for _, e := range config {
+		known[e.Path] = struct{}{}
+	}
+	out := append([]render.RepoEntry(nil), config...)
+	for _, r := range resources {
+		if r.Type != discover.ResourceRepo {
+			continue
+		}
+		if _, ok := known[r.Path]; ok {
+			continue
+		}
+		out = append(out, render.RepoEntry{
+			Path:   r.Path,
+			Type:   r.VCSType,
+			Status: render.StatusUnmanaged,
+		})
+	}
+	return out
+}
+
+// reconcileSkills merges config-driven skill entries with FS-discovered skills.
+// FS-discovered skills not covered by config are appended as unmanaged entries.
+func reconcileSkills(config []render.SkillEntry, resources []discover.Resource) []render.SkillEntry {
+	known := make(map[string]struct{}, len(config))
+	for _, e := range config {
+		known[e.Source+"/"+e.Agent] = struct{}{}
+	}
+	out := append([]render.SkillEntry(nil), config...)
+	for _, r := range resources {
+		if r.Type != discover.ResourceSkill {
+			continue
+		}
+		agent := r.Meta["agent"]
+		key := r.Path + "/" + agent
+		if _, ok := known[key]; ok {
+			continue
+		}
+		out = append(out, render.SkillEntry{
+			Source:    r.Path,
+			Agent:     agent,
+			Status:    render.StatusUnmanaged,
+			Installed: []string{r.Name},
+			Missing:   []string{},
+			Modified:  []string{},
+		})
+	}
+	return out
+}
+
+// reconcileMCPs merges config-driven MCP entries with FS-discovered MCP configs.
+// FS-discovered MCP config files not covered by config are appended as unmanaged.
+func reconcileMCPs(config []render.MCPEntry, resources []discover.Resource) []render.MCPEntry {
+	knownTargets := make(map[string]struct{}, len(config))
+	for _, e := range config {
+		knownTargets[e.Target] = struct{}{}
+	}
+	out := append([]render.MCPEntry(nil), config...)
+	for _, r := range resources {
+		if r.Type != discover.ResourceMCP {
+			continue
+		}
+		if _, ok := knownTargets[r.Path]; ok {
+			continue
+		}
+		out = append(out, render.MCPEntry{
+			Name:   r.Name,
+			Target: r.Path,
+			Status: render.StatusUnmanaged,
+		})
+	}
+	return out
+}
+
+// driftToStatus maps a discover.DriftState to the closest render.StatusCode.
+func driftToStatus(d discover.DriftState) render.StatusCode {
+	switch d {
+	case discover.DriftOK:
+		return render.StatusOK
+	case discover.DriftModified:
+		return render.StatusDirty
+	case discover.DriftMissing:
+		return render.StatusNotCloned
+	default:
+		return render.StatusOK
+	}
 }
 
 func collectRepos(stats []repo.Status) []render.RepoEntry {

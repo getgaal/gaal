@@ -18,6 +18,7 @@ var statusLabel = map[StatusCode]string{
 	StatusPartial:   "partial",
 	StatusPresent:   "present",
 	StatusAbsent:    "absent",
+	StatusUnmanaged: "unmanaged",
 	StatusError:     "error",
 }
 
@@ -35,6 +36,8 @@ func statusCell(code StatusCode, errMsg string) string {
 		return pterm.FgYellow.Sprint("⚠ " + label)
 	case StatusNotCloned, StatusAbsent, StatusPartial:
 		return pterm.FgYellow.Sprint("~ " + label)
+	case StatusUnmanaged:
+		return pterm.FgCyan.Sprint("? " + label)
 	case StatusError:
 		msg := label
 		if errMsg != "" {

@@ -13,6 +13,7 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/core/vcs"
+	"gaal/internal/discover"
 )
 
 // buildDiscoveryDirs returns the deduplicated list of subdirectories to scan
@@ -81,16 +82,19 @@ type Manager struct {
 	cacheDir string // root of the local skill cache
 	home     string // expanded user home directory
 	workDir  string // project working directory (for project-scoped installs)
+	stateDir string // gaal state root (~/.cache/gaal/state) for snapshot writing
 }
 
 // NewManager creates a new skill Manager.
 // cacheDir is where remote sources are cloned/downloaded (e.g. ~/.cache/gaal/skills).
-func NewManager(skills []config.ConfigSkill, cacheDir, home, workDir string) *Manager {
+// stateDir is where post-sync snapshots are persisted (e.g. ~/.cache/gaal/state).
+func NewManager(skills []config.ConfigSkill, cacheDir, home, workDir, stateDir string) *Manager {
 	return &Manager{
 		skills:   skills,
 		cacheDir: cacheDir,
 		home:     home,
 		workDir:  workDir,
+		stateDir: stateDir,
 	}
 }
 
@@ -150,6 +154,7 @@ func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
 				return fmt.Errorf("installing skill %q to agent %q: %w", sk.Name, agent, err)
 			}
 			slog.Info("installed skill", "name", sk.Name, "agent", agent, "dest", dest)
+			m.writeSkillSnapshot(dest)
 		}
 	}
 
@@ -508,4 +513,85 @@ func cachedSourcePath(cacheDir, source string) (string, error) {
 		return "", nil // not yet cached
 	}
 	return path, nil
+}
+
+// Prune removes skill directories that are present on disk under managed agent
+// skill directories but are no longer declared in any config entry. It is safe
+// to call after Sync: sources are already cached so no network access occurs.
+func (m *Manager) Prune(ctx context.Context) error {
+	slog.DebugContext(ctx, "pruning orphan skills")
+
+	// Build the set of expected skill dir-names per absolute skills directory.
+	expected := make(map[string]map[string]struct{})
+
+	for _, sc := range m.skills {
+		sourceDir, err := cachedSourcePath(m.cacheDir, sc.Source)
+		if err != nil || sourceDir == "" {
+			continue // source not yet cached — nothing to prune against it
+		}
+		available, err := discoverSkills(sourceDir)
+		if err != nil {
+			continue
+		}
+		selected := filterSkills(available, sc.Select)
+
+		for _, agent := range m.syncAgents(sc) {
+			skillsDir, ok := SkillDir(agent, sc.Global, m.home)
+			if !ok {
+				continue
+			}
+			if !sc.Global && !filepath.IsAbs(skillsDir) {
+				skillsDir = filepath.Join(m.workDir, skillsDir)
+			}
+			if expected[skillsDir] == nil {
+				expected[skillsDir] = make(map[string]struct{})
+			}
+			for _, sk := range selected {
+				expected[skillsDir][filepath.Base(sk.Dir)] = struct{}{}
+			}
+		}
+	}
+
+	// Walk each managed skills directory and remove entries absent from expected.
+	for skillsDir, keep := range expected {
+		entries, err := os.ReadDir(skillsDir)
+		if err != nil {
+			continue // directory may not exist
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			if _, ok := keep[entry.Name()]; ok {
+				continue
+			}
+			target := filepath.Join(skillsDir, entry.Name())
+			slog.Info("pruning orphan skill", "path", target)
+			if err := os.RemoveAll(target); err != nil {
+				slog.Warn("failed to prune skill", "path", target, "err", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// writeSkillSnapshot snapshots the installed skill directory at dest and
+// persists it to stateDir so that discover.DiffPath can use the fast path on
+// subsequent status checks. Errors are logged but never returned — snapshot
+// failures must never break the sync.
+func (m *Manager) writeSkillSnapshot(dest string) {
+	if m.stateDir == "" {
+		return
+	}
+	slog.Debug("writing skill snapshot", "dest", dest)
+	snap, err := discover.SnapshotDir(dest)
+	if err != nil {
+		slog.Warn("skill snapshot failed", "dest", dest, "err", err)
+		return
+	}
+	key := "skill-" + discover.WorkdirKey(dest)
+	if err := discover.Save(discover.SnapshotPath(m.stateDir, key), snap); err != nil {
+		slog.Warn("skill snapshot save failed", "dest", dest, "err", err)
+	}
 }
