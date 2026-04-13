@@ -121,13 +121,16 @@ jobs:
             -o "$API_KEY_JSON" \
             "$API_ISSUER" "$API_KEY_ID" "$API_KEY_FILE"
 
-          # Notarize. --staple is omitted because Mach-O binaries cannot be
-          # stapled (only .app/.dmg/.pkg can). Apple's notary service still
-          # records the notarization, and Gatekeeper checks online.
+          # Apple's notary service requires a wrapped artifact (.zip/.dmg/.pkg/.app),
+          # not a raw Mach-O. Use ditto (not plain zip) to produce an archive
+          # that Apple's notarizer accepts. --staple is omitted because Mach-O
+          # binaries cannot be stapled — Gatekeeper checks notarization online.
+          ditto -c -k --keepParent "$BINARY" "$BINARY.zip"
           "$RUNNER_TEMP/rcodesign" notary-submit \
             --api-key-file "$API_KEY_JSON" \
             --wait \
-            "$BINARY"
+            "$BINARY.zip"
+          rm "$BINARY.zip"
 
       - name: Verify signature
         if: matrix.goos == 'darwin'
