@@ -63,121 +63,71 @@ jobs:
           make build-cross
           BIN_CROSS=dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
-      # ── macOS code signing & notarization ──────────────────────────────────
+      # ── macOS code signing & notarization (rcodesign) ─────────────────────
+      #
+      # We use rcodesign (https://github.com/indygreg/apple-platform-rs)
+      # instead of Apple's `codesign` + `notarytool` because rcodesign reads
+      # the .p12 directly from a file and validates the cert chain itself —
+      # no macOS keychain manipulation, no `add-trusted-cert` UI prompts, no
+      # persistent state on the runner. Works on any Mac runner.
 
-      - name: Debug — verify .p12 secret integrity
+      - name: Install rcodesign
         if: matrix.goos == 'darwin'
         env:
-          CERTIFICATE_P12: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+          RCODESIGN_VERSION: "0.29.0"
+          RCODESIGN_SHA256: "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a"
         run: |
-          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/debug.p12"
-          echo "=== file info ==="
-          ls -la "$RUNNER_TEMP/debug.p12"
-          echo "=== sha256 ==="
-          shasum -a 256 "$RUNNER_TEMP/debug.p12"
-          echo "=== file type ==="
-          file "$RUNNER_TEMP/debug.p12"
-          echo "=== openssl info ==="
-          openssl pkcs12 -in "$RUNNER_TEMP/debug.p12" -nodes -info -passin "pass:${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}" -legacy 2>&1 | grep -E "BEGIN|subject=|Bag|Encrypted" || true
-          rm "$RUNNER_TEMP/debug.p12"
+          # Self-hosted runner is aarch64 regardless of $GOARCH (we cross-compile).
+          ARCHIVE="apple-codesign-${RCODESIGN_VERSION}-aarch64-apple-darwin.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$ARCHIVE" \
+            "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${ARCHIVE}"
 
-      - name: Import Apple certificate
-        if: matrix.goos == 'darwin'
-        uses: apple-actions/import-codesign-certs@a22d0cee6aef91737ec4f75a776ad460774970ea  # v6.0.0
-        with:
-          p12-file-base64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
-          p12-password: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-
-      - name: Install Apple Developer ID CA chain + trust root
-        if: matrix.goos == 'darwin'
-        run: |
-          # The Developer ID Application leaf cert needs:
-          #   1. The G2 intermediate ("Developer ID Certification Authority")
-          #   2. Apple Root CA marked as a trusted root for code signing
-          # On a fresh self-hosted Mac, codesign's trust evaluation doesn't
-          # fully inherit the system trust store, so we explicitly install
-          # both certs into signing_temp.keychain and add Apple Root CA to
-          # the user trust domain (no sudo / UI required for user domain).
-          # See https://www.apple.com/certificateauthority/
-          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
-            https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
-          curl -fsSL -o "$RUNNER_TEMP/AppleIncRootCertificate.cer" \
-            https://www.apple.com/appleca/AppleIncRootCertificate.cer
-
-          for CER in "$RUNNER_TEMP/DeveloperIDG2CA.cer" "$RUNNER_TEMP/AppleIncRootCertificate.cer"; do
-            SUBJECT=$(openssl x509 -in "$CER" -inform DER -noout -subject)
-            echo "Installing: $SUBJECT"
-            if ! echo "$SUBJECT" | grep -q "Apple Inc"; then
-              echo "::error::$CER is not from Apple Inc"
-              exit 1
-            fi
-            security import "$CER" -k signing_temp.keychain
-          done
-
-          # Mark Apple Root CA as a trusted root in the user trust domain.
-          # Without -d (admin), this targets the user trust domain and runs
-          # non-interactively without sudo.
-          security add-trusted-cert -r trustRoot \
-            -k "$HOME/Library/Keychains/signing_temp.keychain-db" \
-            "$RUNNER_TEMP/AppleIncRootCertificate.cer"
-
-          rm "$RUNNER_TEMP/DeveloperIDG2CA.cer" "$RUNNER_TEMP/AppleIncRootCertificate.cer"
-
-      - name: Resolve signing identity
-        if: matrix.goos == 'darwin'
-        run: |
-          echo "=== Search list ==="
-          security list-keychains -d user
-          echo "=== Certs in signing_temp keychain (PEM) ==="
-          security find-certificate -a -p signing_temp.keychain || echo "(none)"
-          echo "=== Certs in signing_temp keychain (subject only) ==="
-          security find-certificate -a signing_temp.keychain 2>&1 | grep -E '"labl"|"subj"' || echo "(none)"
-          echo "=== All identities (find-identity, no -v) ==="
-          security find-identity signing_temp.keychain
-          echo "=== All identities (find-identity -v) ==="
-          security find-identity -v signing_temp.keychain
-          echo "=== All codesigning identities (-v -p codesigning) ==="
-          security find-identity -v -p codesigning signing_temp.keychain
-          IDENTITY=$(security find-identity -v -p codesigning signing_temp.keychain \
-            | grep "Developer ID Application" | head -1 \
-            | sed 's/.*"\(.*\)"/\1/')
-          if [ -z "$IDENTITY" ]; then
-            echo "::error::No Developer ID Application identity found in keychain"
+          ACTUAL=$(shasum -a 256 "$RUNNER_TEMP/$ARCHIVE" | awk '{print $1}')
+          if [ "$RCODESIGN_SHA256" != "$ACTUAL" ]; then
+            echo "::error::rcodesign SHA256 mismatch (expected $RCODESIGN_SHA256, got $ACTUAL)"
             exit 1
           fi
-          echo "Found identity: $IDENTITY"
-          echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
-      - name: Codesign binary
-        if: matrix.goos == 'darwin'
-        run: |
-          codesign --force --options runtime \
-            --sign "$CODESIGN_IDENTITY" \
-            --timestamp \
-            dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
+          tar -xzf "$RUNNER_TEMP/$ARCHIVE" -C "$RUNNER_TEMP" --strip-components=1
+          "$RUNNER_TEMP/rcodesign" --version
 
-      - name: Notarize binary
+      - name: Sign and notarize binary
         if: matrix.goos == 'darwin'
         env:
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          API_KEY: ${{ secrets.APPLE_API_KEY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           BINARY="dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}"
+          P12="$RUNNER_TEMP/cert.p12"
+          API_KEY_FILE="$RUNNER_TEMP/AuthKey.p8"
+          API_KEY_JSON="$RUNNER_TEMP/api-key.json"
+          trap 'rm -f "$P12" "$API_KEY_FILE" "$API_KEY_JSON"' EXIT
 
-          # notarytool requires a zip/dmg/pkg — not a raw Mach-O
-          # ditto is required; plain zip produces archives Apple rejects
-          ditto -c -k --keepParent "$BINARY" "${BINARY}.zip"
+          echo "$P12_BASE64" | base64 --decode > "$P12"
+          echo "$API_KEY"     > "$API_KEY_FILE"
 
-          echo "$APPLE_API_KEY" > /tmp/AuthKey.p8
+          # Codesign with hardened runtime (required for notarization)
+          "$RUNNER_TEMP/rcodesign" sign \
+            --p12-file "$P12" \
+            --p12-password "$P12_PASSWORD" \
+            --code-signature-flags runtime \
+            "$BINARY"
 
-          xcrun notarytool submit "${BINARY}.zip" \
-            --key /tmp/AuthKey.p8 \
-            --key-id "$APPLE_API_KEY_ID" \
-            --issuer "$APPLE_API_ISSUER" \
-            --wait --timeout 10m
+          # Encode the App Store Connect API key as the JSON form rcodesign expects
+          "$RUNNER_TEMP/rcodesign" encode-app-store-connect-api-key \
+            -o "$API_KEY_JSON" \
+            "$API_ISSUER" "$API_KEY_ID" "$API_KEY_FILE"
 
-          rm -f /tmp/AuthKey.p8 "${BINARY}.zip"
+          # Notarize. --staple is omitted because Mach-O binaries cannot be
+          # stapled (only .app/.dmg/.pkg can). Apple's notary service still
+          # records the notarization, and Gatekeeper checks online.
+          "$RUNNER_TEMP/rcodesign" notary-submit \
+            --api-key-file "$API_KEY_JSON" \
+            --wait \
+            "$BINARY"
 
       - name: Verify signature
         if: matrix.goos == 'darwin'
@@ -186,8 +136,6 @@ jobs:
             dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
           # Show signing details for CI logs
           codesign -dvv dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
-
-      # Keychain cleanup is handled by the import-codesign-certs action's post step.
 
       # ── Upload artifact ────────────────────────────────────────────────────
 
