@@ -1,0 +1,59 @@
+name: Install Script
+
+# Gate changes to scripts/install.sh and its integration test on:
+#   1. shellcheck (POSIX strict mode)
+#   2. Go integration test against a local httptest fake of GitHub Releases
+#
+# This workflow is marked as a required status check on main; combined with
+# the CODEOWNERS rule on scripts/install.sh, every change to the install
+# pipeline gets a human review AND an automated verification.
+on:
+  pull_request:
+    paths:
+      - 'scripts/install.sh'
+      - 'internal/installscript/**'
+      - '.github/workflows/install-script.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/install.sh'
+      - 'internal/installscript/**'
+      - '.github/workflows/install-script.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: Shellcheck (POSIX sh)
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run shellcheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        env:
+          SHELLCHECK_OPTS: --shell=sh
+        with:
+          scandir: scripts
+          severity: style
+
+  integration-test:
+    name: Go integration test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, runner: [self-hosted, Linux, X64] }
+          - { name: macOS, runner: [self-hosted, macOS, ARM64] }
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
+
+      - name: Run install script integration tests
+        run: go test -race ./internal/installscript/ -v

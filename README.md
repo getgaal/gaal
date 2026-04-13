@@ -362,7 +362,29 @@ See [`docs/architecture.md`](docs/architecture.md) for a full description of the
 
 ---
 
-## Install from source
+## Install
+
+### Quick install (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal-lite/main/scripts/install.sh | sh
+```
+
+Installs the latest release binary to `~/.local/bin/gaal`. Pin a specific
+version with `VERSION=v0.1.2`, or pick a different directory with
+`INSTALL_DIR=/usr/local/bin`.
+
+Pass `GAAL_INSTALL_DEBUG=1` for verbose output, or run
+`curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal-lite/main/scripts/install.sh | sh -s -- --help`
+to see all options.
+
+### With Go
+
+```bash
+go install github.com/gmg-inc/gaal-lite@latest
+```
+
+### From source
 
 **Prerequisites:** Go 1.26+
 
@@ -378,12 +400,6 @@ The binary is written to `dist/gaal`. Copy it to your `$PATH`:
 sudo cp dist/gaal /usr/local/bin/gaal
 # or, user-local:
 cp dist/gaal ~/.local/bin/gaal
-```
-
-To install directly with Go:
-
-```bash
-go install github.com/gmg-inc/gaal-lite@latest
 ```
 
 ---
