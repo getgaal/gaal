@@ -569,11 +569,27 @@ func (m *Manager) Prune(ctx context.Context) error {
 			slog.Info("pruning orphan skill", "path", target)
 			if err := os.RemoveAll(target); err != nil {
 				slog.Warn("failed to prune skill", "path", target, "err", err)
+				continue
 			}
+			m.pruneSkillSnapshot(target)
 		}
 	}
 
 	return nil
+}
+
+// pruneSkillSnapshot removes the snapshot file for a skill directory that has
+// been deleted by Prune. Errors are logged but never returned.
+func (m *Manager) pruneSkillSnapshot(dest string) {
+	if m.stateDir == "" {
+		return
+	}
+	key := "skill-" + discover.WorkdirKey(dest)
+	path := discover.SnapshotPath(m.stateDir, key)
+	slog.Debug("removing stale skill snapshot", "path", path)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		slog.Warn("failed to remove stale skill snapshot", "path", path, "err", err)
+	}
 }
 
 // writeSkillSnapshot snapshots the installed skill directory at dest and

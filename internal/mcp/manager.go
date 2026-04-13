@@ -285,7 +285,10 @@ func (m *Manager) Prune(ctx context.Context) error {
 		}
 		if err := os.Rename(tmp, target); err != nil {
 			slog.Warn("mcp prune: rename error", "target", target, "err", err)
+			continue
 		}
+		// Refresh snapshot so next status check reflects the pruned state.
+		m.writeMCPSnapshot(target)
 	}
 
 	return nil
