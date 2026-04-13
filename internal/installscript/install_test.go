@@ -233,3 +233,26 @@ func TestInstallAlreadyInstalled(t *testing.T) {
 		t.Errorf("expected file mtime unchanged on no-op rerun (before=%v, after=%v)", info1.ModTime(), info2.ModTime())
 	}
 }
+
+func TestInstallUnsupportedArch(t *testing.T) {
+	// Use a real httptest server so we reach the script; the script should
+	// fail inside detect_arch (which runs before any network calls) without
+	// ever hitting the server.
+	server := fakeReleaseServer(t, "v9.9.9", "linux", "amd64", fakeGaalBinary("v9.9.9"))
+	defer server.Close()
+
+	installDir := t.TempDir()
+	_, stderr, err := runInstall(t, installDir, map[string]string{
+		"GAAL_INSTALL_BASE_URL":      server.URL,
+		"GAAL_INSTALL_ARCH_OVERRIDE": "powerpc",
+	})
+	if err == nil {
+		t.Fatal("expected install.sh to fail on unsupported arch, got success")
+	}
+	if !strings.Contains(stderr, "unsupported architecture: powerpc") {
+		t.Errorf("expected stderr to contain 'unsupported architecture: powerpc', got: %s", stderr)
+	}
+	if _, statErr := os.Stat(filepath.Join(installDir, "gaal")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no file at %s on unsupported arch, but it exists (err=%v)", filepath.Join(installDir, "gaal"), statErr)
+	}
+}

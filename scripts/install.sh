@@ -20,10 +20,10 @@
 set -eu
 
 # --- test-only hooks ---------------------------------------------------------
-# These env vars are undocumented and exist only so the Go integration test
-# at internal/installscript/install_test.go can point the script at a local
-# httptest server instead of api.github.com / github.com. Do not rely on
-# them outside tests.
+# These env vars are undocumented and exist only for the Go integration test
+# at internal/installscript/install_test.go. Do not rely on them outside tests.
+#   GAAL_INSTALL_BASE_URL      — reroute HTTP calls to a local httptest server
+#   GAAL_INSTALL_ARCH_OVERRIDE — force detect_arch to see a fake `uname -m`
 : "${GAAL_INSTALL_BASE_URL:=}"
 
 if [ "${GAAL_INSTALL_DEBUG:-}" = "1" ]; then
@@ -86,7 +86,15 @@ detect_os() {
 }
 
 detect_arch() {
-  uname_m=$(uname -m 2>/dev/null || echo unknown)
+  # GAAL_INSTALL_ARCH_OVERRIDE is an undocumented test-only hook (see the
+  # "test-only hooks" block near the top of this file) that lets the
+  # integration test at internal/installscript/install_test.go force an
+  # unsupported arch error without running on an unsupported host.
+  if [ -n "${GAAL_INSTALL_ARCH_OVERRIDE:-}" ]; then
+    uname_m="$GAAL_INSTALL_ARCH_OVERRIDE"
+  else
+    uname_m=$(uname -m 2>/dev/null || echo unknown)
+  fi
   case "$uname_m" in
     x86_64|amd64)  echo amd64 ;;
     aarch64|arm64) echo arm64 ;;
