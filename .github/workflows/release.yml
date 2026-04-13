@@ -88,29 +88,40 @@ jobs:
           p12-file-base64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
           p12-password: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
 
-      - name: Install Apple Developer ID CA chain
+      - name: Install Apple Developer ID intermediate CA
         if: matrix.goos == 'darwin'
         run: |
-          # The Developer ID Application leaf cert needs both the G2
-          # intermediate AND the Apple Root CA to build a trusted chain.
-          # GitHub-hosted macOS runners ship them; a fresh self-hosted Mac
-          # may not have them in a keychain codesign consults.
+          # The Developer ID Application leaf cert is signed by the
+          # "Developer ID Certification Authority G2" intermediate, which
+          # in turn chains to Apple Root CA (already trusted in the system
+          # keychain). We install only the intermediate here; the root is
+          # picked up from the system keychain via the search list step below.
           # See https://www.apple.com/certificateauthority/
           curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
             https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
-          curl -fsSL -o "$RUNNER_TEMP/AppleIncRootCertificate.cer" \
-            https://www.apple.com/appleca/AppleIncRootCertificate.cer
+          SUBJECT=$(openssl x509 -in "$RUNNER_TEMP/DeveloperIDG2CA.cer" -inform DER -noout -subject)
+          echo "Installing: $SUBJECT"
+          if ! echo "$SUBJECT" | grep -q "Apple Inc"; then
+            echo "::error::Downloaded intermediate is not from Apple Inc"
+            exit 1
+          fi
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k signing_temp.keychain
+          rm "$RUNNER_TEMP/DeveloperIDG2CA.cer"
 
-          for CER in "$RUNNER_TEMP/DeveloperIDG2CA.cer" "$RUNNER_TEMP/AppleIncRootCertificate.cer"; do
-            SUBJECT=$(openssl x509 -in "$CER" -inform DER -noout -subject)
-            echo "Installing: $SUBJECT"
-            if ! echo "$SUBJECT" | grep -q "Apple Inc"; then
-              echo "::error::$CER is not from Apple Inc"
-              exit 1
-            fi
-            security import "$CER" -k signing_temp.keychain
-          done
-          rm "$RUNNER_TEMP/DeveloperIDG2CA.cer" "$RUNNER_TEMP/AppleIncRootCertificate.cer"
+      - name: Extend keychain search list with system roots
+        if: matrix.goos == 'darwin'
+        run: |
+          # apple-actions/import-codesign-certs sets the user search list to
+          # ONLY [signing_temp.keychain, login.keychain], dropping the system
+          # roots keychain. Without it, codesign cannot reach Apple Root CA
+          # to validate the chain. Re-add it explicitly.
+          security list-keychains -d user -s \
+            "$HOME/Library/Keychains/signing_temp.keychain-db" \
+            "$HOME/Library/Keychains/login.keychain-db" \
+            "/Library/Keychains/System.keychain" \
+            "/System/Library/Keychains/SystemRootCertificates.keychain"
+          echo "=== Updated user search list ==="
+          security list-keychains -d user
 
       - name: Resolve signing identity
         if: matrix.goos == 'darwin'
