@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Run shellcheck
-        uses: ludeeus/action-shellcheck@master
+        uses: ludeeus/action-shellcheck@2.0.0
         env:
           SHELLCHECK_OPTS: --shell=sh
         with:
@@ -56,4 +56,4 @@ jobs:
           # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
 
       - name: Run install script integration tests
-        run: go test ./internal/installscript/ -v
+        run: go test -race ./internal/installscript/ -v
