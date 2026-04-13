@@ -146,3 +146,47 @@ func TestInstallHappyPath(t *testing.T) {
 		t.Errorf("expected stdout to mention %s, got: %s", version, stdout)
 	}
 }
+
+func TestInstallChecksumMismatch(t *testing.T) {
+	version := "v9.9.9"
+	goos := detectHostGOOS(t)
+	goarch := detectHostGOARCH(t)
+	realBinary := fakeGaalBinary(version)
+
+	// Stand up a fake server that serves a DIFFERENT binary from the one
+	// the SHA256SUMS file references. This mimics "someone tampered with
+	// the release asset after the checksums were published."
+	binName := fmt.Sprintf("gaal-%s-%s", goos, goarch)
+	tamperedBinary := []byte("#!/bin/sh\necho tampered\n")
+	sumsContent := fmt.Sprintf("%s  %s\n", sha256hex(realBinary), binName)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/gmg-inc/gaal-lite/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"tag_name":%q}`, version)
+	})
+	mux.HandleFunc(fmt.Sprintf("/releases/download/%s/%s", version, binName), func(w http.ResponseWriter, r *http.Request) {
+		w.Write(tamperedBinary)
+	})
+	mux.HandleFunc(fmt.Sprintf("/releases/download/%s/SHA256SUMS", version), func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, sumsContent)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	installDir := t.TempDir()
+
+	_, stderr, err := runInstall(t, installDir, map[string]string{
+		"GAAL_INSTALL_BASE_URL": server.URL,
+	})
+	if err == nil {
+		t.Fatal("expected install.sh to fail on checksum mismatch, got success")
+	}
+	if !strings.Contains(stderr, "checksum mismatch") {
+		t.Errorf("expected stderr to contain 'checksum mismatch', got: %s", stderr)
+	}
+
+	// Most important: the tampered binary must NOT have landed in INSTALL_DIR.
+	if _, statErr := os.Stat(filepath.Join(installDir, "gaal")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no file at %s on checksum mismatch, but it exists (err=%v)", filepath.Join(installDir, "gaal"), statErr)
+	}
+}
