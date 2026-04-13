@@ -1,0 +1,9 @@
+# Code owners for gaal-lite.
+#
+# Changes to files matching a pattern below require review from at least
+# one of the listed owners. See:
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Install script — curl-piped-to-sh is a high-blast-radius file.
+# Every change requires review from a project owner.
+scripts/install.sh @Theosakamg @gmoigneu @gregqualls
