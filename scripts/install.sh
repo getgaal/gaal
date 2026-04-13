@@ -161,27 +161,42 @@ if [ "$actual" != "$expected" ]; then
 fi
 
 # --- install -----------------------------------------------------------------
-mkdir -p "$INSTALL_DIR" || die "failed to create $INSTALL_DIR"
-
 target="$INSTALL_DIR/$BIN_NAME"
 use_sudo=""
-if [ ! -w "$INSTALL_DIR" ]; then
+
+# Pick the directory whose writability decides whether we need sudo. If the
+# install dir already exists, check it directly; otherwise check the nearest
+# existing ancestor (so "$HOME/.local/bin" when ~/.local/bin doesn't exist
+# yet still resolves to ~/.local or ~).
+probe_dir="$INSTALL_DIR"
+while [ ! -d "$probe_dir" ]; do
+  parent=$(dirname "$probe_dir")
+  if [ "$parent" = "$probe_dir" ]; then
+    break
+  fi
+  probe_dir="$parent"
+done
+
+if [ ! -w "$probe_dir" ]; then
   if command -v sudo >/dev/null 2>&1; then
-    log "note: $INSTALL_DIR is not writable; using sudo for the final move"
+    log "note: $probe_dir is not writable; using sudo for install"
     use_sudo="sudo"
   else
-    die "$INSTALL_DIR is not writable and sudo is not available"
+    die "$probe_dir is not writable and sudo is not available"
   fi
 fi
 
+$use_sudo mkdir -p "$INSTALL_DIR" || die "failed to create $INSTALL_DIR"
 $use_sudo mv "$tmpdir/$bin_asset" "$target" || die "failed to move binary to $target"
 $use_sudo chmod +x "$target" || die "failed to chmod $target"
 
 if [ "$OS" = "darwin" ]; then
   # Strip the quarantine xattr so Gatekeeper doesn't prompt on direct launch.
-  # Darwin release binaries are already signed + notarized. 2>/dev/null || true
-  # swallows the error when the attribute isn't set (fresh temp files).
-  xattr -d com.apple.quarantine "$target" 2>/dev/null || true
+  # Darwin release binaries are already signed and notarized, so stripping
+  # the flag is purely a UX refinement. The 2>/dev/null || true swallows
+  # the error when the attribute is not set (e.g. fresh temp files from
+  # mktemp never get quarantined in the first place).
+  $use_sudo xattr -d com.apple.quarantine "$target" 2>/dev/null || true
 fi
 
 log "Installed $BIN_NAME $VERSION_TO_INSTALL to $target"
