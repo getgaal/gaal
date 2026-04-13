@@ -30,16 +30,21 @@ jobs:
         run: make lint
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Build: compile the binary on Linux, macOS, and Windows (make build)
+  # Build: compile the binary on Linux and macOS (make build).
+  # Windows native build is omitted because the org's GitHub-hosted runner
+  # billing is currently restricted; release.yml's binaries job still
+  # cross-compiles Windows on the linux self-hosted runner.
   # ──────────────────────────────────────────────────────────────────────────
   build:
-    name: Build / ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Build / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     needs: lint
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('[["self-hosted","Linux","X64"], ["self-hosted","macOS","ARM64"], "windows-latest"]') || fromJson('[["self-hosted","Linux","X64"], ["self-hosted","macOS","ARM64"]]') }}
+        include:
+          - { name: linux, runner: [self-hosted, Linux, X64] }
+          - { name: macOS, runner: [self-hosted, macOS, ARM64] }
     steps:
       - uses: actions/checkout@v6
 
@@ -55,22 +60,23 @@ jobs:
         if: github.event_name == 'push' || github.event_name == 'workflow_call'
         uses: actions/upload-artifact@v7
         with:
-          name: gaal-${{ matrix.os }}
+          name: gaal-${{ matrix.name }}
           path: dist/
           retention-days: 7
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Test: unit tests with race detector on Linux, macOS, and Windows
-  # (make test-race)
+  # Test: unit tests with race detector on Linux and macOS (make test-race)
   # ──────────────────────────────────────────────────────────────────────────
   test:
-    name: Test / ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Test / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     needs: build
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && fromJson('[["self-hosted","Linux","X64"], ["self-hosted","macOS","ARM64"], "windows-latest"]') || fromJson('[["self-hosted","Linux","X64"], ["self-hosted","macOS","ARM64"]]') }}
+        include:
+          - { name: linux, runner: [self-hosted, Linux, X64] }
+          - { name: macOS, runner: [self-hosted, macOS, ARM64] }
     steps:
       - uses: actions/checkout@v6
 
