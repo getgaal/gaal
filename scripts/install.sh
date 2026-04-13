@@ -120,6 +120,18 @@ VERSION_TO_INSTALL=$(resolve_version)
 # --- install dir resolution --------------------------------------------------
 INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 
+# --- already-installed short-circuit -----------------------------------------
+# If the binary already exists at the target path and reports the version we
+# were about to install, exit 0 without touching anything. Dev builds (e.g.
+# "v0.1.0-58-g324271c-dirty") never match a clean tag, so they always upgrade.
+if [ -x "$INSTALL_DIR/$BIN_NAME" ]; then
+  installed_version=$("$INSTALL_DIR/$BIN_NAME" version 2>/dev/null | awk '{print $2}' || echo "")
+  if [ -n "$installed_version" ] && [ "$installed_version" = "$VERSION_TO_INSTALL" ]; then
+    log "$BIN_NAME $installed_version already installed — nothing to do"
+    exit 0
+  fi
+fi
+
 # --- download, verify, install -----------------------------------------------
 if [ -n "$GAAL_INSTALL_BASE_URL" ]; then
   download_base="$GAAL_INSTALL_BASE_URL/releases/download/$VERSION_TO_INSTALL"
