@@ -190,3 +190,46 @@ func TestInstallChecksumMismatch(t *testing.T) {
 		t.Fatalf("expected no file at %s on checksum mismatch, but it exists (err=%v)", filepath.Join(installDir, "gaal"), statErr)
 	}
 }
+
+func TestInstallAlreadyInstalled(t *testing.T) {
+	version := "v9.9.9"
+	goos := detectHostGOOS(t)
+	goarch := detectHostGOARCH(t)
+	binary := fakeGaalBinary(version)
+
+	server := fakeReleaseServer(t, version, goos, goarch, binary)
+	defer server.Close()
+
+	installDir := t.TempDir()
+	env := map[string]string{"GAAL_INSTALL_BASE_URL": server.URL}
+
+	// First run: install.
+	if _, stderr, err := runInstall(t, installDir, env); err != nil {
+		t.Fatalf("first install failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Record the mtime of the installed binary to prove the second run
+	// does not touch the file.
+	installedPath := filepath.Join(installDir, "gaal")
+	info1, err := os.Stat(installedPath)
+	if err != nil {
+		t.Fatalf("stat after first install: %v", err)
+	}
+
+	// Second run: must short-circuit.
+	stdout, stderr, err := runInstall(t, installDir, env)
+	if err != nil {
+		t.Fatalf("second install failed: %v\nstderr: %s", err, stderr)
+	}
+	if !strings.Contains(stdout, "already installed") {
+		t.Errorf("expected stdout to mention 'already installed', got: %s", stdout)
+	}
+
+	info2, err := os.Stat(installedPath)
+	if err != nil {
+		t.Fatalf("stat after second install: %v", err)
+	}
+	if !info1.ModTime().Equal(info2.ModTime()) {
+		t.Errorf("expected file mtime unchanged on no-op rerun (before=%v, after=%v)", info1.ModTime(), info2.ModTime())
+	}
+}
