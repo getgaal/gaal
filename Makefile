@@ -116,10 +116,11 @@ coverage-ci:
 ## build-cross: cross-compile for a target platform
 ##   Override GOOS, GOARCH and optionally BIN_CROSS, e.g.:
 ##   make build-cross GOOS=linux GOARCH=arm64
+##   Note: does not run the binary post-build (the schema target is dev-only
+##   and would fail when the host can't execute the cross-compiled output).
 build-cross:
 	@mkdir -p dist
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath $(LDFLAGS_R) -o $(BIN_CROSS) .
-	$(BIN_CROSS) schema -f $(DIST_DIR)/schema.json
 
 ## clean: remove build artefacts
 clean:

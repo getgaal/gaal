@@ -1,11 +1,14 @@
 name: Release
 
-# Triggered only on semver release tags (e.g. v0.1.0, v1.2.3).
-# Can also be triggered manually for testing.
+# Triggered on:
+#   - semver release tags (v0.1.0, v1.2.3) → builds + publishes GitHub Release
+#   - pull requests → smoke-tests the release pipeline (no publishing)
+#   - workflow_dispatch → manual run from any branch (no publishing unless tagged)
 on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -13,10 +16,12 @@ permissions:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
-  # Reuse the full CI workflow: lint + build (3 OS) + test (3 OS) + coverage
+  # Reuse the full CI workflow: lint + build (3 OS) + test (3 OS) + coverage.
+  # Skipped on pull_request because ci.yml already runs standalone on PRs.
   # ──────────────────────────────────────────────────────────────────────────
   ci:
     name: CI
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
@@ -24,28 +29,30 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   # Cross-compile release binaries for all supported platforms / architectures.
   # Darwin builds run on macOS for code signing and notarization.
+  # Runs even when `ci` is skipped (PR runs) so the release pipeline is exercised.
   # ──────────────────────────────────────────────────────────────────────────
   binaries:
     name: Binary / ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     needs: ci
+    if: ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux,   goarch: amd64, runner: self-hosted }
-          - { goos: linux,   goarch: arm64, runner: self-hosted }
-          - { goos: darwin,  goarch: amd64, runner: macos-latest }
-          - { goos: darwin,  goarch: arm64, runner: macos-latest }
-          - { goos: windows, goarch: amd64, runner: self-hosted, ext: .exe }
-          - { goos: windows, goarch: arm64, runner: self-hosted, ext: .exe }
+          - { goos: linux,   goarch: amd64, runner: [self-hosted, Linux, X64] }
+          - { goos: linux,   goarch: arm64, runner: [self-hosted, Linux, X64] }
+          - { goos: darwin,  goarch: amd64, runner: [self-hosted, macOS, ARM64] }
+          - { goos: darwin,  goarch: arm64, runner: [self-hosted, macOS, ARM64] }
+          - { goos: windows, goarch: amd64, runner: [self-hosted, Linux, X64], ext: .exe }
+          - { goos: windows, goarch: arm64, runner: [self-hosted, Linux, X64], ext: .exe }
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: true
+          # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
 
       - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
         env:
@@ -56,88 +63,87 @@ jobs:
           make build-cross
           BIN_CROSS=dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
-      # ── macOS code signing & notarization ──────────────────────────────────
+      # ── macOS code signing & notarization (rcodesign) ─────────────────────
+      #
+      # We use rcodesign (https://github.com/indygreg/apple-platform-rs)
+      # instead of Apple's `codesign` + `notarytool` because rcodesign reads
+      # the .p12 directly from a file and validates the cert chain itself —
+      # no macOS keychain manipulation, no `add-trusted-cert` UI prompts, no
+      # persistent state on the runner. Works on any Mac runner.
+      #
+      # Sign + notarize only run on semver tag pushes (actual releases),
+      # because Apple notarization adds 30-90s of waiting per binary and
+      # isn't needed for PR smoke tests. PRs still cross-compile the darwin
+      # binary so we catch build regressions, just unsigned.
 
-      - name: Import Apple certificate
-        if: matrix.goos == 'darwin'
+      - name: Install rcodesign
+        if: matrix.goos == 'darwin' && startsWith(github.ref, 'refs/tags/v')
         env:
-          CERTIFICATE_P12: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          RCODESIGN_VERSION: "0.29.0"
+          RCODESIGN_SHA256: "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a"
         run: |
-          KEYCHAIN="build.keychain"
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          # Self-hosted runner is aarch64 regardless of $GOARCH (we cross-compile).
+          ARCHIVE="apple-codesign-${RCODESIGN_VERSION}-aarch64-apple-darwin.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$ARCHIVE" \
+            "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${ARCHIVE}"
 
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security set-keychain-settings -t 3600 "$KEYCHAIN"
-
-          # Add build keychain to search list while keeping the login keychain
-          # (which contains Apple's intermediate certificates needed for a valid chain)
-          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
-
-          echo "$CERTIFICATE_P12" | base64 --decode > /tmp/cert.p12
-          security import /tmp/cert.p12 -k "$KEYCHAIN" \
-            -P "$CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign
-          rm /tmp/cert.p12
-
-          security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-
-          # Resolve the full signing identity from the imported certificate
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
-            | grep "Developer ID Application" | head -1 \
-            | sed 's/.*"\(.*\)"/\1/')
-          if [ -z "$IDENTITY" ]; then
-            echo "::error::No Developer ID Application identity found in keychain"
+          ACTUAL=$(shasum -a 256 "$RUNNER_TEMP/$ARCHIVE" | awk '{print $1}')
+          if [ "$RCODESIGN_SHA256" != "$ACTUAL" ]; then
+            echo "::error::rcodesign SHA256 mismatch (expected $RCODESIGN_SHA256, got $ACTUAL)"
             exit 1
           fi
-          echo "Found identity: $IDENTITY"
-          echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
-          echo "BUILD_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
-      - name: Codesign binary
-        if: matrix.goos == 'darwin'
-        run: |
-          codesign --force --options runtime \
-            --sign "$CODESIGN_IDENTITY" \
-            --timestamp \
-            dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
+          tar -xzf "$RUNNER_TEMP/$ARCHIVE" -C "$RUNNER_TEMP" --strip-components=1
+          "$RUNNER_TEMP/rcodesign" --version
 
-      - name: Notarize binary
-        if: matrix.goos == 'darwin'
+      - name: Sign and notarize binary
+        if: matrix.goos == 'darwin' && startsWith(github.ref, 'refs/tags/v')
         env:
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          API_KEY: ${{ secrets.APPLE_API_KEY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
           BINARY="dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}"
+          P12="$RUNNER_TEMP/cert.p12"
+          API_KEY_FILE="$RUNNER_TEMP/AuthKey.p8"
+          API_KEY_JSON="$RUNNER_TEMP/api-key.json"
+          trap 'rm -f "$P12" "$API_KEY_FILE" "$API_KEY_JSON"' EXIT
 
-          # notarytool requires a zip/dmg/pkg — not a raw Mach-O
-          # ditto is required; plain zip produces archives Apple rejects
-          ditto -c -k --keepParent "$BINARY" "${BINARY}.zip"
+          echo "$P12_BASE64" | base64 --decode > "$P12"
+          echo "$API_KEY"     > "$API_KEY_FILE"
 
-          echo "$APPLE_API_KEY" > /tmp/AuthKey.p8
+          # Codesign with hardened runtime (required for notarization)
+          "$RUNNER_TEMP/rcodesign" sign \
+            --p12-file "$P12" \
+            --p12-password "$P12_PASSWORD" \
+            --code-signature-flags runtime \
+            "$BINARY"
 
-          xcrun notarytool submit "${BINARY}.zip" \
-            --key /tmp/AuthKey.p8 \
-            --key-id "$APPLE_API_KEY_ID" \
-            --issuer "$APPLE_API_ISSUER" \
-            --wait --timeout 10m
+          # Encode the App Store Connect API key as the JSON form rcodesign expects
+          "$RUNNER_TEMP/rcodesign" encode-app-store-connect-api-key \
+            -o "$API_KEY_JSON" \
+            "$API_ISSUER" "$API_KEY_ID" "$API_KEY_FILE"
 
-          rm -f /tmp/AuthKey.p8 "${BINARY}.zip"
+          # Apple's notary service requires a wrapped artifact (.zip/.dmg/.pkg/.app),
+          # not a raw Mach-O. Use ditto (not plain zip) to produce an archive
+          # that Apple's notarizer accepts. --staple is omitted because Mach-O
+          # binaries cannot be stapled — Gatekeeper checks notarization online.
+          ditto -c -k --keepParent "$BINARY" "$BINARY.zip"
+          "$RUNNER_TEMP/rcodesign" notary-submit \
+            --api-key-file "$API_KEY_JSON" \
+            --wait \
+            "$BINARY.zip"
+          rm "$BINARY.zip"
 
       - name: Verify signature
-        if: matrix.goos == 'darwin'
+        if: matrix.goos == 'darwin' && startsWith(github.ref, 'refs/tags/v')
         run: |
           codesign --verify --deep --strict --verbose=2 \
             dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
           # Show signing details for CI logs
           codesign -dvv dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
-
-      - name: Clean up keychain
-        if: matrix.goos == 'darwin' && always()
-        run: security delete-keychain "$BUILD_KEYCHAIN" 2>/dev/null || true
 
       # ── Upload artifact ────────────────────────────────────────────────────
 
@@ -148,11 +154,14 @@ jobs:
           if-no-files-found: error
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Create the GitHub Release and attach all compiled binaries + checksums
+  # Create the GitHub Release and attach all compiled binaries + checksums.
+  # Only runs on semver tag pushes — PRs and manual dispatches build artifacts
+  # but do not publish.
   # ──────────────────────────────────────────────────────────────────────────
   release:
     name: Create Release
-    runs-on: self-hosted
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, Linux, X64]
     needs: binaries
     steps:
       - uses: actions/download-artifact@v7
