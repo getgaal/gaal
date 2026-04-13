@@ -33,6 +33,7 @@ gaal/
     ├── core/                  # Shared foundational packages
     │   ├── agent/             # Agent registry (YAML-driven)
     │   └── vcs/               # VCS backends (one file per backend)
+    ├── discover/              # FS-first resource discovery + Git-inspired snapshot index
     ├── engine/                # Central orchestrator — sequences the three managers
     │   ├── ops/               # Command operations (audit, info, init, status)
     │   └── render/            # Output types and renderers (table, JSON)
@@ -157,6 +158,25 @@ The two pillars exposed to the rest of the codebase:
 
 ---
 
+## Package `internal/discover`
+
+> The complete reference for the discovery system — resource model, snapshot lifecycle, drift detection algorithm, scan options, and per-resource-type scan logic — lives in [**docs/discover.md**](discover.md).
+
+Key responsibilities:
+
+| File | Description |
+|------|-------------|
+| `resource.go` | `ResourceType`, `Scope`, `DriftState`, `Resource` |
+| `snapshot.go` | `FileRecord`, `Snapshot`, `Load/Save`, `Record`, `DiffPath`, `SnapshotPath`, `WorkdirKey` |
+| `scan.go` | `ScanOptions`, public entry point `Scan(ctx, home, workDir, opts)` |
+| `global.go` | Scan agent-registry skill directories (global + user scope) |
+| `workspace.go` | Depth-limited FS walk for repos and skills in `workDir` |
+| `mcp.go` | Scan agent MCP config files; hash-based drift via snapshot |
+
+The drift detection follows the Git index fast-path: `stat()` → size+mtime match → unchanged; mismatch → sha256 → if hash matches, update mtime only (racy-git repair). VCS-native detection (`vcs.HasChanges`) is tried first for directories tracked by a VCS.
+
+---
+
 ## Package `internal/engine`
 
 The **single coupling point** between the configuration and the three resource managers. The engine holds no business logic of its own — it delegates every command operation to `engine/ops` and every rendering concern to `engine/render`.
@@ -192,7 +212,8 @@ Stateless functions that implement each CLI command. Each function receives the 
 
 | File | Exported symbols | Description |
 |------|-----------------|-------------|
-| `status.go` | `Collect()`, `Status()` | Gather resource state and render to stdout |
+| `status.go` | `Collect()`, `Status()` | FS-first resource state via `discover.Scan` — reconciles config-declared (managed) and FS-discovered (unmanaged) resources |
+| `plan.go` | `SyncPlan()`, `RenderPlan()` | Compute sync plan without writing |
 | `audit.go` | `Audit()` | Discover all installed skills and MCP servers |
 | `info.go` | `Info()` | Detailed per-entry card rendering |
 | `init.go` | `Init()`, `InitTemplate` | Write the config file skeleton to disk |

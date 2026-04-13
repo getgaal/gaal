@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"gaal/internal/config"
+	"gaal/internal/discover"
 )
 
 // serverEntry mirrors the MCP server JSON structure used by Claude Desktop,
@@ -39,12 +40,13 @@ type Status struct {
 
 // Manager handles MCP server configuration files.
 type Manager struct {
-	mcps []config.ConfigMcp
+	mcps     []config.ConfigMcp
+	stateDir string // gaal state root for snapshot writing
 }
 
 // NewManager creates a new MCP Manager.
-func NewManager(mcps []config.ConfigMcp) *Manager {
-	return &Manager{mcps: mcps}
+func NewManager(mcps []config.ConfigMcp, stateDir string) *Manager {
+	return &Manager{mcps: mcps, stateDir: stateDir}
 }
 
 // Sync applies every MCP configuration entry.
@@ -82,7 +84,30 @@ func (m *Manager) syncOne(ctx context.Context, mc config.ConfigMcp) error {
 		return fmt.Errorf("no source or inline config provided")
 	}
 
-	return mergeIntoTarget(mc.Target, mc.Name, entry)
+	if err := mergeIntoTarget(mc.Target, mc.Name, entry); err != nil {
+		return err
+	}
+	m.writeMCPSnapshot(mc.Target)
+	return nil
+}
+
+// writeMCPSnapshot records the current state of the target config file so that
+// discover.computeMCPDrift can apply the fast path on subsequent status checks.
+func (m *Manager) writeMCPSnapshot(target string) {
+	if m.stateDir == "" {
+		return
+	}
+	slog.Debug("writing mcp snapshot", "target", target)
+	rec, err := discover.Record(target)
+	if err != nil {
+		slog.Warn("mcp snapshot failed", "target", target, "err", err)
+		return
+	}
+	snap := discover.Snapshot{filepath.Base(target): rec}
+	key := "mcp-" + discover.WorkdirKey(target)
+	if err := discover.Save(discover.SnapshotPath(m.stateDir, key), snap); err != nil {
+		slog.Warn("mcp snapshot save failed", "target", target, "err", err)
+	}
 }
 
 // fetchRemoteEntry downloads a JSON config file and extracts the entry for name.
@@ -183,6 +208,89 @@ func mergeIntoTarget(target, name string, entry serverEntry) error {
 	}
 
 	slog.Info("mcp config updated", "name", name, "target", target)
+	return nil
+}
+
+// Prune removes mcpServers entries from each managed target file whose names
+// are no longer declared in the config for that target. Entries added manually
+// outside of gaal are also removed — callers should only use --prune on files
+// they intend to manage exclusively with gaal.
+func (m *Manager) Prune(ctx context.Context) error {
+	slog.DebugContext(ctx, "pruning orphan mcp entries")
+
+	// Build expected name set per target path.
+	keepPerTarget := make(map[string]map[string]struct{})
+	for _, mc := range m.mcps {
+		if keepPerTarget[mc.Target] == nil {
+			keepPerTarget[mc.Target] = make(map[string]struct{})
+		}
+		keepPerTarget[mc.Target][mc.Name] = struct{}{}
+	}
+
+	for target, keep := range keepPerTarget {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			slog.Warn("mcp prune: cannot read target", "target", target, "err", err)
+			continue
+		}
+
+		raw := map[string]json.RawMessage{}
+		if err := json.Unmarshal(data, &raw); err != nil {
+			slog.Warn("mcp prune: cannot parse target", "target", target, "err", err)
+			continue
+		}
+
+		serversRaw, ok := raw["mcpServers"]
+		if !ok {
+			continue
+		}
+		servers := map[string]json.RawMessage{}
+		if err := json.Unmarshal(serversRaw, &servers); err != nil {
+			slog.Warn("mcp prune: cannot parse mcpServers", "target", target, "err", err)
+			continue
+		}
+
+		pruned := false
+		for name := range servers {
+			if _, ok := keep[name]; !ok {
+				slog.Info("pruning orphan mcp entry", "name", name, "target", target)
+				delete(servers, name)
+				pruned = true
+			}
+		}
+		if !pruned {
+			continue
+		}
+
+		updated, err := json.Marshal(servers)
+		if err != nil {
+			slog.Warn("mcp prune: marshal error", "target", target, "err", err)
+			continue
+		}
+		raw["mcpServers"] = updated
+
+		out, err := json.MarshalIndent(raw, "", "  ")
+		if err != nil {
+			slog.Warn("mcp prune: indent error", "target", target, "err", err)
+			continue
+		}
+
+		tmp := target + ".tmp"
+		if err := os.WriteFile(tmp, out, 0o600); err != nil {
+			slog.Warn("mcp prune: write error", "target", target, "err", err)
+			continue
+		}
+		if err := os.Rename(tmp, target); err != nil {
+			slog.Warn("mcp prune: rename error", "target", target, "err", err)
+			continue
+		}
+		// Refresh snapshot so next status check reflects the pruned state.
+		m.writeMCPSnapshot(target)
+	}
+
 	return nil
 }
 

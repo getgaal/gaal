@@ -164,7 +164,7 @@ func TestManager_Sync_Inline(t *testing.T) {
 			},
 		},
 	}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	if err := m.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestManager_Sync_NoSourceOrInline(t *testing.T) {
 	mcps := []config.ConfigMcp{
 		{Name: "bad", Target: filepath.Join(t.TempDir(), "mcp.json")},
 	}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	err := m.Sync(context.Background())
 	if err == nil {
 		t.Fatal("expected error when no source or inline provided")
@@ -188,7 +188,7 @@ func TestManager_Status_Missing(t *testing.T) {
 	mcps := []config.ConfigMcp{
 		{Name: "srv", Target: "/no/such/file.json"},
 	}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -204,7 +204,7 @@ func TestManager_Status_Present(t *testing.T) {
 	mcps := []config.ConfigMcp{
 		{Name: "my-srv", Target: target},
 	}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -227,7 +227,7 @@ func TestManager_Sync_WithSource(t *testing.T) {
 	mcps := []config.ConfigMcp{
 		{Name: "my-srv", Source: srv.URL, Target: target},
 	}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	if err := m.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync with source URL: %v", err)
 	}
@@ -316,7 +316,7 @@ func TestManager_Sync_SkipsUninstalledAgentTarget(t *testing.T) {
 			Inline: &config.ConfigMcpItem{Command: "node"},
 		},
 	}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	if err := m.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestManager_Status_InvalidJSON(t *testing.T) {
 	mcps := []config.ConfigMcp{
 		{Name: "srv", Target: target},
 	}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -404,7 +404,7 @@ func TestManager_Status_DirtyInline(t *testing.T) {
 			Inline: &config.ConfigMcpItem{Command: "new-cmd"},
 		},
 	}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -428,7 +428,7 @@ func TestManager_Status_CleanInline(t *testing.T) {
 			Inline: &config.ConfigMcpItem{Command: "node", Args: []string{"server.js"}},
 		},
 	}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -446,7 +446,7 @@ func TestManager_Status_SourceNoInline_NoDirtyCheck(t *testing.T) {
 	mcps := []config.ConfigMcp{
 		{Name: "srv", Target: target, Source: "https://example.com/mcp.json"},
 	}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -687,7 +687,7 @@ func TestManager_Status_ReadError(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(tmp.Name(), 0o644) })
 
 	mcps := []config.ConfigMcp{{Name: "srv", Target: tmp.Name()}}
-	m := NewManager(mcps)
+	m := NewManager(mcps, "")
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -702,5 +702,66 @@ func TestFetchRemoteEntry_InvalidURL(t *testing.T) {
 	_, err := fetchRemoteEntry(context.Background(), "http://\x00invalid", "any")
 	if err == nil {
 		t.Fatal("expected error for URL with null byte")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Prune
+// ---------------------------------------------------------------------------
+
+func TestMCPPrune_RemovesOrphanEntry(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "mcp.json")
+	// File has two entries: managed (kept) and orphan.
+	initial := `{"mcpServers":{"kept":{"command":"node"},"orphan":{"command":"python"}}}`
+	os.WriteFile(target, []byte(initial), 0o644)
+
+	// Config only declares "kept".
+	cfg := []config.ConfigMcp{
+		{Name: "kept", Target: target, Inline: &config.ConfigMcpItem{Command: "node"}},
+	}
+	m := NewManager(cfg, "")
+	if err := m.Prune(context.Background()); err != nil {
+		t.Fatalf("Prune returned error: %v", err)
+	}
+
+	data, _ := os.ReadFile(target)
+	var doc struct {
+		MCPServers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	json.Unmarshal(data, &doc)
+	if _, ok := doc.MCPServers["orphan"]; ok {
+		t.Error("expected orphan entry to be removed")
+	}
+	if _, ok := doc.MCPServers["kept"]; !ok {
+		t.Error("expected kept entry to remain")
+	}
+}
+
+func TestMCPPrune_NoOpWhenAllManaged(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "mcp.json")
+	initial := `{"mcpServers":{"myserver":{"command":"node"}}}`
+	os.WriteFile(target, []byte(initial), 0o644)
+
+	cfg := []config.ConfigMcp{
+		{Name: "myserver", Target: target, Inline: &config.ConfigMcpItem{Command: "node"}},
+	}
+	m := NewManager(cfg, "")
+	if err := m.Prune(context.Background()); err != nil {
+		t.Fatalf("Prune returned error: %v", err)
+	}
+	data, _ := os.ReadFile(target)
+	if string(data) != initial {
+		t.Errorf("file should be unchanged, got: %s", data)
+	}
+}
+
+func TestMCPPrune_MissingFileIsNoOp(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "nonexistent.json")
+	cfg := []config.ConfigMcp{
+		{Name: "x", Target: target, Inline: &config.ConfigMcpItem{Command: "node"}},
+	}
+	m := NewManager(cfg, "")
+	if err := m.Prune(context.Background()); err != nil {
+		t.Fatalf("Prune returned error: %v", err)
 	}
 }

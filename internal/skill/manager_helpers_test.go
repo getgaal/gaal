@@ -96,7 +96,7 @@ func TestManager_Sync_LocalSource_WithSkills(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "")
 	if err := m.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -111,14 +111,14 @@ func TestManager_Sync_NoSkillsFound(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())
+	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir(), "")
 	if err := m.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync with no skills: %v", err)
 	}
 }
 
 func TestResolveAgents_ExplicitList(t *testing.T) {
-	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir())
+	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir(), "")
 	sc := config.ConfigSkill{Agents: []string{"claude-code", "cursor"}}
 	agents := m.resolveAgents(sc)
 	if len(agents) != 2 {
@@ -129,7 +129,7 @@ func TestResolveAgents_ExplicitList(t *testing.T) {
 func TestResolveAgents_Wildcard(t *testing.T) {
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
-	m := NewManager(nil, t.TempDir(), "/home/user", workDir)
+	m := NewManager(nil, t.TempDir(), "/home/user", workDir, "")
 	sc := config.ConfigSkill{Agents: []string{"*"}}
 	agents := m.resolveAgents(sc)
 	found := false
@@ -146,7 +146,7 @@ func TestResolveAgents_Wildcard(t *testing.T) {
 func TestResolveAgents_Empty(t *testing.T) {
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".roo"), 0o755)
-	m := NewManager(nil, t.TempDir(), "/home/user", workDir)
+	m := NewManager(nil, t.TempDir(), "/home/user", workDir, "")
 	sc := config.ConfigSkill{Agents: nil}
 	agents := m.resolveAgents(sc)
 	found := false
@@ -161,7 +161,7 @@ func TestResolveAgents_Empty(t *testing.T) {
 }
 
 func TestManager_Status_Empty(t *testing.T) {
-	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir())
+	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir(), "")
 	statuses := m.Status(context.Background())
 	if len(statuses) != 0 {
 		t.Errorf("expected 0 statuses for empty manager, got %d", len(statuses))
@@ -175,7 +175,7 @@ func TestManager_Status_Empty(t *testing.T) {
 func TestResolveSource_LocalNonGit_ReturnedAsIs(t *testing.T) {
 	// A plain directory (no .git) must be returned without any git operation.
 	src := t.TempDir()
-	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir())
+	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir(), "")
 	got, err := m.resolveSource(context.Background(), src)
 	if err != nil {
 		t.Fatalf("resolveSource: %v", err)
@@ -191,7 +191,7 @@ func TestResolveSource_LocalGit_UpdateAttempted(t *testing.T) {
 	// still return the path (the failure is only a warning).
 	src := t.TempDir()
 	os.MkdirAll(filepath.Join(src, ".git"), 0o755)
-	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir())
+	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir(), "")
 	// The git binary must be present; skip on machines without git in PATH.
 	got, err := m.resolveSource(context.Background(), src)
 	if err != nil {
@@ -227,7 +227,7 @@ func TestManager_Sync_PreCachedRemoteSource(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: "owner/pre-cached", Agents: []string{"claude-code"}, Global: false},
 	}
-	m := NewManager(skills, cacheDir, "/home/user", workDir)
+	m := NewManager(skills, cacheDir, "/home/user", workDir, "")
 
 	// git update will fail (not a real repo) but the error is swallowed by resolveSource.
 	// Sync should still succeed.
@@ -245,7 +245,7 @@ func TestManager_Sync_CloneError(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: "http://localhost:1/not-a-repo.git", Agents: []string{"claude-code"}},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())
+	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir(), "")
 	err := m.Sync(context.Background())
 	if err == nil {
 		t.Fatal("expected error when git clone fails (unreachable host)")

@@ -193,7 +193,7 @@ func TestDetectInstalledAgents_ProjectScope(t *testing.T) {
 	// Create the parent config dir for one known agent (claude-code uses .claude/).
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
 
-	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "")
 	found := m.detectInstalledAgents(false)
 
 	hadAgent := false
@@ -247,7 +247,7 @@ func TestManager_Status_UnknownAgent(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"unknown-agent-xyz"}},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())
+	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir(), "")
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -264,7 +264,7 @@ func TestManager_Status_SourceNotCached(t *testing.T) {
 	}
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
-	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "")
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -291,7 +291,7 @@ func TestManager_Status_InstalledAndMissing(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "")
 	statuses := m.Status(context.Background())
 
 	if len(statuses) != 1 {
@@ -336,7 +336,7 @@ func TestManager_Sync_UnknownAgent_SkipsWithWarn(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"unknown-agent-xyz"}},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir())
+	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir(), "")
 	// Should not error — unknown agent is warned and skipped.
 	if err := m.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync with unknown agent should succeed: %v", err)
@@ -398,7 +398,7 @@ func TestDetectInstalledAgents_GlobalScope(t *testing.T) {
 	// Claude global scope uses "~/.claude/skills" → parent is ~/.claude.
 	home := t.TempDir()
 	os.MkdirAll(filepath.Join(home, ".claude"), 0o755)
-	m := NewManager(nil, t.TempDir(), home, t.TempDir())
+	m := NewManager(nil, t.TempDir(), home, t.TempDir(), "")
 	found := m.detectInstalledAgents(true)
 	hadAgent := false
 	for _, name := range found {
@@ -423,7 +423,7 @@ func TestSyncAgents_ExplicitList_ProjectScope_FiltersUninstalled(t *testing.T) {
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
 	// zencoder is NOT installed — .zencoder/ does not exist.
 
-	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "")
 	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"claude-code", "zencoder"},
@@ -447,7 +447,7 @@ func TestSyncAgents_ExplicitList_GlobalScope_FiltersUninstalled(t *testing.T) {
 	os.MkdirAll(filepath.Join(home, ".claude"), 0o755)
 	// zencoder is NOT installed — ~/.zencoder/ does not exist.
 
-	m := NewManager(nil, t.TempDir(), home, t.TempDir())
+	m := NewManager(nil, t.TempDir(), home, t.TempDir(), "")
 	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"claude-code", "zencoder"},
@@ -464,7 +464,7 @@ func TestSyncAgents_ExplicitList_GlobalScope_FiltersUninstalled(t *testing.T) {
 
 func TestSyncAgents_ExplicitList_AllUninstalled_ReturnsEmpty(t *testing.T) {
 	workDir := t.TempDir() // fresh, no agent dirs
-	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "")
 	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"zencoder", "kilo"},
@@ -481,7 +481,7 @@ func TestSyncAgents_Wildcard_StillWorks(t *testing.T) {
 	// is a no-op.
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
-	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir)
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "")
 	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"*"},
@@ -577,7 +577,7 @@ func TestManager_Status_ModifiedSkill(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "")
 	statuses := m.Status(context.Background())
 
 	if len(statuses) != 1 {
@@ -615,7 +615,7 @@ func TestManager_Status_CleanSkill(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", workDir)
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "")
 	statuses := m.Status(context.Background())
 
 	if len(statuses) != 1 {
@@ -678,5 +678,77 @@ func TestCopyFile_WriteError(t *testing.T) {
 	err := copyFile(srcFile, filepath.Join(parent, "dst.txt"))
 	if err == nil {
 		t.Fatal("expected error when destination parent is not writable")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Prune
+// ---------------------------------------------------------------------------
+
+func TestPrune_RemovesOrphanSkill(t *testing.T) {
+	// Source has two skills: kept-skill and orphan-skill.
+	sourceDir := t.TempDir()
+	for _, name := range []string{"kept-skill", "orphan-skill"} {
+		dir := filepath.Join(sourceDir, name)
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: "+name+"\n---\n"), 0o644)
+	}
+
+	// Agent dir simulates an already-installed state: both skills are present.
+	agentSkillsDir := t.TempDir()
+	agentParent := filepath.Dir(agentSkillsDir)
+	// workDir must have a subdirectory matching the agent's project_skills_dir.
+	// Use a local-path skill with an absolute skillsDir to avoid agent registry lookup.
+	for _, name := range []string{"kept-skill", "orphan-skill"} {
+		os.MkdirAll(filepath.Join(agentSkillsDir, name), 0o755)
+	}
+
+	// Config only selects kept-skill.
+	cfg := []config.ConfigSkill{
+		{Source: sourceDir, Select: []string{"kept-skill"}, Agents: []string{"claude-code"}, Global: true},
+	}
+
+	// Build a manager whose home points to agentParent so that SkillDir
+	// for claude-code global resolves to agentParent/.claude/skills.
+	// We pre-create the directory and redirect home to agentParent.
+	claudeSkillsDir := filepath.Join(agentParent, ".claude", "skills")
+	os.MkdirAll(claudeSkillsDir, 0o755)
+	for _, name := range []string{"kept-skill", "orphan-skill"} {
+		os.MkdirAll(filepath.Join(claudeSkillsDir, name), 0o755)
+	}
+
+	m := NewManager(cfg, t.TempDir(), agentParent, t.TempDir(), "")
+	if err := m.Prune(context.Background()); err != nil {
+		t.Fatalf("Prune returned error: %v", err)
+	}
+
+	// orphan-skill must be gone, kept-skill must remain.
+	if _, err := os.Stat(filepath.Join(claudeSkillsDir, "orphan-skill")); err == nil {
+		t.Error("expected orphan-skill to be removed")
+	}
+	if _, err := os.Stat(filepath.Join(claudeSkillsDir, "kept-skill")); err != nil {
+		t.Errorf("expected kept-skill to remain: %v", err)
+	}
+}
+
+func TestPrune_NoOpWhenAllManaged(t *testing.T) {
+	sourceDir := t.TempDir()
+	skillDir := filepath.Join(sourceDir, "my-skill")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-skill\n---\n"), 0o644)
+
+	home := t.TempDir()
+	claudeSkillsDir := filepath.Join(home, ".claude", "skills")
+	os.MkdirAll(filepath.Join(claudeSkillsDir, "my-skill"), 0o755)
+
+	cfg := []config.ConfigSkill{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: true},
+	}
+	m := NewManager(cfg, t.TempDir(), home, t.TempDir(), "")
+	if err := m.Prune(context.Background()); err != nil {
+		t.Fatalf("Prune returned error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(claudeSkillsDir, "my-skill")); err != nil {
+		t.Errorf("expected my-skill to remain: %v", err)
 	}
 }

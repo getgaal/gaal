@@ -45,6 +45,7 @@ const (
 	StatusPartial   StatusCode = render.StatusPartial
 	StatusPresent   StatusCode = render.StatusPresent
 	StatusAbsent    StatusCode = render.StatusAbsent
+	StatusUnmanaged StatusCode = render.StatusUnmanaged
 	StatusError     StatusCode = render.StatusError
 )
 
@@ -53,6 +54,9 @@ type Options struct {
 	// WorkDir overrides the current working directory used for project-relative
 	// skill install paths. Defaults to os.Getwd().
 	WorkDir string
+	// StateDir overrides the directory used to persist snapshot indexes.
+	// Defaults to <cacheRoot>/gaal/state.
+	StateDir string
 }
 
 // Engine orchestrates repository, skill and MCP synchronisation.
@@ -64,6 +68,7 @@ type Engine struct {
 	home      string
 	workDir   string
 	cacheRoot string
+	stateDir  string
 }
 
 // New creates an Engine from the given configuration using default directories.
@@ -89,16 +94,22 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 	}
 	cacheDir := filepath.Join(cacheRoot, "gaal", "skills")
 
-	slog.Debug("engine initialised", "home", home, "workDir", workDir, "cacheDir", cacheDir)
+	stateDir := filepath.Join(cacheRoot, "gaal", "state")
+	if opts.StateDir != "" {
+		stateDir = opts.StateDir
+	}
+
+	slog.Debug("engine initialised", "home", home, "workDir", workDir, "cacheDir", cacheDir, "stateDir", stateDir)
 
 	return &Engine{
 		cfg:       cfg,
-		repos:     repo.NewManager(cfg.Repositories),
-		skills:    skill.NewManager(cfg.Skills, cacheDir, home, workDir),
-		mcps:      mcp.NewManager(cfg.MCPs),
+		repos:     repo.NewManager(cfg.Repositories, stateDir),
+		skills:    skill.NewManager(cfg.Skills, cacheDir, home, workDir, stateDir),
+		mcps:      mcp.NewManager(cfg.MCPs, stateDir),
 		home:      home,
 		workDir:   workDir,
 		cacheRoot: cacheRoot,
+		stateDir:  stateDir,
 	}
 }
 
@@ -164,21 +175,40 @@ func (e *Engine) RunService(ctx context.Context, interval time.Duration) error {
 	}
 }
 
+// Prune removes skills and MCP entries that are on disk but no longer declared
+// in the configuration. It is intended to be called after RunOnce (sources are
+// already cached so no network access occurs). Repositories are never pruned
+// automatically — deletion of source trees requires explicit user action.
+func (e *Engine) Prune(ctx context.Context) error {
+	slog.DebugContext(ctx, "pruning orphan resources")
+	var errs []error
+	if err := e.skills.Prune(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("skills prune: %w", err))
+	}
+	if err := e.mcps.Prune(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("mcps prune: %w", err))
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("prune errors: %v", errs)
+	}
+	return nil
+}
+
 // Collect gathers the current status of all resources without side effects.
 func (e *Engine) Collect(ctx context.Context) (*render.StatusReport, error) {
-	return ops.Collect(ctx, e.repos, e.skills, e.mcps)
+	return ops.Collect(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir)
 }
 
 // DryRun computes what sync would do and renders the plan to os.Stdout.
 // It returns the plan so the caller can inspect HasChanges / HasErrors for
 // exit code logic.
 func (e *Engine) DryRun(ctx context.Context, format OutputFormat) (*render.PlanReport, error) {
-	return ops.RenderPlan(ctx, e.repos, e.skills, e.mcps, format)
+	return ops.RenderPlan(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir, format)
 }
 
 // Status collects the current resource state and renders it to os.Stdout.
 func (e *Engine) Status(ctx context.Context, format OutputFormat) error {
-	return ops.Status(ctx, e.repos, e.skills, e.mcps, format)
+	return ops.Status(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir, format)
 }
 
 // Audit discovers all skills and MCP servers installed on the machine and
@@ -189,7 +219,7 @@ func (e *Engine) Audit(ctx context.Context, format OutputFormat) error {
 
 // Info renders a detailed view for the given package type to stdout.
 func (e *Engine) Info(ctx context.Context, pkg, filter string, format OutputFormat) error {
-	return ops.Info(ctx, e.repos, e.skills, e.mcps, e.cfg, pkg, filter, format)
+	return ops.Info(ctx, e.repos, e.skills, e.mcps, e.cfg, e.home, e.workDir, e.stateDir, pkg, filter, format)
 }
 
 // ListAgents returns all registered agents with installed-detection.

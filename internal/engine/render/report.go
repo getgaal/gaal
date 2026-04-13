@@ -10,6 +10,7 @@ const (
 	StatusPartial   StatusCode = "partial"
 	StatusPresent   StatusCode = "present"
 	StatusAbsent    StatusCode = "absent"
+	StatusUnmanaged StatusCode = "unmanaged"
 	StatusError     StatusCode = "error"
 )
 

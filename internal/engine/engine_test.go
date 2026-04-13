@@ -96,7 +96,7 @@ func TestRunOnce_WithSkills_LocalSource(t *testing.T) {
 			{Source: sourceDir, Agents: []string{"claude-code"}},
 		},
 	}
-	e := NewWithOptions(cfg, Options{WorkDir: workDir})
+	e := NewWithOptions(cfg, Options{WorkDir: workDir, StateDir: t.TempDir()})
 	if err := e.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce with skill: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestRunOnce_WithMCP_Inline(t *testing.T) {
 			},
 		},
 	}
-	e := New(cfg)
+	e := NewWithOptions(cfg, Options{StateDir: t.TempDir()})
 	if err := e.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce with MCP: %v", err)
 	}
