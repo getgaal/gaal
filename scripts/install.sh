@@ -61,7 +61,7 @@ Examples:
   # Pin to v0.1.2
   curl -fsSL <URL> | VERSION=v0.1.2 sh
 
-  # System-wide install (will prompt for sudo on the final move)
+  # System-wide install (will prompt for sudo on install)
   curl -fsSL <URL> | INSTALL_DIR=/usr/local/bin sh
 
 Report issues: https://github.com/gmg-inc/gaal-lite/issues
