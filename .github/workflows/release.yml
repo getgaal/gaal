@@ -70,9 +70,14 @@ jobs:
       # the .p12 directly from a file and validates the cert chain itself —
       # no macOS keychain manipulation, no `add-trusted-cert` UI prompts, no
       # persistent state on the runner. Works on any Mac runner.
+      #
+      # Sign + notarize only run on semver tag pushes (actual releases),
+      # because Apple notarization adds 30-90s of waiting per binary and
+      # isn't needed for PR smoke tests. PRs still cross-compile the darwin
+      # binary so we catch build regressions, just unsigned.
 
       - name: Install rcodesign
-        if: matrix.goos == 'darwin'
+        if: matrix.goos == 'darwin' && startsWith(github.ref, 'refs/tags/v')
         env:
           RCODESIGN_VERSION: "0.29.0"
           RCODESIGN_SHA256: "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a"
@@ -92,7 +97,7 @@ jobs:
           "$RUNNER_TEMP/rcodesign" --version
 
       - name: Sign and notarize binary
-        if: matrix.goos == 'darwin'
+        if: matrix.goos == 'darwin' && startsWith(github.ref, 'refs/tags/v')
         env:
           P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
           P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
@@ -133,7 +138,7 @@ jobs:
           rm "$BINARY.zip"
 
       - name: Verify signature
-        if: matrix.goos == 'darwin'
+        if: matrix.goos == 'darwin' && startsWith(github.ref, 'refs/tags/v')
         run: |
           codesign --verify --deep --strict --verbose=2 \
             dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
