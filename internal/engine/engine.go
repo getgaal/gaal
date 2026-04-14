@@ -57,6 +57,10 @@ type Options struct {
 	// StateDir overrides the directory used to persist snapshot indexes.
 	// Defaults to <cacheRoot>/gaal/state.
 	StateDir string
+	// Force skips the agent-installation check for wildcard agent lists so
+	// that skills are installed into every registered agent regardless of
+	// whether the agent's config directory is already present on the machine.
+	Force bool
 }
 
 // Engine orchestrates repository, skill and MCP synchronisation.
@@ -104,7 +108,7 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 	return &Engine{
 		cfg:       cfg,
 		repos:     repo.NewManager(cfg.Repositories, stateDir),
-		skills:    skill.NewManager(cfg.Skills, cacheDir, home, workDir, stateDir),
+		skills:    skill.NewManager(cfg.Skills, cacheDir, home, workDir, stateDir, opts.Force),
 		mcps:      mcp.NewManager(cfg.MCPs, stateDir),
 		home:      home,
 		workDir:   workDir,

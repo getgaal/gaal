@@ -185,7 +185,7 @@ func TestAggregateSkillsByName_DirtyWhenAnyModified(t *testing.T) {
 	if s.Status != StatusDirty {
 		t.Errorf("status: got %q, want %q", s.Status, StatusDirty)
 	}
-	// Modified agents are still "installed" — show * when present everywhere.
+	// Modified agents are still "installed" — show "all" when present everywhere.
 	if !s.AllAgents {
 		t.Errorf("AllAgents: dirty-but-installed-everywhere should show *")
 	}
@@ -252,6 +252,92 @@ func TestAggregateSkillsByName_ErrorPropagates(t *testing.T) {
 	}
 }
 
+func TestAggregateSkillsByName_SeparatesGlobalFromWorkspace(t *testing.T) {
+	in := []SkillEntry{
+		// Same skill name in both scopes: must produce two separate rows.
+		{Source: "owner/repo", Agent: "cursor", Global: true, Status: StatusOK, Installed: []string{"shared"}},
+		{Source: "owner/repo", Agent: "cursor", Global: false, Status: StatusPartial, Missing: []string{"shared"}},
+	}
+	got := aggregateSkillsByName(in)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 aggregated skills (one per scope), got %d: %+v", len(got), got)
+	}
+	// Global entry should come first.
+	if !got[0].Global {
+		t.Errorf("got[0].Global = false, want true (global sorts first)")
+	}
+	if got[0].Status != StatusOK {
+		t.Errorf("global entry status: got %q, want OK", got[0].Status)
+	}
+	if got[1].Global {
+		t.Errorf("got[1].Global = true, want false (workspace sorts second)")
+	}
+	if got[1].Status != StatusPartial {
+		t.Errorf("workspace entry status: got %q, want partial", got[1].Status)
+	}
+}
+
+func TestAggregateSkillsByName_ErrorEntryWithNoSkillsIsVisible(t *testing.T) {
+	in := []SkillEntry{
+		{Source: "owner/repo", Agent: "cursor", Global: false, Status: StatusError,
+			Error: "source not cached yet", Installed: []string{}, Missing: []string{}, Modified: []string{}},
+	}
+	got := aggregateSkillsByName(in)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 placeholder row for error entry, got %d", len(got))
+	}
+	s := got[0]
+	if s.Name != "" {
+		t.Errorf("placeholder name: got %q, want empty string (rendered as '—')", s.Name)
+	}
+	if s.Status != StatusError {
+		t.Errorf("status: got %q, want error", s.Status)
+	}
+	if !strings.Contains(s.Error, "not cached") {
+		t.Errorf("error message: got %q, want to contain 'not cached'", s.Error)
+	}
+	if s.Global {
+		t.Errorf("Global: got true, want false")
+	}
+}
+
+func TestAggregateSkillsByName_GlobalSortsBeforeWorkspace(t *testing.T) {
+	in := []SkillEntry{
+		{Source: "ws/repo", Agent: "cursor", Global: false, Status: StatusOK, Installed: []string{"alpha"}},
+		{Source: "gl/repo", Agent: "cursor", Global: true, Status: StatusOK, Installed: []string{"beta"}},
+	}
+	got := aggregateSkillsByName(in)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 aggregated skills, got %d", len(got))
+	}
+	if !got[0].Global || got[0].Name != "beta" {
+		t.Errorf("got[0]: Global=%v Name=%q, want Global=true Name=beta", got[0].Global, got[0].Name)
+	}
+	if got[1].Global || got[1].Name != "alpha" {
+		t.Errorf("got[1]: Global=%v Name=%q, want Global=false Name=alpha", got[1].Global, got[1].Name)
+	}
+}
+
+func TestTableRenderer_SkillsScopeColumn(t *testing.T) {
+	var buf bytes.Buffer
+	r := &tableRenderer{}
+	report := &StatusReport{
+		Skills: []SkillEntry{
+			{Source: "gl/repo", Agent: "cursor", Global: true, Status: StatusOK, Installed: []string{"global-skill"}},
+			{Source: "ws/repo", Agent: "cursor", Global: false, Status: StatusOK, Installed: []string{"ws-skill"}},
+		},
+	}
+	if err := r.Render(&buf, report); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{"SCOPE", "global", "workspace", "global-skill", "ws-skill"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output\ngot:\n%s", want, out)
+		}
+	}
+}
+
 func TestAggregateSkillsByName_SortedByName(t *testing.T) {
 	in := []SkillEntry{
 		{Source: "owner/repo", Agent: "cursor", Status: StatusOK, Installed: []string{"zebra", "apple", "mango"}},
@@ -285,7 +371,7 @@ func TestTableRenderer_SkillsByName_RendersStar(t *testing.T) {
 		t.Error("expected skill name in output")
 	}
 	if !strings.Contains(out, "SKILL") || !strings.Contains(out, "AGENTS") {
-		t.Errorf("expected new column headers SKILL and AGENTS, got:\n%s", out)
+		t.Errorf("expected column headers SKILL and AGENTS, got:\n%s", out)
 	}
 	// Exactly one data row (not one per agent).
 	if strings.Count(out, "code-reviewer") != 1 {

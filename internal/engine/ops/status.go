@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"gaal/internal/discover"
 	"gaal/internal/engine/render"
@@ -41,7 +42,7 @@ func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mc
 	// Reconcile: mark config-declared resources as managed and merge
 	// FS-discovered unmanaged resources into the report.
 	repoEntries := reconcileRepos(configRepos, discovered)
-	skillEntries := reconcileSkills(configSkills, discovered)
+	skillEntries := reconcileSkills(configSkills, discovered, home, workDir)
 	mcpEntries := reconcileMCPs(configMCPs, discovered)
 
 	return &render.StatusReport{
@@ -95,25 +96,42 @@ func reconcileRepos(config []render.RepoEntry, resources []discover.Resource) []
 }
 
 // reconcileSkills merges config-driven skill entries with FS-discovered skills.
-// FS-discovered skills not covered by config are appended as unmanaged entries.
-func reconcileSkills(config []render.SkillEntry, resources []discover.Resource) []render.SkillEntry {
-	known := make(map[string]struct{}, len(config))
+// FS-discovered skills are suppressed when their parent directory is already
+// covered by a config-driven entry (same agent + same managed skills dir).
+// Remaining FS-discovered entries are appended as unmanaged.
+func reconcileSkills(config []render.SkillEntry, resources []discover.Resource, home, workDir string) []render.SkillEntry {
+	// Build the set of managed skill directories from config entries.
+	// Key: absolute skills directory that gaal writes to for this entry.
+	managedDirs := make(map[string]struct{}, len(config))
 	for _, e := range config {
-		known[e.Source+"/"+e.Agent] = struct{}{}
+		dir, ok := skill.SkillDir(e.Agent, e.Global, home)
+		if !ok {
+			continue
+		}
+		if !e.Global && !filepath.IsAbs(dir) {
+			dir = filepath.Join(workDir, dir)
+		}
+		managedDirs[filepath.Clean(dir)] = struct{}{}
 	}
+	slog.Debug("reconcileSkills managed dirs", "count", len(managedDirs))
+
 	out := append([]render.SkillEntry(nil), config...)
 	for _, r := range resources {
 		if r.Type != discover.ResourceSkill {
 			continue
 		}
-		agent := r.Meta["agent"]
-		key := r.Path + "/" + agent
-		if _, ok := known[key]; ok {
+		// If this skill's parent directory is already managed by a config
+		// entry, the skill is already accounted for — skip it to avoid
+		// showing the same skill twice (once managed, once unmanaged).
+		parent := filepath.Clean(filepath.Dir(r.Path))
+		if _, covered := managedDirs[parent]; covered {
 			continue
 		}
+		agent := r.Meta["agent"]
 		out = append(out, render.SkillEntry{
 			Source:    r.Path,
 			Agent:     agent,
+			Global:    r.Scope == discover.ScopeGlobal,
 			Status:    render.StatusUnmanaged,
 			Installed: []string{r.Name},
 			Missing:   []string{},
@@ -192,6 +210,7 @@ func collectSkills(stats []skill.Status) []render.SkillEntry {
 		e := render.SkillEntry{
 			Source:    st.Source,
 			Agent:     st.AgentName,
+			Global:    st.Global,
 			Installed: nonNil(st.Installed),
 			Missing:   nonNil(st.Missing),
 			Modified:  nonNil(st.Modified),

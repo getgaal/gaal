@@ -94,9 +94,6 @@ func (tr *tableRenderer) Render(w io.Writer, r *StatusReport) error {
 		termW = 120
 	}
 
-	if err := tr.repoTable(w, r.Repositories, termW); err != nil {
-		return err
-	}
 	if err := tr.skillTable(w, r.Skills, termW); err != nil {
 		return err
 	}
@@ -104,6 +101,9 @@ func (tr *tableRenderer) Render(w io.Writer, r *StatusReport) error {
 		return err
 	}
 	if err := tr.agentTable(w, r.Agents, termW); err != nil {
+		return err
+	}
+	if err := tr.repoTable(w, r.Repositories, termW); err != nil {
 		return err
 	}
 	fmt.Fprintln(w)
@@ -240,7 +240,7 @@ func (tr *tableRenderer) repoTable(w io.Writer, entries []RepoEntry, termW int) 
 }
 
 // aggregatedSkill rolls up all per-(source, agent) SkillEntry rows for a
-// single skill name. See [aggregateSkillsByName] for semantics.
+// single skill name within one scope. See [aggregateSkillsByName] for semantics.
 type aggregatedSkill struct {
 	Name      string
 	Sources   []string
@@ -248,17 +248,27 @@ type aggregatedSkill struct {
 	Agents    []string
 	AllAgents bool
 	Error     string
+	Global    bool // true = user-global, false = workspace/project
 }
 
 // aggregateSkillsByName groups per-(source, agent) skill entries into one
-// row per unique skill name. The result is sorted alphabetically by name.
+// row per unique (skill name, scope) pair. Global and workspace entries with
+// the same skill name are kept as separate rows. The result is sorted: global
+// entries first, then workspace, each subset sorted alphabetically by name.
 //
-// For each skill name, "targeted agents" is the set of agents that list the
-// skill in Installed ∪ Missing ∪ Modified — i.e. agents gaal expected to
-// manage the skill for. AllAgents is true when the skill is installed in
-// every one of those targeted agents (including "installed but dirty"),
-// which the renderer shows as `*` in the AGENTS column.
+// For each (skill name, scope), "targeted agents" is the set of agents that
+// list the skill in Installed ∪ Missing ∪ Modified — i.e. agents gaal
+// expected to manage the skill for. AllAgents is true when the skill is
+// installed in every one of those targeted agents (including "installed but
+// dirty"), which the renderer shows as `*` in the AGENTS column.
+//
+// Entries that carry an error and have no skill names are rendered as a
+// placeholder row (name "—") so they remain visible to the user.
 func aggregateSkillsByName(entries []SkillEntry) []aggregatedSkill {
+	type skillKey struct {
+		name   string
+		global bool
+	}
 	type bucket struct {
 		sources   map[string]struct{}
 		targeted  map[string]struct{}
@@ -266,24 +276,27 @@ func aggregateSkillsByName(entries []SkillEntry) []aggregatedSkill {
 		dirty     bool
 		errored   bool
 		errMsg    string
+		global    bool
 	}
-	byName := map[string]*bucket{}
+	byKey := map[skillKey]*bucket{}
 
-	get := func(name string) *bucket {
-		b, ok := byName[name]
+	get := func(name string, global bool) *bucket {
+		k := skillKey{name, global}
+		b, ok := byKey[k]
 		if !ok {
 			b = &bucket{
 				sources:   map[string]struct{}{},
 				targeted:  map[string]struct{}{},
 				installed: map[string]struct{}{},
+				global:    global,
 			}
-			byName[name] = b
+			byKey[k] = b
 		}
 		return b
 	}
 
 	markEntry := func(e SkillEntry, name string, installed bool) {
-		b := get(name)
+		b := get(name, e.Global)
 		b.sources[e.Source] = struct{}{}
 		b.targeted[e.Agent] = struct{}{}
 		if installed {
@@ -298,6 +311,20 @@ func aggregateSkillsByName(entries []SkillEntry) []aggregatedSkill {
 	}
 
 	for _, e := range entries {
+		if len(e.Installed) == 0 && len(e.Missing) == 0 && len(e.Modified) == 0 {
+			// Error entry or unexpectedly empty: keep visible as a placeholder
+			// row so the user can see the source and its error status.
+			b := get("", e.Global)
+			b.sources[e.Source] = struct{}{}
+			b.targeted[e.Agent] = struct{}{}
+			if e.Error != "" {
+				b.errored = true
+				if b.errMsg == "" {
+					b.errMsg = e.Error
+				}
+			}
+			continue
+		}
 		for _, name := range e.Installed {
 			markEntry(e, name, true)
 		}
@@ -309,17 +336,18 @@ func aggregateSkillsByName(entries []SkillEntry) []aggregatedSkill {
 			// (status is reported as dirty, not ok). Track it as installed
 			// and flag the bucket as dirty.
 			markEntry(e, name, true)
-			get(name).dirty = true
+			get(name, e.Global).dirty = true
 		}
 	}
 
-	out := make([]aggregatedSkill, 0, len(byName))
-	for name, b := range byName {
+	out := make([]aggregatedSkill, 0, len(byKey))
+	for k, b := range byKey {
 		s := aggregatedSkill{
-			Name:    name,
+			Name:    k.name,
 			Sources: keysSorted(b.sources),
 			Agents:  keysSorted(b.installed),
 			Error:   b.errMsg,
+			Global:  b.global,
 		}
 		s.AllAgents = len(b.installed) > 0 && len(b.installed) == len(b.targeted)
 		switch {
@@ -334,7 +362,17 @@ func aggregateSkillsByName(entries []SkillEntry) []aggregatedSkill {
 		}
 		out = append(out, s)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	// Sort: global entries first, then workspace; within each group, sort
+	// alphabetically by name. Empty-name placeholder rows sort last.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Global != out[j].Global {
+			return out[i].Global // global (true) before workspace (false)
+		}
+		if (out[i].Name == "") != (out[j].Name == "") {
+			return out[j].Name == "" // empty name sorts last within scope
+		}
+		return out[i].Name < out[j].Name
+	})
 	return out
 }
 
@@ -351,26 +389,40 @@ func (tr *tableRenderer) skillTable(w io.Writer, entries []SkillEntry, termW int
 	aggregated := aggregateSkillsByName(entries)
 	tr.section(w, "Skills", len(aggregated))
 
-	// Fixed col: STATUS(14). SKILL, SOURCE, AGENTS share the rest.
-	vw := varColWidth(termW, 4, 3, 14)
+	// Fixed cols: STATUS(14) + SCOPE(11) = 25. SKILL, SOURCE, INSTALLED IN share the rest.
+	vw := varColWidth(termW, 5, 3, 25)
 	if vw < 12 {
 		vw = 12
 	}
 
-	data := pterm.TableData{{"SKILL", "SOURCE", "STATUS", "AGENTS"}}
+	data := pterm.TableData{{"SKILL", "SOURCE", "SCOPE", "STATUS", "AGENTS"}}
 	for _, s := range aggregated {
-		agents := "—"
+		var installedIn string
 		switch {
 		case s.AllAgents:
-			agents = "*"
+			// Skill is present in every agent that targets it.
+			installedIn = pterm.FgGreen.Sprint("all")
 		case len(s.Agents) > 0:
-			agents = strings.Join(s.Agents, ", ")
+			// Installed only in a subset of targeted agents.
+			installedIn = strings.Join(s.Agents, ", ")
+		default:
+			// Not installed in any agent yet.
+			installedIn = pterm.FgYellow.Sprint("none")
+		}
+		scope := "workspace"
+		if s.Global {
+			scope = "global"
+		}
+		name := s.Name
+		if name == "" {
+			name = "—"
 		}
 		data = append(data, []string{
-			trunc(s.Name, vw),
+			trunc(name, vw),
 			trunc(strings.Join(s.Sources, ", "), vw),
+			scope,
 			statusCell(s.Status, s.Error),
-			trunc(agents, vw),
+			trunc(installedIn, vw),
 		})
 	}
 	return tr.ptermTable(w, data)

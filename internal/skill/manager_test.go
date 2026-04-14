@@ -193,7 +193,7 @@ func TestDetectInstalledAgents_ProjectScope(t *testing.T) {
 	// Create the parent config dir for one known agent (claude-code uses .claude/).
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
 
-	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "")
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "", false)
 	found := m.detectInstalledAgents(false)
 
 	hadAgent := false
@@ -247,7 +247,7 @@ func TestManager_Status_UnknownAgent(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"unknown-agent-xyz"}},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir(), "")
+	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir(), "", false)
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -264,7 +264,7 @@ func TestManager_Status_SourceNotCached(t *testing.T) {
 	}
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
-	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "")
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "", false)
 	statuses := m.Status(context.Background())
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
@@ -291,7 +291,7 @@ func TestManager_Status_InstalledAndMissing(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "")
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "", false)
 	statuses := m.Status(context.Background())
 
 	if len(statuses) != 1 {
@@ -336,7 +336,7 @@ func TestManager_Sync_UnknownAgent_SkipsWithWarn(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"unknown-agent-xyz"}},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir(), "")
+	m := NewManager(skills, t.TempDir(), "/home/user", t.TempDir(), "", false)
 	// Should not error — unknown agent is warned and skipped.
 	if err := m.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync with unknown agent should succeed: %v", err)
@@ -398,7 +398,7 @@ func TestDetectInstalledAgents_GlobalScope(t *testing.T) {
 	// Claude global scope uses "~/.claude/skills" → parent is ~/.claude.
 	home := t.TempDir()
 	os.MkdirAll(filepath.Join(home, ".claude"), 0o755)
-	m := NewManager(nil, t.TempDir(), home, t.TempDir(), "")
+	m := NewManager(nil, t.TempDir(), home, t.TempDir(), "", false)
 	found := m.detectInstalledAgents(true)
 	hadAgent := false
 	for _, name := range found {
@@ -412,66 +412,56 @@ func TestDetectInstalledAgents_GlobalScope(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Manager.syncAgents — the sync-time agent resolver. Explicit agent lists
-// must filter out uninstalled agents so sync never materialises an
-// agent-owned directory as a side effect.
+// Manager.syncAgents — the sync-time agent resolver.
+//
+// Wildcard ("*" or empty) → only installed agents (never creates dirs).
+// Explicit list          → all named agents (sync creates dirs as needed).
 // ---------------------------------------------------------------------------
 
-func TestSyncAgents_ExplicitList_ProjectScope_FiltersUninstalled(t *testing.T) {
+func TestSyncAgents_ExplicitList_ProjectScope_ReturnsAll(t *testing.T) {
 	workDir := t.TempDir()
-	// claude-code is "installed" in this project (its .claude/ dir exists).
+	// claude-code has its dir, zencoder does not — both must be returned.
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
-	// zencoder is NOT installed — .zencoder/ does not exist.
 
-	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "")
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "", false)
 	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"claude-code", "zencoder"},
 		Global: false,
 	})
 
-	if len(got) != 1 || got[0] != "claude-code" {
-		t.Errorf("expected [claude-code], got %v", got)
-	}
-
-	// Critical invariant: the filter must not have created the zencoder dir
-	// as a side effect of checking.
-	if _, err := os.Stat(filepath.Join(workDir, ".zencoder")); err == nil {
-		t.Error("syncAgents must not create .zencoder as a side effect")
+	if len(got) != 2 {
+		t.Errorf("expected [claude-code zencoder], got %v", got)
 	}
 }
 
-func TestSyncAgents_ExplicitList_GlobalScope_FiltersUninstalled(t *testing.T) {
+func TestSyncAgents_ExplicitList_GlobalScope_ReturnsAll(t *testing.T) {
 	home := t.TempDir()
-	// claude-code is "installed" globally (its ~/.claude/ dir exists).
+	// claude-code is "installed" globally, zencoder is not — both must be returned.
 	os.MkdirAll(filepath.Join(home, ".claude"), 0o755)
-	// zencoder is NOT installed — ~/.zencoder/ does not exist.
 
-	m := NewManager(nil, t.TempDir(), home, t.TempDir(), "")
+	m := NewManager(nil, t.TempDir(), home, t.TempDir(), "", false)
 	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"claude-code", "zencoder"},
 		Global: true,
 	})
 
-	if len(got) != 1 || got[0] != "claude-code" {
-		t.Errorf("expected [claude-code], got %v", got)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".zencoder")); err == nil {
-		t.Error("syncAgents must not create ~/.zencoder as a side effect")
+	if len(got) != 2 {
+		t.Errorf("expected [claude-code zencoder], got %v", got)
 	}
 }
 
-func TestSyncAgents_ExplicitList_AllUninstalled_ReturnsEmpty(t *testing.T) {
+func TestSyncAgents_ExplicitList_AllUninstalled_ReturnsAll(t *testing.T) {
 	workDir := t.TempDir() // fresh, no agent dirs
-	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "")
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "", false)
 	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"zencoder", "kilo"},
 		Global: false,
 	})
-	if len(got) != 0 {
-		t.Errorf("expected empty slice, got %v", got)
+	if len(got) != 2 {
+		t.Errorf("expected [zencoder kilo], got %v", got)
 	}
 }
 
@@ -481,7 +471,7 @@ func TestSyncAgents_Wildcard_StillWorks(t *testing.T) {
 	// is a no-op.
 	workDir := t.TempDir()
 	os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755)
-	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "")
+	m := NewManager(nil, t.TempDir(), "/home/testuser", workDir, "", false)
 	got := m.syncAgents(config.ConfigSkill{
 		Source: "owner/repo",
 		Agents: []string{"*"},
@@ -577,7 +567,7 @@ func TestManager_Status_ModifiedSkill(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "")
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "", false)
 	statuses := m.Status(context.Background())
 
 	if len(statuses) != 1 {
@@ -615,7 +605,7 @@ func TestManager_Status_CleanSkill(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
 	}
-	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "")
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "", false)
 	statuses := m.Status(context.Background())
 
 	if len(statuses) != 1 {
@@ -717,7 +707,7 @@ func TestPrune_RemovesOrphanSkill(t *testing.T) {
 		os.MkdirAll(filepath.Join(claudeSkillsDir, name), 0o755)
 	}
 
-	m := NewManager(cfg, t.TempDir(), agentParent, t.TempDir(), "")
+	m := NewManager(cfg, t.TempDir(), agentParent, t.TempDir(), "", false)
 	if err := m.Prune(context.Background()); err != nil {
 		t.Fatalf("Prune returned error: %v", err)
 	}
@@ -744,7 +734,7 @@ func TestPrune_NoOpWhenAllManaged(t *testing.T) {
 	cfg := []config.ConfigSkill{
 		{Source: sourceDir, Agents: []string{"claude-code"}, Global: true},
 	}
-	m := NewManager(cfg, t.TempDir(), home, t.TempDir(), "")
+	m := NewManager(cfg, t.TempDir(), home, t.TempDir(), "", false)
 	if err := m.Prune(context.Background()); err != nil {
 		t.Fatalf("Prune returned error: %v", err)
 	}

@@ -30,6 +30,7 @@ type RepoEntry struct {
 type SkillEntry struct {
 	Source    string     `json:"source"`
 	Agent     string     `json:"agent"`
+	Global    bool       `json:"global"`
 	Status    StatusCode `json:"status"`
 	Installed []string   `json:"installed"`
 	Missing   []string   `json:"missing"`

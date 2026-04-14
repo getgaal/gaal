@@ -16,10 +16,11 @@ import (
 )
 
 var (
-	service  bool
-	interval time.Duration
-	dryRun   bool
-	prune    bool
+	service      bool
+	interval     time.Duration
+	dryRun       bool
+	prune        bool
+	forceSyncAll bool
 )
 
 var syncCmd = &cobra.Command{
@@ -40,6 +41,7 @@ func init() {
 	syncCmd.Flags().DurationVarP(&interval, "interval", "i", 5*time.Minute, "polling interval in service mode")
 	syncCmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview what sync would do without writing anything")
 	syncCmd.Flags().BoolVar(&prune, "prune", false, "remove skills and MCP entries no longer declared in config")
+	syncCmd.Flags().BoolVar(&forceSyncAll, "force", false, "install skills into all registered agents even when agent dirs don't exist yet (applies to agents: [\"*\"] wildcard)")
 	rootCmd.AddCommand(syncCmd)
 }
 
@@ -56,7 +58,9 @@ func runSync(_ *cobra.Command, _ []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	eng := engine.NewWithOptions(cfg.Config, engineOpts)
+	opts := engineOpts
+	opts.Force = forceSyncAll
+	eng := engine.NewWithOptions(cfg.Config, opts)
 
 	if dryRun {
 		slog.Info("dry-run mode", "config", cfgFile)
