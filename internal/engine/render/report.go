@@ -156,6 +156,7 @@ type AuditMCPEntry struct {
 
 // AuditReport aggregates all skills and MCP servers discovered on the machine.
 type AuditReport struct {
+	Home   string            `json:"-"`
 	Skills []AuditSkillEntry `json:"skills"`
 	MCPs   []AuditMCPEntry   `json:"mcps"`
 }

@@ -26,7 +26,7 @@ func Audit(ctx context.Context, home, workDir string, format render.OutputFormat
 		return err
 	}
 
-	report := &render.AuditReport{Skills: skills, MCPs: mcps}
+	report := &render.AuditReport{Home: home, Skills: skills, MCPs: mcps}
 	return render.NewAuditRenderer(format).Render(os.Stdout, report)
 }
 
