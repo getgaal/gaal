@@ -46,10 +46,10 @@ func (tr *auditTableRenderer) Render(w io.Writer, r *AuditReport) error {
 		termW = 120
 	}
 
-	if err := tr.skillTable(w, r.Skills, termW); err != nil {
+	if err := tr.skillTable(w, r.Skills, r.Home, termW); err != nil {
 		return err
 	}
-	if err := tr.mcpTable(w, r.MCPs, termW); err != nil {
+	if err := tr.mcpTable(w, r.MCPs, r.Home, termW); err != nil {
 		return err
 	}
 	fmt.Fprintln(w)
@@ -61,7 +61,7 @@ func (tr *auditTableRenderer) section(w io.Writer, title string, count int) {
 	fmt.Fprintf(w, "\n%s\n", styled)
 }
 
-func (tr *auditTableRenderer) skillTable(w io.Writer, entries []AuditSkillEntry, termW int) error {
+func (tr *auditTableRenderer) skillTable(w io.Writer, entries []AuditSkillEntry, home string, termW int) error {
 	tr.section(w, "Discovered Skills", len(entries))
 
 	if len(entries) == 0 {
@@ -92,7 +92,7 @@ func (tr *auditTableRenderer) skillTable(w io.Writer, entries []AuditSkillEntry,
 			trunc(e.Name, nameMax),
 			e.Agent,
 			sourceCell(e.Source),
-			trunc(e.Path, pathMax),
+			trunc(shortenHome(e.Path, home), pathMax),
 		})
 	}
 
@@ -100,7 +100,7 @@ func (tr *auditTableRenderer) skillTable(w io.Writer, entries []AuditSkillEntry,
 	return tbl.ptermTable(w, data)
 }
 
-func (tr *auditTableRenderer) mcpTable(w io.Writer, entries []AuditMCPEntry, termW int) error {
+func (tr *auditTableRenderer) mcpTable(w io.Writer, entries []AuditMCPEntry, home string, termW int) error {
 	tr.section(w, "Discovered MCP Servers", len(entries))
 
 	if len(entries) == 0 {
@@ -119,13 +119,26 @@ func (tr *auditTableRenderer) mcpTable(w io.Writer, entries []AuditMCPEntry, ter
 		servers := strings.Join(e.Servers, ", ")
 		data = append(data, []string{
 			e.Agent,
-			trunc(e.ConfigFile, vw),
+			trunc(shortenHome(e.ConfigFile, home), vw),
 			trunc(servers, vw),
 		})
 	}
 
 	tbl := &tableRenderer{}
 	return tbl.ptermTable(w, data)
+}
+
+// shortenHome replaces the home directory prefix of a path with "~/".
+func shortenHome(path, home string) string {
+	if home == "" || path == "" {
+		return path
+	}
+	// Ensure home ends without separator for clean prefix matching.
+	prefix := strings.TrimRight(home, "/\\")
+	if strings.HasPrefix(path, prefix+"/") || strings.HasPrefix(path, prefix+"\\") {
+		return "~" + path[len(prefix):]
+	}
+	return path
 }
 
 // sourceCell renders a source label with a distinctive colour.

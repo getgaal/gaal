@@ -30,6 +30,7 @@ type RepoEntry struct {
 type SkillEntry struct {
 	Source    string     `json:"source"`
 	Agent     string     `json:"agent"`
+	Global    bool       `json:"global"`
 	Status    StatusCode `json:"status"`
 	Installed []string   `json:"installed"`
 	Missing   []string   `json:"missing"`
@@ -155,6 +156,7 @@ type AuditMCPEntry struct {
 
 // AuditReport aggregates all skills and MCP servers discovered on the machine.
 type AuditReport struct {
+	Home   string            `json:"-"`
 	Skills []AuditSkillEntry `json:"skills"`
 	MCPs   []AuditMCPEntry   `json:"mcps"`
 }

@@ -83,18 +83,22 @@ type Manager struct {
 	home     string // expanded user home directory
 	workDir  string // project working directory (for project-scoped installs)
 	stateDir string // gaal state root (~/.cache/gaal/state) for snapshot writing
+	force    bool   // when true, wildcard agent lists target all known agents
 }
 
 // NewManager creates a new skill Manager.
 // cacheDir is where remote sources are cloned/downloaded (e.g. ~/.cache/gaal/skills).
 // stateDir is where post-sync snapshots are persisted (e.g. ~/.cache/gaal/state).
-func NewManager(skills []config.ConfigSkill, cacheDir, home, workDir, stateDir string) *Manager {
+// force makes wildcard agent lists install into every registered agent,
+// creating directories as needed instead of restricting to already-installed agents.
+func NewManager(skills []config.ConfigSkill, cacheDir, home, workDir, stateDir string, force bool) *Manager {
 	return &Manager{
 		skills:   skills,
 		cacheDir: cacheDir,
 		home:     home,
 		workDir:  workDir,
 		stateDir: stateDir,
+		force:    force,
 	}
 }
 
@@ -146,6 +150,11 @@ func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
 		// Project-relative path needs workDir prefix.
 		if !sc.Global && !filepath.IsAbs(skillsDir) {
 			skillsDir = filepath.Join(m.workDir, skillsDir)
+		}
+
+		// Create the skills directory if it does not exist yet.
+		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+			return fmt.Errorf("creating skills dir for agent %q: %w", agent, err)
 		}
 
 		for _, sk := range selected {
@@ -217,22 +226,25 @@ func (m *Manager) resolveAgents(sc config.ConfigSkill) []string {
 	return sc.Agents
 }
 
-// syncAgents returns the subset of resolveAgents that are actually installed
-// on this machine. Sync uses this to guarantee it never materialises an
-// agent-owned directory as a side effect — uninstalled entries in an
-// explicit list are dropped with a warning.
+// syncAgents returns the agents to target during sync.
+//
+// For the wildcard ("*" or empty list):
+//   - Normal mode: only already-installed agents (safe default, never creates dirs).
+//   - Force mode (--force): all registered agents, creating directories as needed.
+//
+// For explicitly named agents, all entries are returned regardless of
+// whether the agent directory exists yet: sync creates it as needed.
 func (m *Manager) syncAgents(sc config.ConfigSkill) []string {
-	resolved := m.resolveAgents(sc)
-	out := make([]string, 0, len(resolved))
-	for _, a := range resolved {
-		if m.isAgentInstalled(a, sc.Global) {
-			out = append(out, a)
-			continue
+	// Wildcard: respect force flag.
+	if len(sc.Agents) == 0 || (len(sc.Agents) == 1 && sc.Agents[0] == "*") {
+		if m.force {
+			slog.Debug("force mode: targeting all registered agents", "source", sc.Source)
+			return AgentNames()
 		}
-		slog.Warn("skill: skipping uninstalled agent",
-			"agent", a, "source", sc.Source, "global", sc.Global)
+		return m.detectInstalledAgents(sc.Global)
 	}
-	return out
+	// Explicit list: return all named agents; sync creates directories as needed.
+	return sc.Agents
 }
 
 // isAgentInstalled reports whether the directory that would own the agent's
