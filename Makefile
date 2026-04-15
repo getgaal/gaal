@@ -14,7 +14,7 @@ GOOS      ?= $(shell go env GOOS)
 GOARCH    ?= $(shell go env GOARCH)
 BIN_CROSS ?= $(DIST_DIR)/gaal-$(GOOS)-$(GOARCH)
 
-.PHONY: all build build-cross run run-service test test-race coverage coverage-ci lint hooks clean tidy sandbox sandbox-service sandbox-status
+.PHONY: all build build-cross run run-service test test-race test-ci coverage coverage-ci lint hooks clean tidy sandbox sandbox-service sandbox-status
 
 all: build
 
@@ -58,11 +58,16 @@ sandbox-status: build
 
 ## test: run unit tests
 test:
-	go test ./...
+	go test -count=1 ./...
 
 ## test-race: run unit tests with race detector (used in CI)
 test-race:
-	go test -race -timeout 5m ./...
+	go test -race -count=1 -timeout 5m ./...
+
+## test-ci: CI-only — race detector + JUnit XML report + GitHub annotations (requires gotestsum)
+test-ci:
+	@mkdir -p report
+	$(GOBIN)/gotestsum --junitfile report/tests.xml --format github-actions -- -race -count=1 -timeout 5m ./...
 
 ## coverage: run tests with coverage — generates all reports in report/
 ##   report/coverage.html          — standard go tool cover (default)
