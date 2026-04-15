@@ -95,7 +95,18 @@ jobs:
         if: always()
         run: |
           python3 - <<'EOF'
-          import xml.etree.ElementTree as ET, os, pathlib, textwrap
+          import xml.etree.ElementTree as ET, os, pathlib, re
+
+          def first_meaningful_line(text, maxlen):
+              """Return the first non-empty line that is not a Go test runner
+              prefix (=== RUN, --- SKIP, --- FAIL, PASS, FAIL, etc.).
+              Escape pipe chars so they don't break the Markdown table."""
+              skip_pat = re.compile(r"^(===|---|PASS|FAIL|ok\s|SKIP)", re.IGNORECASE)
+              for raw in (text or "").splitlines():
+                  line = raw.strip()
+                  if line and not skip_pat.match(line):
+                      return line.replace("|", "\\|")[:maxlen]
+              return ""
 
           p = pathlib.Path("report/tests.xml")
           if not p.exists():
@@ -116,13 +127,17 @@ jobs:
                   pkg = suite.get("name", "")
                   for tc in suite.findall("testcase"):
                       name = tc.get("name", "")
-                      fail_node = tc.find("failure") or tc.find("error")
+                      fail_node = tc.find("failure")
+                      if fail_node is None:
+                          fail_node = tc.find("error")
                       skip_node = tc.find("skipped")
                       if fail_node is not None:
-                          msg = (fail_node.get("message") or fail_node.text or "").strip().splitlines()[0][:120]
+                          raw = fail_node.get("message") or fail_node.text or ""
+                          msg = first_meaningful_line(raw, 120)
                           failures_list.append((pkg, name, msg))
                       elif skip_node is not None:
-                          reason = (skip_node.get("message") or skip_node.text or "").strip()[:80]
+                          raw = skip_node.get("message") or skip_node.text or ""
+                          reason = first_meaningful_line(raw, 80)
                           skipped_list.append((pkg, name, reason))
 
               matrix_name = os.environ.get("MATRIX_NAME", "")
