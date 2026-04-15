@@ -95,7 +95,8 @@ jobs:
         if: always()
         run: |
           python3 - <<'EOF'
-          import xml.etree.ElementTree as ET, os, pathlib
+          import xml.etree.ElementTree as ET, os, pathlib, textwrap
+
           p = pathlib.Path("report/tests.xml")
           if not p.exists():
               print("No test report found.")
@@ -107,6 +108,23 @@ jobs:
               failed  = sum(int(s.get("failures", 0)) + int(s.get("errors", 0)) for s in suites)
               skipped = sum(int(s.get("skipped",  0)) for s in suites)
               passed  = tests - failed - skipped
+
+              # Collect per-test details
+              failures_list = []
+              skipped_list  = []
+              for suite in suites:
+                  pkg = suite.get("name", "")
+                  for tc in suite.findall("testcase"):
+                      name = tc.get("name", "")
+                      fail_node = tc.find("failure") or tc.find("error")
+                      skip_node = tc.find("skipped")
+                      if fail_node is not None:
+                          msg = (fail_node.get("message") or fail_node.text or "").strip().splitlines()[0][:120]
+                          failures_list.append((pkg, name, msg))
+                      elif skip_node is not None:
+                          reason = (skip_node.get("message") or skip_node.text or "").strip()[:80]
+                          skipped_list.append((pkg, name, reason))
+
               matrix_name = os.environ.get("MATRIX_NAME", "")
               summary = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
               with open(summary, "a") as f:
@@ -115,6 +133,22 @@ jobs:
                   f.write("| Suites | Tests | \u2705 Passed | \u274c Failed | \u23ed Skipped |\n")
                   f.write("|--------|-------|-----------|-----------|----------|\n")
                   f.write(f"| {len(suites)} | {tests} | {passed} | {failed} | {skipped} |\n\n")
+
+                  if failures_list:
+                      f.write("### \u274c Failed tests\n\n")
+                      f.write("| Package | Test | Message |\n")
+                      f.write("|---------|------|---------|\n")
+                      for pkg, name, msg in failures_list:
+                          f.write(f"| `{pkg}` | `{name}` | {msg} |\n")
+                      f.write("\n")
+
+                  if skipped_list:
+                      f.write("### \u23ed Skipped tests\n\n")
+                      f.write("| Package | Test | Reason |\n")
+                      f.write("|---------|------|--------|\n")
+                      for pkg, name, reason in skipped_list:
+                          f.write(f"| `{pkg}` | `{name}` | {reason} |\n")
+                      f.write("\n")
           EOF
         env:
           MATRIX_NAME: ${{ matrix.name }}
