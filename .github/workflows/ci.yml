@@ -65,7 +65,9 @@ jobs:
           retention-days: 7
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Test: unit tests with race detector on Linux and macOS (make test-race)
+  # Test: unit tests with race detector on Linux and macOS (make test-ci)
+  #   - -count=1 forces re-execution (no (cached) results)
+  #   - gotestsum produces GitHub inline annotations + JUnit XML
   # ──────────────────────────────────────────────────────────────────────────
   test:
     name: Test / ${{ matrix.name }}
@@ -84,9 +86,95 @@ jobs:
         with:
           go-version-file: go.mod
           # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
-
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
       - name: Run tests
-        run: make test-race
+        run: make test-ci
+
+      - name: Post test summary
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import xml.etree.ElementTree as ET, os, pathlib, re
+
+          def first_meaningful_line(text, maxlen):
+              """Return the first non-empty line that is not a Go test runner
+              prefix (=== RUN, --- SKIP, --- FAIL, PASS, FAIL, etc.).
+              Escape pipe chars so they don't break the Markdown table."""
+              skip_pat = re.compile(r"^(===|---|PASS|FAIL|ok\s|SKIP)", re.IGNORECASE)
+              for raw in (text or "").splitlines():
+                  line = raw.strip()
+                  if line and not skip_pat.match(line):
+                      return line.replace("|", "\\|")[:maxlen]
+              return ""
+
+          p = pathlib.Path("report/tests.xml")
+          if not p.exists():
+              print("No test report found.")
+          else:
+              tree = ET.parse(p)
+              root = tree.getroot()
+              suites  = root.findall("testsuite") or ([root] if root.tag == "testsuite" else [])
+              tests   = sum(int(s.get("tests",   0)) for s in suites)
+              failed  = sum(int(s.get("failures", 0)) + int(s.get("errors", 0)) for s in suites)
+              skipped = sum(int(s.get("skipped",  0)) for s in suites)
+              passed  = tests - failed - skipped
+
+              # Collect per-test details
+              failures_list = []
+              skipped_list  = []
+              for suite in suites:
+                  pkg = suite.get("name", "")
+                  for tc in suite.findall("testcase"):
+                      name = tc.get("name", "")
+                      fail_node = tc.find("failure")
+                      if fail_node is None:
+                          fail_node = tc.find("error")
+                      skip_node = tc.find("skipped")
+                      if fail_node is not None:
+                          raw = fail_node.get("message") or fail_node.text or ""
+                          msg = first_meaningful_line(raw, 120)
+                          failures_list.append((pkg, name, msg))
+                      elif skip_node is not None:
+                          raw = skip_node.get("message") or skip_node.text or ""
+                          reason = first_meaningful_line(raw, 80)
+                          skipped_list.append((pkg, name, reason))
+
+              matrix_name = os.environ.get("MATRIX_NAME", "")
+              summary = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
+              with open(summary, "a") as f:
+                  title = f"## Test Results" + (f" \u2014 {matrix_name}" if matrix_name else "")
+                  f.write(title + "\n\n")
+                  f.write("| Suites | Tests | \u2705 Passed | \u274c Failed | \u23ed Skipped |\n")
+                  f.write("|--------|-------|-----------|-----------|----------|\n")
+                  f.write(f"| {len(suites)} | {tests} | {passed} | {failed} | {skipped} |\n\n")
+
+                  if failures_list:
+                      f.write("### \u274c Failed tests\n\n")
+                      f.write("| Package | Test | Message |\n")
+                      f.write("|---------|------|---------|\n")
+                      for pkg, name, msg in failures_list:
+                          f.write(f"| `{pkg}` | `{name}` | {msg} |\n")
+                      f.write("\n")
+
+                  if skipped_list:
+                      f.write("### \u23ed Skipped tests\n\n")
+                      f.write("| Package | Test | Reason |\n")
+                      f.write("|---------|------|--------|\n")
+                      for pkg, name, reason in skipped_list:
+                          f.write(f"| `{pkg}` | `{name}` | {reason} |\n")
+                      f.write("\n")
+          EOF
+        env:
+          MATRIX_NAME: ${{ matrix.name }}
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.name }}
+          path: report/tests.xml
+          retention-days: 30
 
   # ──────────────────────────────────────────────────────────────────────────
   # Coverage: generate HTML report and post summary to the job summary page
