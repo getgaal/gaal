@@ -11,8 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"gaal/internal/config"
 	"gaal/internal/engine"
 	"gaal/internal/telemetry"
+	"gaal/internal/tools"
 )
 
 var (
@@ -54,6 +56,8 @@ func runSync(_ *cobra.Command, _ []string) error {
 	}
 
 	cfg := resolvedCfg
+
+	warnMissingTools(cfg.Config)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -101,4 +105,38 @@ func runSync(_ *cobra.Command, _ []string) error {
 	telemetry.Track("sync")
 	telemetry.TrackFirstSync(0)
 	return nil
+}
+
+// warnMissingTools prints a compact stderr banner listing required tools that
+// are missing from PATH. Sync never blocks on missing tools — full attribution
+// and exit-code semantics live in `gaal doctor`. The per-line rule: show the
+// install hint when set, otherwise show "(required by <source>)".
+func warnMissingTools(cfg *config.Config) {
+	statuses := tools.Check(tools.Collect(cfg))
+	missing := statuses[:0]
+	for _, st := range statuses {
+		if !st.Found {
+			missing = append(missing, st)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+
+	maxName := 0
+	for _, st := range missing {
+		if n := len(st.Entry.Tool.Name); n > maxName {
+			maxName = n
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "⚠ Required tools missing from PATH:")
+	for _, st := range missing {
+		detail := fmt.Sprintf("(required by %s)", st.Entry.Source)
+		if st.Entry.Tool.Hint != "" {
+			detail = st.Entry.Tool.Hint
+		}
+		fmt.Fprintf(os.Stderr, "    %-*s  — %s\n", maxName, st.Entry.Tool.Name, detail)
+	}
+	fmt.Fprintln(os.Stderr, "  Run `gaal doctor` for details.")
 }
