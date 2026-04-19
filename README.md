@@ -21,6 +21,7 @@
 | **Repositories** | Clone or update multi-protocol repos (git, hg, svn, bzr, tar, zip) from a single YAML file |
 | **Skills** | Download and install `SKILL.md` collections into your local AI agent directories (Claude, Copilot, Cursor, …) |
 | **MCPs** | Upsert MCP server entries into agent JSON config files without overwriting your existing configuration |
+| **Tools** | Check that required CLI binaries (e.g. `gh`, `fnm`) are on PATH and surface install hints when they are missing |
 
 ---
 
@@ -82,7 +83,17 @@ mcps:
     inline:
       command: uvx
       args: [mcp-server-filesystem, /home/user/projects]
+
+tools:
+  - gh                       # bare string — required on PATH, no install hint
+  - name: rtk                # full form with an install hint
+    hint: "cargo install rtk"
 ```
+
+The `tools:` block can also appear inside an individual `skills:` entry to
+document tools required by that specific skill. `gaal doctor` reports each
+tool as `✓` (on PATH) or `⚠` (missing); `gaal sync` prints a one-line
+banner per missing tool but never blocks.
 
 Then run:
 

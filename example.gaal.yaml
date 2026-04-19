@@ -74,12 +74,18 @@ skills:
       - github-copilot
     global: true
 
-  # Install from a local directory.
+  # Install from a local directory. Per-skill `tools:` lists CLI binaries
+  # that this skill expects to find on PATH; gaal doctor warns when any
+  # are missing.
   - source: ./company-skills
     agents:
       - claude-code
       - cursor
     global: false
+    tools:
+      - tree-sitter
+      - name: rg
+        hint: "brew install ripgrep"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # mcps
@@ -128,3 +134,31 @@ mcps:
       args:
         - -y
         - "@modelcontextprotocol/server-sequential-thinking"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# tools
+#
+# CLI executables your workspace expects to find on PATH. gaal does not
+# install tools — it checks for their presence and surfaces an optional hint
+# when any are missing.
+#
+# Two shapes are accepted in a tools list:
+#   - bare string:  `- gh`
+#   - full mapping: `- {name: gh, hint: "brew install gh"}`
+#
+# Tool entries can also live inside an individual `skills:` entry above to
+# document tools required by that specific skill. Top-level entries always
+# win attribution if the same name appears in both places.
+#
+# Behaviour:
+#   - `gaal doctor` reports each tool as ✓ (on PATH) or ⚠ (missing); any
+#     missing tool raises doctor's exit code to 1.
+#   - `gaal sync` prints a one-line banner per missing tool to stderr but
+#     never blocks. Use `gaal doctor` to gate CI.
+# ─────────────────────────────────────────────────────────────────────────────
+tools:
+  - gh                       # GitHub CLI — bare string, no hint
+  - name: rtk                # Token-killer proxy
+    hint: "cargo install rtk"
+  - name: fnm                # Fast Node manager
+    hint: "https://github.com/Schniz/fnm#installation"
