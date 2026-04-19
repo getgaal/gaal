@@ -24,6 +24,7 @@ type Config struct {
 	Repositories map[string]ConfigRepo `yaml:"repositories" json:"repositories,omitempty" jsonschema:"description=Map of workspace-relative paths to repository entries" validate:"dive"`
 	Skills       []ConfigSkill         `yaml:"skills"       json:"skills,omitempty"       jsonschema:"description=Skill sources to install into agent skill directories"   validate:"dive"`
 	MCPs         []ConfigMcp           `yaml:"mcps"         json:"mcps,omitempty"         jsonschema:"description=MCP server configuration entries to merge"             validate:"dive"`
+	Tools        []ConfigTool          `yaml:"tools,omitempty" json:"tools,omitempty"    jsonschema:"description=CLI tools expected to be on PATH; gaal doctor/sync report any missing ones" validate:"dive"`
 	Telemetry    *bool                 `yaml:"telemetry,omitempty" json:"telemetry,omitempty" jsonschema:"description=Opt-in anonymous usage telemetry (true/false)" gaal:"maxscope=user"`
 
 	// SourcePath is populated at runtime by Load and never written to disk.
@@ -40,10 +41,19 @@ type ConfigRepo struct {
 
 // ConfigSkill defines a skill source to install.
 type ConfigSkill struct {
-	Source string   `yaml:"source"           json:"source"           jsonschema:"description=Skill source: GitHub shorthand (owner/repo), HTTPS URL, or local path" validate:"required"`
-	Agents []string `yaml:"agents,omitempty" json:"agents,omitempty" jsonschema:"description=Target agent identifiers; use [\"*\"] to target all detected agents"`
-	Global bool     `yaml:"global,omitempty" json:"global,omitempty" jsonschema:"description=When true the skill is installed globally under ~/.<agent>/skills/ instead of the project directory"`
-	Select []string `yaml:"select,omitempty" json:"select,omitempty" jsonschema:"description=Specific skill names to include; empty list installs all skills from the source"`
+	Source string       `yaml:"source"           json:"source"           jsonschema:"description=Skill source: GitHub shorthand (owner/repo), HTTPS URL, or local path" validate:"required"`
+	Agents []string     `yaml:"agents,omitempty" json:"agents,omitempty" jsonschema:"description=Target agent identifiers; use [\"*\"] to target all detected agents"`
+	Global bool         `yaml:"global,omitempty" json:"global,omitempty" jsonschema:"description=When true the skill is installed globally under ~/.<agent>/skills/ instead of the project directory"`
+	Select []string     `yaml:"select,omitempty" json:"select,omitempty" jsonschema:"description=Specific skill names to include; empty list installs all skills from the source"`
+	Tools  []ConfigTool `yaml:"tools,omitempty"  json:"tools,omitempty"  jsonschema:"description=CLI tools required by this skill; gaal doctor reports any missing ones"                             validate:"dive"`
+}
+
+// ConfigTool declares a CLI executable that is expected to be present on PATH.
+// gaal does not install tools; it only checks for their presence and, when a
+// tool is missing, surfaces the optional Hint to help the user install it.
+type ConfigTool struct {
+	Name string `yaml:"name"           json:"name"           jsonschema:"description=Executable name to look up on PATH (e.g. gh, fnm, rtk)" validate:"required"`
+	Hint string `yaml:"hint,omitempty" json:"hint,omitempty" jsonschema:"description=Free-form install hint shown when the tool is missing"`
 }
 
 // ConfigMcp defines an MCP server configuration entry.
@@ -305,10 +315,11 @@ func (c *Config) validate() error {
 // []string so downstream code does not need to care.
 func (s *ConfigSkill) UnmarshalYAML(node *yaml.Node) error {
 	type rawSkill struct {
-		Source string    `yaml:"source"`
-		Agents yaml.Node `yaml:"agents,omitempty"`
-		Global bool      `yaml:"global,omitempty"`
-		Select []string  `yaml:"select,omitempty"`
+		Source string       `yaml:"source"`
+		Agents yaml.Node    `yaml:"agents,omitempty"`
+		Global bool         `yaml:"global,omitempty"`
+		Select []string     `yaml:"select,omitempty"`
+		Tools  []ConfigTool `yaml:"tools,omitempty"`
 	}
 	var raw rawSkill
 	if err := node.Decode(&raw); err != nil {
@@ -318,6 +329,7 @@ func (s *ConfigSkill) UnmarshalYAML(node *yaml.Node) error {
 	s.Source = raw.Source
 	s.Global = raw.Global
 	s.Select = raw.Select
+	s.Tools = raw.Tools
 
 	agents, err := decodeAgents(&raw.Agents)
 	if err != nil {
@@ -368,4 +380,34 @@ func (mc ConfigMcp) MergeEnabled() bool {
 		return true
 	}
 	return *mc.Merge
+}
+
+// ── ConfigTool methods ────────────────────────────────────────────────────────
+
+// UnmarshalYAML accepts tool entries in two shapes:
+//   - scalar:  tools: [gh, fnm]
+//   - mapping: tools: [{name: gh, hint: "brew install gh"}]
+//
+// Bare strings are the common case for tools without install hints; the mapping
+// form is used when a hint is provided.
+func (t *ConfigTool) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		t.Name = node.Value
+		return nil
+	case yaml.MappingNode:
+		type rawTool struct {
+			Name string `yaml:"name"`
+			Hint string `yaml:"hint,omitempty"`
+		}
+		var raw rawTool
+		if err := node.Decode(&raw); err != nil {
+			return err
+		}
+		t.Name = raw.Name
+		t.Hint = raw.Hint
+		return nil
+	default:
+		return fmt.Errorf("line %d: expected a tool name string or a {name, hint} mapping", node.Line)
+	}
 }

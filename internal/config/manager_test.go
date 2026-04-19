@@ -981,5 +981,138 @@ func repoKeys(cfg *Config) []string {
 	return keys
 }
 
+// ---------------------------------------------------------------------------
+// Tools — top-level and per-skill
+// ---------------------------------------------------------------------------
+
+func TestLoad_Tools_TopLevel_Shorthand(t *testing.T) {
+	p := writeYAML(t, `
+tools:
+  - gh
+  - fnm
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Tools) != 2 {
+		t.Fatalf("want 2 tools, got %d", len(cfg.Tools))
+	}
+	if cfg.Tools[0].Name != "gh" || cfg.Tools[0].Hint != "" {
+		t.Errorf("tool[0] = %+v, want {gh, \"\"}", cfg.Tools[0])
+	}
+	if cfg.Tools[1].Name != "fnm" {
+		t.Errorf("tool[1] name = %q, want %q", cfg.Tools[1].Name, "fnm")
+	}
+}
+
+func TestLoad_Tools_TopLevel_FullMap(t *testing.T) {
+	p := writeYAML(t, `
+tools:
+  - name: gh
+    hint: "brew install gh"
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Tools) != 1 {
+		t.Fatalf("want 1 tool, got %d", len(cfg.Tools))
+	}
+	if cfg.Tools[0].Name != "gh" || cfg.Tools[0].Hint != "brew install gh" {
+		t.Errorf("tool = %+v", cfg.Tools[0])
+	}
+}
+
+func TestLoad_Tools_TopLevel_MixedShorthandAndMap(t *testing.T) {
+	p := writeYAML(t, `
+tools:
+  - gh
+  - name: rtk
+    hint: "cargo install rtk"
+  - fnm
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Tools) != 3 {
+		t.Fatalf("want 3 tools, got %d", len(cfg.Tools))
+	}
+	names := []string{cfg.Tools[0].Name, cfg.Tools[1].Name, cfg.Tools[2].Name}
+	wantNames := []string{"gh", "rtk", "fnm"}
+	for i, n := range wantNames {
+		if names[i] != n {
+			t.Errorf("tool[%d] name = %q, want %q", i, names[i], n)
+		}
+	}
+	if cfg.Tools[1].Hint != "cargo install rtk" {
+		t.Errorf("tool[1] hint = %q, want %q", cfg.Tools[1].Hint, "cargo install rtk")
+	}
+}
+
+func TestLoad_Tools_PerSkill_Shorthand(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    tools:
+      - gh
+      - tree-sitter
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Skills) != 1 {
+		t.Fatalf("want 1 skill, got %d", len(cfg.Skills))
+	}
+	if got := len(cfg.Skills[0].Tools); got != 2 {
+		t.Fatalf("want 2 skill tools, got %d", got)
+	}
+	if cfg.Skills[0].Tools[0].Name != "gh" {
+		t.Errorf("skill tool[0] = %q", cfg.Skills[0].Tools[0].Name)
+	}
+}
+
+func TestLoad_Tools_PerSkill_FullMap(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    tools:
+      - name: tree-sitter
+        hint: "brew install tree-sitter"
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	tools := cfg.Skills[0].Tools
+	if len(tools) != 1 || tools[0].Name != "tree-sitter" || tools[0].Hint != "brew install tree-sitter" {
+		t.Errorf("skill tool = %+v", tools)
+	}
+}
+
+func TestLoad_Tools_MissingName_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+tools:
+  - hint: "nameless"
+`)
+	if _, err := Load(p); err == nil {
+		t.Fatal("expected validation error for tool without name")
+	}
+}
+
+func TestLoad_Tools_InvalidNodeKind_Rejected(t *testing.T) {
+	// A list-of-list is a sequence under a sequence; each sub-item is rejected
+	// by ConfigTool.UnmarshalYAML because it is neither scalar nor mapping.
+	p := writeYAML(t, `
+tools:
+  - [gh]
+`)
+	if _, err := Load(p); err == nil {
+		t.Fatal("expected error for non-scalar/non-mapping tool entry")
+	}
+}
+
 // Ensure fmt is used (suppress unused import).
 var _ = fmt.Sprintf
