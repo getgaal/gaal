@@ -868,6 +868,78 @@ func TestMergeFrom_MCPsDeduplicated(t *testing.T) {
 	}
 }
 
+func TestMergeFrom_ToolsUpsertByName(t *testing.T) {
+	lower := &Config{Tools: []ConfigTool{
+		{Name: "gh", Hint: "user-hint"},
+		{Name: "fnm"},
+	}}
+	higher := &Config{Tools: []ConfigTool{
+		{Name: "gh", Hint: "workspace-hint"}, // same name → replaces
+		{Name: "rtk", Hint: "cargo install rtk"},
+	}}
+
+	merged := &Config{}
+	merged.mergeFrom(lower, ScopeUser)
+	merged.mergeFrom(higher, ScopeWorkspace)
+
+	if len(merged.Tools) != 3 {
+		t.Fatalf("want 3 tools, got %d: %+v", len(merged.Tools), merged.Tools)
+	}
+	// gh should carry the higher-priority hint.
+	var ghHint string
+	for _, tl := range merged.Tools {
+		if tl.Name == "gh" {
+			ghHint = tl.Hint
+		}
+	}
+	if ghHint != "workspace-hint" {
+		t.Errorf("gh hint = %q, want workspace-hint", ghHint)
+	}
+}
+
+func TestLoad_ToolsDeduplicatedWithinFile(t *testing.T) {
+	p := writeYAML(t, `
+tools:
+  - name: gh
+    hint: first
+  - name: gh
+    hint: second
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Tools) != 1 {
+		t.Fatalf("want 1 tool after dedup, got %d", len(cfg.Tools))
+	}
+	if cfg.Tools[0].Hint != "first" {
+		t.Errorf("kept hint = %q, want first (first-occurrence wins)", cfg.Tools[0].Hint)
+	}
+}
+
+func TestMergeFrom_SkillLevelToolsCarriedThrough(t *testing.T) {
+	// When a higher-priority level replaces a skill entry by Source, the
+	// replacement's nested Tools come along with it (no special-case needed
+	// — skill upsert already replaces the whole entry).
+	lower := &Config{Skills: []ConfigSkill{
+		{Source: "owner/repo", Tools: []ConfigTool{{Name: "old"}}},
+	}}
+	higher := &Config{Skills: []ConfigSkill{
+		{Source: "owner/repo", Tools: []ConfigTool{{Name: "new1"}, {Name: "new2"}}},
+	}}
+	merged := &Config{}
+	merged.mergeFrom(lower, ScopeUser)
+	merged.mergeFrom(higher, ScopeWorkspace)
+
+	if len(merged.Skills) != 1 {
+		t.Fatalf("want 1 skill, got %d", len(merged.Skills))
+	}
+	got := merged.Skills[0].Tools
+	if len(got) != 2 || got[0].Name != "new1" || got[1].Name != "new2" {
+		t.Errorf("skill tools = %+v, want [new1, new2]", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // LoadChain + ConfigLevels
 // ---------------------------------------------------------------------------

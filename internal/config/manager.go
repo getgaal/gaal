@@ -289,13 +289,23 @@ func (c *Config) mergeFrom(src *Config, scope ConfigScope) {
 			c.MCPs = append(c.MCPs, mc)
 		}
 	}
+
+	for _, tl := range src.Tools {
+		if i := indexOf(c.Tools, func(t ConfigTool) bool { return t.Name == tl.Name }); i >= 0 {
+			c.Tools[i] = tl // higher-priority src wins
+		} else {
+			c.Tools = append(c.Tools, tl)
+		}
+	}
 }
 
 // deduplicate removes duplicate entries within this Config, keeping the first
-// occurrence. Skills are keyed by Source; MCPs are keyed by Name.
+// occurrence. Skills are keyed by Source; MCPs are keyed by Name; Tools are
+// keyed by Name.
 func (c *Config) deduplicate() {
 	c.Skills = deduplicate(c.Skills, func(s ConfigSkill) string { return s.Source })
 	c.MCPs = deduplicate(c.MCPs, func(m ConfigMcp) string { return m.Name })
+	c.Tools = deduplicate(c.Tools, func(t ConfigTool) string { return t.Name })
 }
 
 func (c *Config) validate() error {
