@@ -36,6 +36,7 @@ type (
 
 // Re-exported constants from the render sub-package.
 const (
+	FormatText  OutputFormat = render.FormatText
 	FormatTable OutputFormat = render.FormatTable
 	FormatJSON  OutputFormat = render.FormatJSON
 

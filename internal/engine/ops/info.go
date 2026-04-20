@@ -35,19 +35,34 @@ func Info(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps 
 
 	w := os.Stdout
 
-	if format == render.FormatJSON {
+	switch format {
+	case render.FormatJSON:
 		return renderInfoJSON(w, pkg, filter, report)
+	case render.FormatTable:
+		switch pkg {
+		case "repo":
+			return renderRepoInfo(w, cfg.Repositories, report.Repositories, filter)
+		case "skill":
+			return renderSkillInfo(w, cfg.Skills, report.Skills, filter)
+		case "mcp":
+			return renderMCPInfo(w, cfg.MCPs, report.MCPs, filter)
+		case "agent":
+			return renderAgentInfo(w, report.Agents, filter)
+		default:
+			return fmt.Errorf("unknown package type %q (want: repo, skill, mcp, agent)", pkg)
+		}
 	}
 
+	// Default: text format.
 	switch pkg {
 	case "repo":
-		return renderRepoInfo(w, cfg.Repositories, report.Repositories, filter)
+		return renderRepoInfoText(w, cfg.Repositories, report.Repositories, filter)
 	case "skill":
-		return renderSkillInfo(w, cfg.Skills, report.Skills, filter)
+		return renderSkillInfoText(w, cfg.Skills, report.Skills, filter, home, workDir)
 	case "mcp":
-		return renderMCPInfo(w, cfg.MCPs, report.MCPs, filter)
+		return renderMCPInfoText(w, cfg.MCPs, report.MCPs, filter)
 	case "agent":
-		return renderAgentInfo(w, report.Agents, filter)
+		return renderAgentInfoText(w, report.Agents, filter)
 	default:
 		return fmt.Errorf("unknown package type %q (want: repo, skill, mcp, agent)", pkg)
 	}

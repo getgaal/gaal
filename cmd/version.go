@@ -22,12 +22,14 @@ var versionCmd = &cobra.Command{
 	Annotations: map[string]string{"config": "optional"},
 	RunE: func(_ *cobra.Command, _ []string) error {
 		if outputFormat == "json" {
-			return json.NewEncoder(os.Stdout).Encode(struct {
-				Version   string `json:"version"`
-				BuildTime string `json:"build_time"`
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(struct {
+				Version string `json:"version"`
+				Built   string `json:"built"`
 			}{Version, BuildTime})
 		}
-		fmt.Printf("gaal %s (built: %s)\n", Version, BuildTime)
+		fmt.Printf("gaal %s\nbuilt %s\n", Version, BuildTime)
 		return nil
 	},
 }

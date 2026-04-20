@@ -55,6 +55,11 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 		if cmd.HasParent() && cmd.Parent().Name() == "completion" {
 			return nil
 		}
+		switch outputFormat {
+		case "text", "table", "json":
+		default:
+			return fmt.Errorf("invalid --output value %q (want: text, table, json)", outputFormat)
+		}
 		if !noBanner && outputFormat != "json" {
 			printBanner()
 		}
@@ -119,7 +124,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&noBanner, "no-banner", false, "suppress the ASCII-art banner")
 	rootCmd.PersistentFlags().StringVar(&sandboxDir, "sandbox", "", "redirect all writes to this directory (safe for tests)")
 	rootCmd.PersistentFlags().StringVar(&logFile, "log-file", "", "write structured JSON logs to this file (in addition to console)")
-	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "table", "output format: table, json")
+	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "text", "output format: text, table, json")
 }
 
 // applyOptions builds engine.Options, applying sandbox mode when requested.
