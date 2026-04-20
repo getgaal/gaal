@@ -17,8 +17,8 @@ var (
 
 var migrateCmd = &cobra.Command{
 	Use:   "migrate --to community <url>",
-	Short: "Migrate this Lite configuration to a gaal Community Edition instance",
-	Long: `Migrate this Lite configuration to a gaal Community Edition instance.
+	Short: "Migrate this configuration to a gaal Community Edition instance",
+	Long: `Migrate this configuration to a gaal Community Edition instance.
 
 Reads the local gaal configuration, validates it, and pushes it to the
 specified Community URL as versioned configs.

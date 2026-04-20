@@ -331,8 +331,9 @@ Use `gaal agents` to list all registered agents (built-in + custom) and verify y
 
 ## Graduation path to gaal Community
 
-When your team outgrows single-user Lite (shared configs, drift detection,
-approval workflows), gaal Community Edition picks up where Lite leaves off.
+When your team outgrows single-user gaal (shared configs, drift detection,
+approval workflows), gaal Community Edition picks up where the standalone
+CLI leaves off.
 
 The migration command validates your current configuration and confirms it is
 ready to push to a Community instance:
@@ -367,7 +368,7 @@ See [`docs/architecture.md`](docs/architecture.md) for a full description of the
 ### Quick install (macOS / Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal-lite/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal/main/scripts/install.sh | sh
 ```
 
 Installs the latest release binary to `~/.local/bin/gaal`. Pin a specific
@@ -375,13 +376,13 @@ version with `VERSION=v0.1.2`, or pick a different directory with
 `INSTALL_DIR=/usr/local/bin`.
 
 Pass `GAAL_INSTALL_DEBUG=1` for verbose output, or run
-`curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal-lite/main/scripts/install.sh | sh -s -- --help`
+`curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal/main/scripts/install.sh | sh -s -- --help`
 to see all options.
 
 ### With Go
 
 ```bash
-go install github.com/gmg-inc/gaal-lite@latest
+go install github.com/gmg-inc/gaal@latest
 ```
 
 ### From source
@@ -389,8 +390,8 @@ go install github.com/gmg-inc/gaal-lite@latest
 **Prerequisites:** Go 1.26+
 
 ```bash
-git clone https://github.com/gmg-inc/gaal-lite.git
-cd gaal-lite
+git clone https://github.com/gmg-inc/gaal.git
+cd gaal
 make build
 ```
 

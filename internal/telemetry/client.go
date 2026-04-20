@@ -12,7 +12,7 @@ import (
 var plausibleEndpoint = "https://usage.getgaal.com/api/event"
 
 const (
-	plausibleDomain = "gaal-lite"
+	plausibleDomain = "gaal"
 	sendTimeout     = 5 * time.Second
 )
 

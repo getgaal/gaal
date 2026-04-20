@@ -122,7 +122,7 @@ func Track(command string) {
 		return
 	}
 	props := copyProps(baseProps)
-	url := "app://gaal-lite/cmd/" + command
+	url := "app://gaal/cmd/" + command
 	slog.Debug("telemetry", "event", "pageview", "url", url, "props", props)
 	pending.Add(1)
 	go func() {
@@ -149,7 +149,7 @@ func TrackCustom(name string, extra map[string]string) {
 	for k, v := range extra {
 		props[k] = v
 	}
-	url := "app://gaal-lite/custom/" + name
+	url := "app://gaal/custom/" + name
 	slog.Debug("telemetry", "event", name, "url", url, "props", props)
 	pending.Add(1)
 	go func() {
