@@ -80,9 +80,10 @@ func renderDoctorTable(report *ops.DoctorReport) {
 		"telemetry": "Telemetry",
 		"skills":    "Skills",
 		"mcps":      "MCP",
+		"tools":     "Tools",
 		"agents":    "Agents",
 	}
-	sections := []string{"config", "telemetry", "skills", "mcps", "agents"}
+	sections := []string{"config", "telemetry", "skills", "mcps", "tools", "agents"}
 	for _, section := range sections {
 		var sectionFindings []ops.Finding
 		for _, f := range report.Findings {

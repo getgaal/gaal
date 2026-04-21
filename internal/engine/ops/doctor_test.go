@@ -459,3 +459,91 @@ func TestDoctorSkillSources_DuplicateSource(t *testing.T) {
 		t.Errorf("expected warning for duplicate skill source; findings: %+v", report.Findings)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Tools section
+// ---------------------------------------------------------------------------
+
+func toolsFindings(findings []Finding) []Finding {
+	var out []Finding
+	for _, f := range findings {
+		if f.Section == "tools" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func TestDoctorTools_NoToolsDeclared_NoSection(t *testing.T) {
+	cfg := &config.Config{}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+	if got := toolsFindings(report.Findings); len(got) != 0 {
+		t.Errorf("expected no tools findings, got %+v", got)
+	}
+}
+
+func TestDoctorTools_Missing_WarnsWithHint(t *testing.T) {
+	cfg := &config.Config{
+		Tools: []config.ConfigTool{
+			{Name: "gaal-definitely-missing-xyz", Hint: "cargo install gaal-ghost"},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+	got := toolsFindings(report.Findings)
+	if len(got) != 1 {
+		t.Fatalf("want 1 tools finding, got %d: %+v", len(got), got)
+	}
+	if got[0].Severity != SeverityWarning {
+		t.Errorf("severity = %q, want warning", got[0].Severity)
+	}
+	if !strings.Contains(got[0].Message, "missing from PATH") {
+		t.Errorf("message missing 'missing from PATH': %q", got[0].Message)
+	}
+	if !strings.Contains(got[0].Message, "required by: workspace") {
+		t.Errorf("message missing attribution: %q", got[0].Message)
+	}
+	if !strings.Contains(got[0].Message, "cargo install gaal-ghost") {
+		t.Errorf("message missing hint: %q", got[0].Message)
+	}
+	if report.ExitCode != 1 {
+		t.Errorf("exit code = %d, want 1 (warning)", report.ExitCode)
+	}
+}
+
+func TestDoctorTools_PresentAndMissing(t *testing.T) {
+	cfg := &config.Config{
+		Tools: []config.ConfigTool{
+			{Name: "go"},                          // guaranteed present
+			{Name: "gaal-definitely-missing-xyz"}, // guaranteed missing
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+	got := toolsFindings(report.Findings)
+	if len(got) != 2 {
+		t.Fatalf("want 2 tools findings, got %d: %+v", len(got), got)
+	}
+	if got[0].Severity != SeverityInfo || !strings.Contains(got[0].Message, "on PATH:") {
+		t.Errorf("first finding = %+v, want info with 'on PATH:'", got[0])
+	}
+	if got[1].Severity != SeverityWarning {
+		t.Errorf("second severity = %q, want warning", got[1].Severity)
+	}
+}
+
+func TestDoctorTools_PerSkillAttribution(t *testing.T) {
+	cfg := &config.Config{
+		Skills: []config.ConfigSkill{
+			{Source: "owner/repo", Tools: []config.ConfigTool{
+				{Name: "gaal-definitely-missing-xyz"},
+			}},
+		},
+	}
+	report := RunDoctor(cfg, DoctorOptions{Offline: true})
+	got := toolsFindings(report.Findings)
+	if len(got) != 1 {
+		t.Fatalf("want 1 tools finding, got %d", len(got))
+	}
+	if !strings.Contains(got[0].Message, "required by: skill: owner/repo") {
+		t.Errorf("message lacks skill attribution: %q", got[0].Message)
+	}
+}

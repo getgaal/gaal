@@ -14,6 +14,7 @@ import (
 	"gaal/internal/core/agent"
 	"gaal/internal/skill"
 	"gaal/internal/telemetry"
+	"gaal/internal/tools"
 )
 
 // Severity indicates the importance level of a doctor finding.
@@ -66,6 +67,7 @@ func RunDoctor(cfg *config.Config, opts DoctorOptions) *DoctorReport {
 	findings = append(findings, checkTelemetry(cfg)...)
 	findings = append(findings, checkSkillSources(cfg, opts.Offline)...)
 	findings = append(findings, checkMCPTargets(cfg)...)
+	findings = append(findings, checkTools(cfg)...)
 	findings = append(findings, checkAgents()...)
 
 	exitCode := 0
@@ -357,4 +359,39 @@ func countInstalledAgents() int {
 		}
 	}
 	return count
+}
+
+// checkTools reports, for each tool declared at the top level or under a
+// skill, whether it is available on PATH. Missing tools produce warnings
+// (doctor exit code becomes 1); present tools produce info findings.
+// Returns nil when no tools are declared anywhere so the Tools section
+// stays hidden for configs that don't use the feature.
+func checkTools(cfg *config.Config) []Finding {
+	entries := tools.Collect(cfg)
+	if len(entries) == 0 {
+		return nil
+	}
+
+	findings := make([]Finding, 0, len(entries))
+	for _, st := range tools.Check(entries) {
+		if st.Found {
+			findings = append(findings, Finding{
+				Section:  "tools",
+				Severity: SeverityInfo,
+				Message:  fmt.Sprintf("%s (on PATH: %s)", st.Entry.Tool.Name, st.Resolved),
+			})
+			continue
+		}
+		msg := fmt.Sprintf("%s — missing from PATH (required by: %s", st.Entry.Tool.Name, st.Entry.Source)
+		if st.Entry.Tool.Hint != "" {
+			msg += fmt.Sprintf("; hint: %s", st.Entry.Tool.Hint)
+		}
+		msg += ")"
+		findings = append(findings, Finding{
+			Section:  "tools",
+			Severity: SeverityWarning,
+			Message:  msg,
+		})
+	}
+	return findings
 }
