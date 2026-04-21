@@ -10,6 +10,7 @@ import (
 type OutputFormat string
 
 const (
+	FormatText  OutputFormat = "text"
 	FormatTable OutputFormat = "table"
 	FormatJSON  OutputFormat = "json"
 )
@@ -23,12 +24,14 @@ type Renderer interface {
 func NewRenderer(f OutputFormat) (Renderer, error) {
 	slog.Debug("creating renderer", "format", f)
 	switch f {
+	case FormatText, "":
+		return &textRenderer{}, nil
 	case FormatTable:
 		return &tableRenderer{}, nil
 	case FormatJSON:
 		return &jsonRenderer{}, nil
 	default:
-		return nil, fmt.Errorf("unknown output format %q (want: table, json)", f)
+		return nil, fmt.Errorf("unknown output format %q (want: text, table, json)", f)
 	}
 }
 
@@ -41,11 +44,13 @@ type PlanRenderer interface {
 func NewPlanRenderer(f OutputFormat) (PlanRenderer, error) {
 	slog.Debug("creating plan renderer", "format", f)
 	switch f {
+	case FormatText, "":
+		return &planTextRenderer{}, nil
 	case FormatTable:
 		return &planTableRenderer{}, nil
 	case FormatJSON:
 		return &planJSONRenderer{}, nil
 	default:
-		return nil, fmt.Errorf("unknown output format %q (want: table, json)", f)
+		return nil, fmt.Errorf("unknown output format %q (want: text, table, json)", f)
 	}
 }

@@ -60,10 +60,14 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	eng := engine.NewWithOptions(cfg.Config, engineOpts)
 	report := eng.Doctor(ops.DoctorOptions{Offline: doctorOffline, Levels: cfg.Levels})
 
-	if outputFormat == "json" {
+	switch outputFormat {
+	case "json":
 		return renderDoctorJSON(report, !doctorNoUpsell)
+	case "table":
+		renderDoctorTable(report)
+	default:
+		renderDoctorText(report)
 	}
-	renderDoctorTable(report)
 	if !doctorNoUpsell {
 		renderCommunityBlock()
 	}
@@ -72,6 +76,66 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 		os.Exit(report.ExitCode)
 	}
 	return nil
+}
+
+// renderDoctorText emits the section-per-line layout shown in docs/content/cli/doctor.mdx.
+func renderDoctorText(report *ops.DoctorReport) {
+	sections := []struct {
+		id, label string
+	}{
+		{"config", "config"},
+		{"telemetry", "telemetry"},
+		{"skills", "sources"},
+		{"mcps", "mcps"},
+		{"tools", "tools"},
+		{"agents", "agents"},
+	}
+
+	for _, s := range sections {
+		var findings []ops.Finding
+		for _, f := range report.Findings {
+			if f.Section == s.id {
+				findings = append(findings, f)
+			}
+		}
+		if len(findings) == 0 {
+			continue
+		}
+		fmt.Printf("%s:\n", s.label)
+		for _, f := range findings {
+			var icon string
+			switch f.Severity {
+			case ops.SeverityInfo:
+				icon = "✓"
+			case ops.SeverityWarning:
+				icon = "!"
+			case ops.SeverityError:
+				icon = "✗"
+			}
+			fmt.Printf("  %s %s\n", icon, f.Message)
+		}
+	}
+
+	// Summary line, e.g. "3 agents installed, 0 misconfigured".
+	// `checkAgents` emits one info finding worded "N agent(s) detected" —
+	// parse the count from it, and count error findings as misconfigured.
+	installed, misconfigured := 0, 0
+	for _, f := range report.Findings {
+		if f.Section != "agents" {
+			continue
+		}
+		switch f.Severity {
+		case ops.SeverityInfo:
+			var n int
+			if _, err := fmt.Sscanf(f.Message, "%d ", &n); err == nil {
+				installed = n
+			}
+		case ops.SeverityError:
+			misconfigured++
+		}
+	}
+	fmt.Println()
+	fmt.Printf("%d agents installed, %d misconfigured\n", installed, misconfigured)
 }
 
 func renderDoctorTable(report *ops.DoctorReport) {

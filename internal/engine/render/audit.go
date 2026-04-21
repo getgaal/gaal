@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -17,10 +18,14 @@ type AuditRenderer interface {
 
 // NewAuditRenderer returns the appropriate AuditRenderer for the given format.
 func NewAuditRenderer(format OutputFormat) AuditRenderer {
-	if format == FormatJSON {
+	switch format {
+	case FormatJSON:
 		return &auditJSONRenderer{}
+	case FormatTable:
+		return &auditTableRenderer{}
+	default:
+		return &auditTextRenderer{}
 	}
-	return &auditTableRenderer{}
 }
 
 // ── JSON renderer ────────────────────────────────────────────────────────────
@@ -32,6 +37,104 @@ func (j *auditJSONRenderer) Render(w io.Writer, r *AuditReport) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(r)
+}
+
+// ── Text renderer ───────────────────────────────────────────────────────────
+//
+// Matches the sample in cli/audit.mdx:
+//
+//	discovered:
+//	  skills (project)
+//	    .claude/skills/code-review     (claude-code)
+//	  mcps
+//	    ~/.config/claude/claude_desktop_config.json
+//	      filesystem, git, github
+
+type auditTextRenderer struct{}
+
+func (tr *auditTextRenderer) Render(w io.Writer, r *AuditReport) error {
+	slog.Debug("rendering audit text output")
+
+	fmt.Fprintln(w, "discovered:")
+	tr.skillGroups(w, r.Skills, r.Home)
+	tr.mcpGroups(w, r.MCPs, r.Home)
+	return nil
+}
+
+func (tr *auditTextRenderer) skillGroups(w io.Writer, skills []AuditSkillEntry, home string) {
+	groups := map[string][]AuditSkillEntry{}
+	for _, s := range skills {
+		groups[s.Source] = append(groups[s.Source], s)
+	}
+
+	// Fixed order for stable output; labels mirror the docs example wording.
+	order := []struct {
+		key, label string
+	}{
+		{"project", "skills (project)"},
+		{"global", "skills (global)"},
+		{"package-manager", "skills (package manager)"},
+	}
+	for _, g := range order {
+		entries := groups[g.key]
+		if len(entries) == 0 {
+			continue
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+
+		pathWidth := 0
+		for _, e := range entries {
+			if n := len(shortenHome(e.Path, home)); n > pathWidth {
+				pathWidth = n
+			}
+		}
+
+		fmt.Fprintf(w, "  %s\n", g.label)
+		for _, e := range entries {
+			path := shortenHome(e.Path, home)
+			fmt.Fprintf(w, "    %s  (%s)\n", padText(path, pathWidth), e.Agent)
+		}
+	}
+}
+
+func (tr *auditTextRenderer) mcpGroups(w io.Writer, mcps []AuditMCPEntry, home string) {
+	if len(mcps) == 0 {
+		return
+	}
+
+	// Collapse entries by config file so the same file (reachable via several
+	// agents) renders once with the combined server list.
+	type fileGroup struct {
+		path    string
+		servers map[string]struct{}
+	}
+	byFile := map[string]*fileGroup{}
+	order := []string{}
+	for _, e := range mcps {
+		g, ok := byFile[e.ConfigFile]
+		if !ok {
+			g = &fileGroup{path: e.ConfigFile, servers: map[string]struct{}{}}
+			byFile[e.ConfigFile] = g
+			order = append(order, e.ConfigFile)
+		}
+		for _, s := range e.Servers {
+			g.servers[s] = struct{}{}
+		}
+	}
+
+	fmt.Fprintln(w, "  mcps")
+	for _, path := range order {
+		g := byFile[path]
+		servers := make([]string, 0, len(g.servers))
+		for s := range g.servers {
+			servers = append(servers, s)
+		}
+		sort.Strings(servers)
+		fmt.Fprintf(w, "    %s\n", shortenHome(g.path, home))
+		if len(servers) > 0 {
+			fmt.Fprintf(w, "      %s\n", strings.Join(servers, ", "))
+		}
+	}
 }
 
 // ── Table renderer ───────────────────────────────────────────────────────────

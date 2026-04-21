@@ -71,15 +71,87 @@ func runAgentList(eng *engine.Engine, w io.Writer, format engine.OutputFormat) e
 		entries = filtered
 	}
 
-	if format == engine.FormatJSON {
+	switch format {
+	case engine.FormatJSON:
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(struct {
 			Agents []render.AgentEntry `json:"agents"`
 		}{entries})
+	case engine.FormatTable:
+		return renderAgentsTable(w, entries)
+	default:
+		return renderAgentsText(w, entries)
+	}
+}
+
+// renderAgentsText prints the agent list as space-aligned columns matching
+// the sample in docs/content/cli/agents.mdx.
+func renderAgentsText(w io.Writer, entries []render.AgentEntry) error {
+	if len(entries) == 0 {
+		fmt.Fprintln(w, "no agents found")
+		return nil
 	}
 
-	return renderAgentsTable(w, entries)
+	headers := []string{"NAME", "INSTALLED", "PROJECT_SKILLS", "GLOBAL_SKILLS", "MCP_CONFIG"}
+	rows := make([][]string, 0, len(entries))
+	for _, e := range entries {
+		installed := "no"
+		if e.Installed {
+			installed = "yes"
+		}
+		mcpCfg := e.ProjectMCPConfigFile
+		if mcpCfg == "" {
+			mcpCfg = "—"
+		}
+		rows = append(rows, []string{
+			e.Name,
+			installed,
+			dashIfEmpty(e.ProjectSkillsDir),
+			dashIfEmpty(e.GlobalSkillsDir),
+			mcpCfg,
+		})
+	}
+
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = len(h)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if len(cell) > widths[i] {
+				widths[i] = len(cell)
+			}
+		}
+	}
+
+	printRow := func(cells []string) {
+		var b strings.Builder
+		for i, c := range cells {
+			if i > 0 {
+				b.WriteString("  ")
+			}
+			if i == len(cells)-1 {
+				b.WriteString(c)
+			} else {
+				b.WriteString(c)
+				b.WriteString(strings.Repeat(" ", widths[i]-len(c)))
+			}
+		}
+		fmt.Fprintln(w, b.String())
+	}
+	printRow(headers)
+	for _, row := range rows {
+		printRow(row)
+	}
+	return nil
+}
+
+func dashIfEmpty(s string) string {
+	if s == "" {
+		return "—"
+	}
+	return s
 }
 
 func renderAgentsTable(w io.Writer, entries []render.AgentEntry) error {
@@ -118,15 +190,100 @@ func runAgentDetail(eng *engine.Engine, w io.Writer, name string, format engine.
 		return err
 	}
 
-	if format == engine.FormatJSON {
+	switch format {
+	case engine.FormatJSON:
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(struct {
 			Agent *render.AgentDetail `json:"agent"`
 		}{detail})
+	case engine.FormatTable:
+		return renderAgentDetailCard(w, detail)
+	default:
+		return renderAgentDetailText(w, detail)
+	}
+}
+
+// renderAgentDetailText prints the agent detail as a plain indented block
+// matching docs/content/cli/agents.mdx (detailed view).
+func renderAgentDetailText(w io.Writer, d *render.AgentDetail) error {
+	label := "not installed"
+	if d.Installed {
+		label = "installed"
+	}
+	fmt.Fprintf(w, "%s (%s)\n", d.Name, label)
+
+	source := d.Source
+	if source == "" {
+		source = "built-in"
+	}
+	if source == "builtin" {
+		source = "built-in"
+	}
+	fmt.Fprintf(w, "  %-16s %s\n", "source:", source)
+
+	byLabel := map[string][]render.AgentPath{}
+	labelOrder := []string{}
+	for _, p := range d.Paths {
+		if _, ok := byLabel[p.Label]; !ok {
+			labelOrder = append(labelOrder, p.Label)
+		}
+		byLabel[p.Label] = append(byLabel[p.Label], p)
 	}
 
-	return renderAgentDetailCard(w, detail)
+	if paths := byLabel["project"]; len(paths) > 0 {
+		fmt.Fprintf(w, "  %-16s %s\n", "project skills:", paths[0].Path)
+	}
+	if paths := byLabel["global"]; len(paths) > 0 {
+		fmt.Fprintf(w, "  %-16s %s\n", "global skills:", paths[0].Path)
+	}
+
+	if d.MCPSupport {
+		marker := "(not found)"
+		if d.MCPExists {
+			marker = "(exists)"
+		}
+		fmt.Fprintf(w, "  %-16s %s %s\n", "mcp config:", d.MCPConfig, marker)
+	}
+
+	writeExtraPaths := func(label string, paths []render.AgentPath) {
+		if len(paths) <= 1 {
+			return
+		}
+		extras := make([]string, 0, len(paths)-1)
+		for _, p := range paths[1:] {
+			extras = append(extras, p.Path)
+		}
+		fmt.Fprintf(w, "  audit search (%s):\n    %s\n", label, strings.Join(extras, ", "))
+	}
+	writeExtraPaths("project", byLabel["project"])
+	writeExtraPaths("global", byLabel["global"])
+
+	if pm := byLabel["package-manager"]; len(pm) > 0 {
+		paths := make([]string, 0, len(pm))
+		for _, p := range pm {
+			paths = append(paths, p.Path)
+		}
+		fmt.Fprintf(w, "  package-manager search:\n    %s\n", strings.Join(paths, ", "))
+	}
+	// Keep label order deterministic even when an unexpected label appears.
+	for _, name := range labelOrder {
+		switch name {
+		case "project", "global", "package-manager":
+			continue
+		}
+		paths := byLabel[name]
+		list := make([]string, 0, len(paths))
+		for _, p := range paths {
+			list = append(list, p.Path)
+		}
+		fmt.Fprintf(w, "  %s:\n    %s\n", name, strings.Join(list, ", "))
+	}
+
+	for _, warn := range d.Warnings {
+		fmt.Fprintf(w, "  warning: %s\n", warn)
+	}
+	return nil
 }
 
 func renderAgentDetailCard(w io.Writer, d *render.AgentDetail) error {
