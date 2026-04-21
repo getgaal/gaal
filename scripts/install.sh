@@ -1,12 +1,12 @@
 #!/bin/sh
-# gaal-lite installer.
+# gaal installer.
 #
 # Downloads the latest release of gaal from GitHub Releases, verifies its
 # SHA-256 checksum against the release's SHA256SUMS file, and installs it
 # to $INSTALL_DIR (default $HOME/.local/bin).
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal-lite/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal/main/scripts/install.sh | sh
 #   curl -fsSL ... | VERSION=v0.1.2 sh
 #   curl -fsSL ... | INSTALL_DIR=/usr/local/bin sh
 #
@@ -31,7 +31,7 @@ if [ "${GAAL_INSTALL_DEBUG:-}" = "1" ]; then
 fi
 
 # --- constants ---------------------------------------------------------------
-REPO="gmg-inc/gaal-lite"
+REPO="gmg-inc/gaal"
 BIN_NAME="gaal"
 DEFAULT_INSTALL_DIR="$HOME/.local/bin"
 
@@ -43,11 +43,11 @@ die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 # --- arg parsing -------------------------------------------------------------
 usage() {
   cat <<'EOF'
-gaal-lite installer
+gaal installer
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal-lite/main/scripts/install.sh | sh
-  curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal-lite/main/scripts/install.sh | VERSION=v0.1.2 sh
+  curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal/main/scripts/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal/main/scripts/install.sh | VERSION=v0.1.2 sh
 
 Environment:
   VERSION              Release tag to install (default: latest from GitHub Releases)
@@ -64,7 +64,7 @@ Examples:
   # System-wide install (will prompt for sudo on install)
   curl -fsSL <URL> | INSTALL_DIR=/usr/local/bin sh
 
-Report issues: https://github.com/gmg-inc/gaal-lite/issues
+Report issues: https://github.com/gmg-inc/gaal/issues
 EOF
 }
 

@@ -25,12 +25,12 @@ func TestSendPageview(t *testing.T) {
 
 	c := &client{
 		endpoint:  srv.URL,
-		userAgent: "gaal-lite/test",
+		userAgent: "gaal/test",
 	}
 
 	p := plausiblePayload{
 		Name:   "pageview",
-		URL:    "app://gaal-lite/cmd/install",
+		URL:    "app://gaal/cmd/install",
 		Domain: plausibleDomain,
 		Props:  map[string]string{"version": "1.2.3"},
 	}
@@ -40,8 +40,8 @@ func TestSendPageview(t *testing.T) {
 	}
 
 	// Verify User-Agent header
-	if got := capturedReq.Header.Get("User-Agent"); got != "gaal-lite/test" {
-		t.Errorf("User-Agent = %q, want %q", got, "gaal-lite/test")
+	if got := capturedReq.Header.Get("User-Agent"); got != "gaal/test" {
+		t.Errorf("User-Agent = %q, want %q", got, "gaal/test")
 	}
 
 	// Verify Content-Type header
@@ -58,8 +58,8 @@ func TestSendPageview(t *testing.T) {
 	if got.Name != "pageview" {
 		t.Errorf("Name = %q, want %q", got.Name, "pageview")
 	}
-	if got.URL != "app://gaal-lite/cmd/install" {
-		t.Errorf("URL = %q, want %q", got.URL, "app://gaal-lite/cmd/install")
+	if got.URL != "app://gaal/cmd/install" {
+		t.Errorf("URL = %q, want %q", got.URL, "app://gaal/cmd/install")
 	}
 	if got.Domain != plausibleDomain {
 		t.Errorf("Domain = %q, want %q", got.Domain, plausibleDomain)
@@ -84,12 +84,12 @@ func TestSendCustomEvent(t *testing.T) {
 
 	c := &client{
 		endpoint:  srv.URL,
-		userAgent: "gaal-lite/test",
+		userAgent: "gaal/test",
 	}
 
 	p := plausiblePayload{
 		Name:   "Install",
-		URL:    "app://gaal-lite/cmd/install",
+		URL:    "app://gaal/cmd/install",
 		Domain: plausibleDomain,
 	}
 
@@ -115,12 +115,12 @@ func TestSendHandlesServerError(t *testing.T) {
 
 	c := &client{
 		endpoint:  srv.URL,
-		userAgent: "gaal-lite/test",
+		userAgent: "gaal/test",
 	}
 
 	p := plausiblePayload{
 		Name:   "pageview",
-		URL:    "app://gaal-lite/cmd/install",
+		URL:    "app://gaal/cmd/install",
 		Domain: plausibleDomain,
 	}
 

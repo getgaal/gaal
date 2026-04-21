@@ -61,8 +61,8 @@ func TestTrackSendsPageviewWhenEnabled(t *testing.T) {
 	if p.Name != "pageview" {
 		t.Errorf("Name = %q, want %q", p.Name, "pageview")
 	}
-	if p.URL != "app://gaal-lite/cmd/install" {
-		t.Errorf("URL = %q, want %q", p.URL, "app://gaal-lite/cmd/install")
+	if p.URL != "app://gaal/cmd/install" {
+		t.Errorf("URL = %q, want %q", p.URL, "app://gaal/cmd/install")
 	}
 	if p.Domain != plausibleDomain {
 		t.Errorf("Domain = %q, want %q", p.Domain, plausibleDomain)

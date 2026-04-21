@@ -130,7 +130,7 @@ skills:
 }
 
 func TestLoad_SkillAgents_NestedListIsFlattened(t *testing.T) {
-	// Regression for https://github.com/gmg-inc/gaal-lite/issues/13
+	// Regression for https://github.com/gmg-inc/gaal/issues/13
 	// A list-of-lists is a common hand-written mistake (mentally copying the
 	// canonical `agents: ["*"]` example under a list bullet).
 	p := writeYAML(t, `
