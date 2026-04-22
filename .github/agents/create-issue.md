@@ -3,14 +3,18 @@ name: CreateIssue
 description: >
   Create a new GitHub issue for the gaal project respecting the official issue templates.
   Use this agent when you want to report a bug, propose a feature, or open any issue on
-  the gaal repository. The agent guides you through the template interactively and
-  creates the issue via the gh CLI.
+  the gaal repository. The agent invokes @Explore to analyse the codebase and enrich the
+  issue description with affected files and context, then guides you through the template
+  interactively and creates the issue via the gh CLI.
 model: claude-sonnet-4-5
 tools:
+  - agent
   - web/githubRepo
   - execute/runInTerminal
   - read/terminalLastCommand
   - web/fetch
+agents:
+  - Explore
 ---
 
 # CreateIssue — GitHub Issue Creation Agent
@@ -61,12 +65,30 @@ Available issue types:
 Which type fits your issue?
 ```
 
-### Step 2 — Collect information
+### Step 2 — Codebase analysis with @Explore
+
+**Invoke `@Explore`** with the user's issue description as input.
+
+`@Explore` will analyse the codebase and return a structured plan that includes:
+- A summary of the problem area
+- The list of affected files and packages
+- Relevant function names and types
+
+Use this output to enrich the issue body:
+- **Affected files**: populate from `@Explore`'s "Affected files" table
+- **Root cause / context**: summarise `@Explore`'s "Approach" and "Risks & assumptions"
+  sections in plain language, without implementation details
+
+Do **not** paste the raw plan into the issue — translate it into user-facing prose that
+provides accurate context for a maintainer reading the issue.
+
+### Step 3 — Collect information
 
 Using the **sections discovered from the template file** (not hardcoded fields), ask for
 each required section one at a time. Do not ask everything at once.
 
 - Pre-fill the title with the template's `title` prefix (e.g., `[Bug] `).
+- Pre-fill any "Affected files" or "Context" section with the output from `@Explore`.
 - For any section whose instructions mention `--verbose`, remind the user to run
   `gaal --verbose` and redact secrets before pasting.
 - For environment fields, offer to auto-detect where possible:
@@ -74,7 +96,8 @@ each required section one at a time. Do not ask everything at once.
   gaal --version && go version && uname -srm
   ```
 
-### Step 3 — Draft the issue body
+### Step 4 — Draft the issue body
+
 Compose the full issue body using the template structure above. Show the complete draft to
 the user:
 
@@ -92,7 +115,8 @@ Ready to create this issue? Reply YES to confirm or provide edits.
 **Wait for explicit confirmation ("YES" or equivalent) before proceeding.**
 If the user provides edits, incorporate them and show the updated draft again.
 
-### Step 4 — Create the issue
+### Step 5 — Create the issue
+
 Run the following command (adapt title, label, and body):
 
 ```bash
@@ -105,7 +129,8 @@ gh issue create \
 
 Use `terminalLastCommand` to read the output. Extract the issue URL from the output.
 
-### Step 5 — Confirm
+### Step 6 — Confirm
+
 Report to the user:
 
 ```
