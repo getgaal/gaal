@@ -58,15 +58,15 @@ type ConfigTool struct {
 
 // ConfigMcp defines an MCP server configuration entry.
 type ConfigMcp struct {
-	Name   string         `yaml:"name"             json:"name"              jsonschema:"description=Unique name identifying this MCP server entry"                                       validate:"required"`
-	Source string         `yaml:"source,omitempty" json:"source,omitempty"  jsonschema:"description=URL to download a remote JSON server config (mutually exclusive with inline)"          validate:"required_without=Inline"`
+	Name   string `yaml:"name"             json:"name"              jsonschema:"description=Unique name identifying this MCP server entry"                                       validate:"required"`
+	Source string `yaml:"source,omitempty" json:"source,omitempty"  jsonschema:"description=URL to download a remote JSON server config (mutually exclusive with inline)"          validate:"required_without=Inline"`
 	// Target is deprecated: the path is now resolved automatically from the agent registry.
 	// Set agents instead. When both target and agents are set, target takes precedence
 	// and a deprecation warning is logged.
-	Target string         `yaml:"target,omitempty" json:"target,omitempty"  jsonschema:"description=Deprecated: use agents instead. Path to the JSON file to write or merge into"`
+	Target string `yaml:"target,omitempty" json:"target,omitempty"  jsonschema:"description=Deprecated: use agents instead. Path to the JSON file to write or merge into"`
 	// Agents lists the target agent identifiers.
 	// Use ["*"] to target all agents that have a non-empty MCP config for the requested scope.
-	Agents []string       `yaml:"agents,omitempty" json:"agents,omitempty"  jsonschema:"description=Target agent identifiers; use [\"*\"] to target all agents"`
+	Agents []string `yaml:"agents,omitempty" json:"agents,omitempty"  jsonschema:"description=Target agent identifiers; use [\"*\"] to target all agents"`
 	// Global controls which registry path is used:
 	//   false (default) -> project_mcp_config_file (workspace-scoped)
 	//   true            -> global_mcp_config_file   (user-global)
