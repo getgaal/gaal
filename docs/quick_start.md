@@ -6,23 +6,23 @@
 
 ## 1. Install
 
-Download the binary for your platform from the [latest release](https://github.com/gmg-inc/gaal/releases/latest):
+Download the binary for your platform from the [latest release](https://github.com/getgaal/gaal/releases/latest):
 
 ```bash
 # Linux (amd64)
-curl -Lo gaal https://github.com/gmg-inc/gaal/releases/latest/download/gaal-linux-amd64
+curl -Lo gaal https://github.com/getgaal/gaal/releases/latest/download/gaal-linux-amd64
 chmod +x gaal && sudo mv gaal /usr/local/bin/
 
 # macOS (Apple Silicon)
-curl -Lo gaal https://github.com/gmg-inc/gaal/releases/latest/download/gaal-darwin-arm64
+curl -Lo gaal https://github.com/getgaal/gaal/releases/latest/download/gaal-darwin-arm64
 chmod +x gaal && sudo mv gaal /usr/local/bin/
 
 # macOS (Intel)
-curl -Lo gaal https://github.com/gmg-inc/gaal/releases/latest/download/gaal-darwin-amd64
+curl -Lo gaal https://github.com/getgaal/gaal/releases/latest/download/gaal-darwin-amd64
 chmod +x gaal && sudo mv gaal /usr/local/bin/
 
 # Windows (amd64) — PowerShell
-Invoke-WebRequest -Uri https://github.com/gmg-inc/gaal/releases/latest/download/gaal-windows-amd64.exe -OutFile gaal.exe
+Invoke-WebRequest -Uri https://github.com/getgaal/gaal/releases/latest/download/gaal-windows-amd64.exe -OutFile gaal.exe
 ```
 
 Verify the installation:

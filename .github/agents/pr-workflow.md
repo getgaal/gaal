@@ -202,7 +202,7 @@ git push -u origin <branch-name>
 
 ```bash
 gh pr create \
-  --repo gmg-inc/gaal-lite \
+  --repo getgaal/gaal \
   --base main \
   --head <branch-name> \
   --title "<Conventional Commits title>" \
@@ -237,7 +237,7 @@ Report the PR URL to the user.
 🤖 Poll the PR state periodically or when the user asks for an update:
 
 ```bash
-gh pr view <PR-number> --repo gmg-inc/gaal-lite --json state,reviews,comments
+gh pr view <PR-number> --repo getgaal/gaal --json state,reviews,comments
 ```
 
 #### If the PR is merged → CLEANUP & SYNC

@@ -57,7 +57,7 @@ func fakeReleaseServer(t *testing.T, version, goos, goarch string, binary []byte
 	sumsContent := fmt.Sprintf("%s  %s\n", sha256hex(binary), binName)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/gmg-inc/gaal/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/getgaal/gaal/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"tag_name":%q}`, version)
 	})
@@ -161,7 +161,7 @@ func TestInstallChecksumMismatch(t *testing.T) {
 	sumsContent := fmt.Sprintf("%s  %s\n", sha256hex(realBinary), binName)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/gmg-inc/gaal/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/repos/getgaal/gaal/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"tag_name":%q}`, version)
 	})
 	mux.HandleFunc(fmt.Sprintf("/releases/download/%s/%s", version, binName), func(w http.ResponseWriter, r *http.Request) {

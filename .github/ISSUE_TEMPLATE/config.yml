@@ -2,5 +2,5 @@ blank_issues_enabled: false
 
 contact_links:
   - name: Question / Discussion
-    url: https://github.com/gmg-inc/gaal-lite/discussions
+    url: https://github.com/getgaal/gaal/discussions
     about: Ask questions and discuss ideas in GitHub Discussions rather than opening an issue.
