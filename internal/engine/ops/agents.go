@@ -48,7 +48,7 @@ func ListAgents(home, workDir string) ([]render.AgentEntry, error) {
 			Source:                  source,
 			ProjectSkillsDir:        projectDir,
 			GlobalSkillsDir:         globalDir,
-			ProjectMCPConfigFile:    a.Info.ProjectMCPConfigFile,
+			ProjectMCPConfigFile:    a.Info.GlobalMCPConfigFile,
 			ProjectSkillsViaGeneric: a.Info.SupportsGenericProject,
 			GlobalSkillsViaGeneric:  a.Info.SupportsGenericGlobal,
 		})
@@ -96,7 +96,7 @@ func AgentDetail(home, workDir, name string) (*render.AgentDetail, error) {
 
 	paths := collectAgentPaths(match.Name, home, workDir)
 
-	mcpCfg, mcpOk := agent.ProjectMCPConfigPath(match.Name, home)
+	mcpCfg, mcpOk := agent.GlobalMCPConfigPath(match.Name, home)
 	var mcpExists bool
 	if mcpOk {
 		_, err := os.Stat(mcpCfg)
@@ -108,7 +108,7 @@ func AgentDetail(home, workDir, name string) (*render.AgentDetail, error) {
 		Installed:  installed,
 		Source:     source,
 		Paths:      paths,
-		MCPSupport: match.Info.ProjectMCPConfigFile != "",
+		MCPSupport: match.Info.GlobalMCPConfigFile != "",
 		MCPConfig:  mcpCfg,
 		MCPExists:  mcpExists,
 	}, nil

@@ -95,25 +95,29 @@ skills:
 #
 # source: URL to a remote JSON file containing an mcpServers document.
 # inline: define the server entry directly in this file.
-# target: path to the JSON config file to merge into.
-#         Common targets:
-#           ~/.config/claude/claude_desktop_config.json   (Claude Desktop)
-#           ~/.vscode/settings.json                       (VS Code)
+# agents: list of agent identifiers (or ["*"] to target all agents).
+#         The target JSON file is resolved automatically from the agent registry.
+# global: true  → write to the agent's global MCP config (global_mcp_config_file)
+#         false → write to the agent's project MCP config (project_mcp_config_file)
+#         (default: true, since most agents only have a global MCP config)
+#
+# Deprecated: target — specify the path explicitly. Prefer agents+global instead.
 # ─────────────────────────────────────────────────────────────────────────────
 mcps:
-  # Inline definition — filesystem MCP server.
+  # Inline server — installed into claude-code's global MCP config.
   - name: filesystem
-    target: ~/.config/claude/claude_desktop_config.json
+    agents: ["claude-code"]
+    global: true
     inline:
       command: uvx
       args:
         - mcp-server-filesystem
         - /home/user/projects
-      env: {}
 
-  # Inline definition — git MCP server.
+  # Inline server — installed into all agents that have a global MCP config.
   - name: git
-    target: ~/.config/claude/claude_desktop_config.json
+    agents: ["*"]
+    global: true
     inline:
       command: uvx
       args:
@@ -121,12 +125,15 @@ mcps:
         - --repository
         - /home/user/projects/gaal
 
-  # Remote source — download and merge an mcpServers document.
+  # Remote source — merged into claude-code and github-copilot's global configs.
   - name: github
     source: https://raw.githubusercontent.com/github/mcp-servers/main/config.json
-    target: ~/.config/claude/claude_desktop_config.json
+    agents:
+      - claude-code
+      - github-copilot
+    global: true
 
-  # VS Code MCP server configuration.
+  # Backward-compat: explicit target still works (deprecated, prefer agents+global).
   - name: sequential-thinking
     target: ~/.vscode/settings.json
     inline:

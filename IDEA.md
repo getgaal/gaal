@@ -1,0 +1,1 @@
+profil de depoyment pour un projet.. tpl:  react_app (Meta-package)

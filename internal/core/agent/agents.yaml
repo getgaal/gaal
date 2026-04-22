@@ -4,7 +4,8 @@
 # Fields (*_dir):
 #   project_skills_dir      – skills directory relative to the project root (must be relative, no "..")
 #   global_skills_dir       – skills directory under the user home directory (~/ prefix required)
-#   project_mcp_config_file – path to the agent's MCP server config file (~/ prefix, empty if unsupported)
+#   global_mcp_config_file  – user-global MCP server config file (~/ prefix, empty if unsupported)
+#   project_mcp_config_file – workspace-scoped MCP server config file (~/ prefix, empty if unsupported)
 #
 # Fields (*_search) — used by "gaal audit" for discovery only:
 #   project_skills_search   – project-relative dirs scanned at 1 level (empty = fallback to project_skills_dir)
@@ -42,7 +43,8 @@ agents:
     supports_generic_project: true
     project_skills_dir: ""
     global_skills_dir: ~/.config/agents/skills
-    project_mcp_config_file: ~/.config/amp/settings.json
+    global_mcp_config_file: ~/.config/amp/settings.json
+    project_mcp_config_file: ""
     project_skills_search: *cps
     global_skills_search:
       - ~/.config/agents/skills
@@ -55,6 +57,7 @@ agents:
     supports_generic_project: true
     project_skills_dir: ""
     global_skills_dir: ~/.gemini/antigravity/skills
+    global_mcp_config_file: ""
     project_mcp_config_file: ""
     project_skills_search: *cps
     global_skills_search:
@@ -66,7 +69,8 @@ agents:
   augment:
     project_skills_dir: .augment/skills
     global_skills_dir: ~/.augment/skills
-    project_mcp_config_file: ~/.augment/settings.json
+    global_mcp_config_file: ~/.augment/settings.json
+    project_mcp_config_file: ""
     project_skills_search:
       - .augment/skills
       - .agents/skills
@@ -81,7 +85,8 @@ agents:
   claude-code:
     project_skills_dir: .claude/skills
     global_skills_dir: ~/.claude/skills
-    project_mcp_config_file: ~/.config/claude/claude_desktop_config.json
+    global_mcp_config_file: ~/.config/claude/claude_desktop_config.json
+    project_mcp_config_file: ""
     project_skills_search:
       - .claude/skills
       - .agents/skills
@@ -98,7 +103,8 @@ agents:
     supports_generic_global: true
     project_skills_dir: ""
     global_skills_dir: ""
-    project_mcp_config_file: *vmc
+    global_mcp_config_file: *vmc
+    project_mcp_config_file: ""
     project_skills_search: *cps
     global_skills_search: *cgs
     pm_skills_search: []
@@ -107,7 +113,8 @@ agents:
     supports_generic_project: true
     project_skills_dir: ""
     global_skills_dir: ~/.codex/skills
-    project_mcp_config_file: ~/.codex/mcp.json
+    global_mcp_config_file: ~/.codex/mcp.json
+    project_mcp_config_file: ""
     project_skills_search: *cps
     global_skills_search:
       - ~/.codex/skills
@@ -118,7 +125,8 @@ agents:
   continue:
     project_skills_dir: .continue/skills
     global_skills_dir: ~/.continue/skills
-    project_mcp_config_file: ~/.continue/config.json
+    global_mcp_config_file: ~/.continue/config.json
+    project_mcp_config_file: ""
     project_skills_search:
       - .continue/skills
       - .agents/skills
@@ -134,7 +142,8 @@ agents:
     supports_generic_project: true
     project_skills_dir: ""
     global_skills_dir: ~/.cursor/skills
-    project_mcp_config_file: ~/.cursor/mcp.json
+    global_mcp_config_file: ~/.cursor/mcp.json
+    project_mcp_config_file: ""
     project_skills_search: *cps
     global_skills_search:
       - ~/.cursor/skills
@@ -148,7 +157,8 @@ agents:
     supports_generic_project: true
     project_skills_dir: ""
     global_skills_dir: ~/.gemini/skills
-    project_mcp_config_file: ~/.gemini/settings.json
+    global_mcp_config_file: ~/.gemini/settings.json
+    project_mcp_config_file: ""
     project_skills_search: *cps
     global_skills_search:
       - ~/.gemini/skills
@@ -165,6 +175,7 @@ agents:
     # supports_generic_global: true.
     project_skills_dir: *psd
     global_skills_dir: *gas
+    global_mcp_config_file: ""
     project_mcp_config_file: ""
     project_skills_search:
       - .agents/skills
@@ -176,7 +187,8 @@ agents:
     # https://code.visualstudio.com/docs/copilot/customization/agent-skills#_create-a-skill
     project_skills_dir: .github/skills
     global_skills_dir: ~/.copilot/skills
-    project_mcp_config_file: *vmc
+    global_mcp_config_file: *vmc
+    project_mcp_config_file: ""
     project_skills_search:
       - .github/skills
       - .agents/skills
@@ -191,7 +203,8 @@ agents:
   goose:
     project_skills_dir: .goose/skills
     global_skills_dir: ~/.config/goose/skills
-    project_mcp_config_file: ~/.config/goose/config.yaml
+    global_mcp_config_file: ~/.config/goose/config.yaml
+    project_mcp_config_file: ""
     project_skills_search:
       - .goose/skills
       - .agents/skills
@@ -205,7 +218,8 @@ agents:
   kilo:
     project_skills_dir: .kilocode/skills
     global_skills_dir: ~/.kilocode/skills
-    project_mcp_config_file: ~/.kilocode/mcp.json
+    global_mcp_config_file: ~/.kilocode/mcp.json
+    project_mcp_config_file: ""
     project_skills_search:
       - .kilocode/skills
       - .agents/skills
@@ -220,7 +234,8 @@ agents:
   kiro-cli:
     project_skills_dir: .kiro/skills
     global_skills_dir: ~/.kiro/skills
-    project_mcp_config_file: ~/.kiro/settings/mcp.json
+    global_mcp_config_file: ~/.kiro/settings/mcp.json
+    project_mcp_config_file: ""
     project_skills_search:
       - .kiro/skills
       - .agents/skills
@@ -236,7 +251,8 @@ agents:
     supports_generic_project: true
     project_skills_dir: ""
     global_skills_dir: ~/.config/opencode/skills
-    project_mcp_config_file: ~/.config/opencode/config.json
+    global_mcp_config_file: ~/.config/opencode/config.json
+    project_mcp_config_file: ""
     project_skills_search: *cps
     global_skills_search:
       - ~/.config/opencode/skills
@@ -247,7 +263,8 @@ agents:
   openhands:
     project_skills_dir: .openhands/skills
     global_skills_dir: ~/.openhands/skills
-    project_mcp_config_file: ~/.openhands/config.json
+    global_mcp_config_file: ~/.openhands/config.json
+    project_mcp_config_file: ""
     project_skills_search:
       - .openhands/skills
       - .agents/skills
@@ -260,7 +277,8 @@ agents:
   roo:
     project_skills_dir: .roo/skills
     global_skills_dir: ~/.roo/skills
-    project_mcp_config_file: *vmc
+    global_mcp_config_file: *vmc
+    project_mcp_config_file: ""
     project_skills_search:
       - .roo/skills
       - .agents/skills
@@ -275,7 +293,8 @@ agents:
   trae:
     project_skills_dir: .trae/skills
     global_skills_dir: ~/.trae/skills
-    project_mcp_config_file: ~/.trae/mcp.json
+    global_mcp_config_file: ~/.trae/mcp.json
+    project_mcp_config_file: ""
     project_skills_search:
       - .trae/skills
       - .agents/skills
@@ -293,7 +312,8 @@ agents:
     supports_generic_global: true
     project_skills_dir: ""
     global_skills_dir: ""
-    project_mcp_config_file: ~/.warp/launch_configurations/mcp.json
+    global_mcp_config_file: ~/.warp/launch_configurations/mcp.json
+    project_mcp_config_file: ""
     project_skills_search: *cps
     global_skills_search:
       - ~/.agents/skills
@@ -304,7 +324,8 @@ agents:
   windsurf:
     project_skills_dir: .windsurf/skills
     global_skills_dir: ~/.codeium/windsurf/skills
-    project_mcp_config_file: ~/.codeium/windsurf/mcp_settings.json
+    global_mcp_config_file: ~/.codeium/windsurf/mcp_settings.json
+    project_mcp_config_file: ""
     project_skills_search:
       - .windsurf/skills
       - .agents/skills
@@ -320,7 +341,8 @@ agents:
   zencoder:
     project_skills_dir: .zencoder/skills
     global_skills_dir: ~/.zencoder/skills
-    project_mcp_config_file: ~/.zencoder/mcp.json
+    global_mcp_config_file: ~/.zencoder/mcp.json
+    project_mcp_config_file: ""
     project_skills_search:
       - .zencoder/skills
       - .agents/skills

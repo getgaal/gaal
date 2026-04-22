@@ -110,7 +110,7 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 		cfg:       cfg,
 		repos:     repo.NewManager(cfg.Repositories, stateDir),
 		skills:    skill.NewManager(cfg.Skills, cacheDir, home, workDir, stateDir, opts.Force),
-		mcps:      mcp.NewManager(cfg.MCPs, stateDir),
+		mcps:      mcp.NewManager(cfg.MCPs, home, stateDir),
 		home:      home,
 		workDir:   workDir,
 		cacheRoot: cacheRoot,

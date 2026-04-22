@@ -23,7 +23,8 @@
     "source": true,
     "history": true,
     "clear": true,
-    "gofmt": true
+    "gofmt": true,
+    "gh issue view": true
   },
   "makefile.configureOnOpen": false,
   "yaml.schemas": {

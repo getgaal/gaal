@@ -21,14 +21,18 @@ import (
 // Fields ending in *Search are scanned by "gaal audit" (discovery only).
 type Info struct {
 	// ProjectSkillsDir is the skills directory relative to the project root.
-	// Managed by gaal sync.
+	// Managed by gaal sync when global: true.
 	ProjectSkillsDir string
 	// GlobalSkillsDir is the skills directory under the user home directory (~).
-	// Managed by gaal sync.
+	// Managed by gaal sync when global: true.
 	GlobalSkillsDir string
-	// ProjectMCPConfigFile is the path to the agent's MCP server configuration
-	// file, relative to the user home directory (~). Empty when unsupported.
-	// Managed by gaal sync.
+	// GlobalMCPConfigFile is the user-global MCP server configuration file
+	// (~/ prefix). This is the agent's main MCP config (e.g. claude_desktop_config.json).
+	// Managed by gaal sync when global: true.
+	GlobalMCPConfigFile string
+	// ProjectMCPConfigFile is the workspace-scoped MCP server configuration file
+	// (~/ prefix). Empty when the agent has no workspace-level MCP config.
+	// Managed by gaal sync when global: false.
 	ProjectMCPConfigFile string
 
 	// ProjectSkillsSearch is the list of project-relative directories to scan
@@ -62,6 +66,7 @@ type Info struct {
 type agentEntry struct {
 	ProjectSkillsDir       string   `yaml:"project_skills_dir"`
 	GlobalSkillsDir        string   `yaml:"global_skills_dir"`
+	GlobalMCPConfigFile    string   `yaml:"global_mcp_config_file"`
 	ProjectMCPConfigFile   string   `yaml:"project_mcp_config_file"`
 	ProjectSkillsSearch    []string `yaml:"project_skills_search"`
 	GlobalSkillsSearch     []string `yaml:"global_skills_search"`
@@ -127,6 +132,7 @@ func loadInto(data []byte, dst map[string]Info, allowOverride bool) error {
 		dst[name] = Info{
 			ProjectSkillsDir:       e.ProjectSkillsDir,
 			GlobalSkillsDir:        e.GlobalSkillsDir,
+			GlobalMCPConfigFile:    e.GlobalMCPConfigFile,
 			ProjectMCPConfigFile:   e.ProjectMCPConfigFile,
 			ProjectSkillsSearch:    e.ProjectSkillsSearch,
 			GlobalSkillsSearch:     e.GlobalSkillsSearch,
@@ -142,6 +148,7 @@ func loadInto(data []byte, dst map[string]Info, allowOverride bool) error {
 //   - project_skills_dir must be relative and contain no ".." segments
 //   - project_skills_search entries must be relative and contain no ".." segments
 //   - global_skills_dir must start with "~/" or "~\" (home-relative)
+//   - global_mcp_config_file must be empty OR start with "~/" or "~\"
 //   - project_mcp_config_file must be empty OR start with "~/" or "~\"
 //   - global_skills_search and pm_skills_search entries must start with "~/" or "~\"
 func validateEntry(name string, e agentEntry) error {
@@ -171,9 +178,14 @@ func validateEntry(name string, e agentEntry) error {
 	} else if !strings.HasPrefix(e.GlobalSkillsDir, "~/") && !strings.HasPrefix(e.GlobalSkillsDir, `~\`) {
 		return fmt.Errorf("agent %q: global_skills_dir must start with '~/', got %q", name, e.GlobalSkillsDir)
 	}
+	if e.GlobalMCPConfigFile != "" &&
+		!strings.HasPrefix(e.GlobalMCPConfigFile, "~/") &&
+		!strings.HasPrefix(e.GlobalMCPConfigFile, `~\`) {
+		return fmt.Errorf("agent %q: global_mcp_config_file must be empty or start with '~/', got %q", name, e.GlobalMCPConfigFile)
+	}
 	if e.ProjectMCPConfigFile != "" &&
 		!strings.HasPrefix(e.ProjectMCPConfigFile, "~/") &&
-		!strings.HasPrefix(e.ProjectMCPConfigFile, `~\`) {
+		!strings.HasPrefix(e.ProjectMCPConfigFile, `~\\`) {
 		return fmt.Errorf("agent %q: project_mcp_config_file must be empty or start with '~/', got %q", name, e.ProjectMCPConfigFile)
 	}
 	for _, d := range e.ProjectSkillsSearch {
@@ -289,9 +301,21 @@ func SkillDir(name string, global bool, home string) (string, bool) {
 	return info.ProjectSkillsDir, true
 }
 
-// ProjectMCPConfigPath returns the absolute path to the agent's MCP configuration
-// file (home expanded). Returns ("", false) when not known for this agent.
+// GlobalMCPConfigPath returns the absolute path to the agent's user-global MCP
+// configuration file (home expanded). Returns ("", false) when not supported.
+func GlobalMCPConfigPath(name, home string) (string, bool) {
+	slog.Debug("resolving global mcp config path", "agent", name)
+	info, ok := registry[name]
+	if !ok || info.GlobalMCPConfigFile == "" {
+		return "", false
+	}
+	return ExpandHome(info.GlobalMCPConfigFile, home), true
+}
+
+// ProjectMCPConfigPath returns the absolute path to the agent's workspace-scoped
+// MCP configuration file (home expanded). Returns ("", false) when not supported.
 func ProjectMCPConfigPath(name, home string) (string, bool) {
+	slog.Debug("resolving project mcp config path", "agent", name)
 	info, ok := registry[name]
 	if !ok || info.ProjectMCPConfigFile == "" {
 		return "", false
