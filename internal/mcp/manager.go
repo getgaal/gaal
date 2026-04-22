@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"gaal/internal/config"
+	"gaal/internal/core/agent"
 	"gaal/internal/discover"
 )
 
@@ -41,17 +42,68 @@ type Status struct {
 // Manager handles MCP server configuration files.
 type Manager struct {
 	mcps     []config.ConfigMcp
+	home     string // user home directory for ~/ expansion and agent path resolution
 	stateDir string // gaal state root for snapshot writing
 }
 
 // NewManager creates a new MCP Manager.
-func NewManager(mcps []config.ConfigMcp, stateDir string) *Manager {
-	return &Manager{mcps: mcps, stateDir: stateDir}
+func NewManager(mcps []config.ConfigMcp, home, stateDir string) *Manager {
+	slog.Debug("creating mcp manager", "entries", len(mcps), "home", home)
+	return &Manager{mcps: mcps, home: home, stateDir: stateDir}
+}
+
+// resolvedMCPs expands each ConfigMcp into one or more concrete entries with
+// Target resolved from the agent registry. Entries with an explicit Target
+// are kept as-is (backward compat, deprecated). Entries without Target use the
+// Agents + Global fields to fan out one entry per agent.
+func (m *Manager) resolvedMCPs() []config.ConfigMcp {
+	slog.Debug("resolving mcp targets", "count", len(m.mcps))
+	var out []config.ConfigMcp
+	for _, mc := range m.mcps {
+		if mc.Target != "" {
+			slog.Warn("mcp: 'target' field is deprecated; use 'agents' and 'global' instead",
+				"name", mc.Name, "target", mc.Target)
+			out = append(out, mc)
+			continue
+		}
+
+		if len(mc.Agents) == 0 {
+			slog.Warn("mcp: no target and no agents configured, entry skipped", "name", mc.Name)
+			continue
+		}
+
+		agentNames := mc.Agents
+		if len(agentNames) == 1 && agentNames[0] == "*" {
+			agentNames = agent.Names()
+		}
+
+		for _, agentName := range agentNames {
+			var (
+				target string
+				ok     bool
+			)
+			if mc.Global {
+				target, ok = agent.GlobalMCPConfigPath(agentName, m.home)
+			} else {
+				target, ok = agent.ProjectMCPConfigPath(agentName, m.home)
+			}
+			if !ok || target == "" {
+				slog.Debug("mcp: agent has no mcp config for this scope, skipping",
+					"name", mc.Name, "agent", agentName, "global", mc.Global)
+				continue
+			}
+			resolved := mc
+			resolved.Target = target
+			slog.Debug("mcp: resolved target", "name", mc.Name, "agent", agentName, "target", target, "global", mc.Global)
+			out = append(out, resolved)
+		}
+	}
+	return out
 }
 
 // Sync applies every MCP configuration entry.
 func (m *Manager) Sync(ctx context.Context) error {
-	for _, mc := range m.mcps {
+	for _, mc := range m.resolvedMCPs() {
 		if err := m.syncOne(ctx, mc); err != nil {
 			return fmt.Errorf("mcp %q: %w", mc.Name, err)
 		}
@@ -220,7 +272,7 @@ func (m *Manager) Prune(ctx context.Context) error {
 
 	// Build expected name set per target path.
 	keepPerTarget := make(map[string]map[string]struct{})
-	for _, mc := range m.mcps {
+	for _, mc := range m.resolvedMCPs() {
 		if keepPerTarget[mc.Target] == nil {
 			keepPerTarget[mc.Target] = make(map[string]struct{})
 		}
@@ -296,10 +348,11 @@ func (m *Manager) Prune(ctx context.Context) error {
 
 // Status returns the presence state of every MCP entry.
 func (m *Manager) Status(_ context.Context) []Status {
-	slog.Debug("checking mcp status", "count", len(m.mcps))
-	statuses := make([]Status, 0, len(m.mcps))
+	resolved := m.resolvedMCPs()
+	slog.Debug("checking mcp status", "count", len(resolved))
+	statuses := make([]Status, 0, len(resolved))
 
-	for _, mc := range m.mcps {
+	for _, mc := range resolved {
 		st := Status{Name: mc.Name, Target: mc.Target}
 
 		data, err := os.ReadFile(mc.Target)

@@ -49,8 +49,8 @@ func TestLookup_Known(t *testing.T) {
 	if info.GlobalSkillsDir == "" {
 		t.Error("expected non-empty GlobalSkillsDir")
 	}
-	if info.ProjectMCPConfigFile == "" {
-		t.Error("expected non-empty ProjectMCPConfigFile for claude-code")
+	if info.GlobalMCPConfigFile == "" {
+		t.Error("expected non-empty GlobalMCPConfigFile for claude-code")
 	}
 }
 
@@ -102,9 +102,9 @@ func TestSkillDir_Unknown(t *testing.T) {
 
 func TestMCPConfigPath_Known(t *testing.T) {
 	home := "/home/testuser"
-	path, ok := agent.ProjectMCPConfigPath("claude-code", home)
+	path, ok := agent.GlobalMCPConfigPath("claude-code", home)
 	if !ok {
-		t.Fatal("expected ProjectMCPConfigPath to return ok=true for claude-code")
+		t.Fatal("expected GlobalMCPConfigPath to return ok=true for claude-code")
 	}
 	if strings.HasPrefix(path, "~") {
 		t.Errorf("expected ~ to be expanded, got %q", path)
@@ -122,10 +122,10 @@ func TestMCPConfigPath_Unknown(t *testing.T) {
 }
 
 func TestMCPConfigPath_EmptyWhenNotSet(t *testing.T) {
-	// antigravity has an empty project_mcp_config_file.
-	_, ok := agent.ProjectMCPConfigPath("antigravity", "/home/user")
+	// antigravity has an empty global_mcp_config_file.
+	_, ok := agent.GlobalMCPConfigPath("antigravity", "/home/user")
 	if ok {
-		t.Error("expected ok=false for agent with empty ProjectMCPConfigFile")
+		t.Error("expected ok=false for agent with empty GlobalMCPConfigFile")
 	}
 }
 
@@ -198,7 +198,7 @@ func TestList_InfoMatchesLookup(t *testing.T) {
 		}
 		if e.Info.ProjectSkillsDir != info.ProjectSkillsDir ||
 			e.Info.GlobalSkillsDir != info.GlobalSkillsDir ||
-			e.Info.ProjectMCPConfigFile != info.ProjectMCPConfigFile {
+			e.Info.GlobalMCPConfigFile != info.GlobalMCPConfigFile {
 			t.Errorf("List() entry %q Info mismatch: got %+v, want %+v", e.Name, e.Info, info)
 		}
 	}

@@ -235,15 +235,32 @@ mcps:
 	}
 }
 
-func TestLoad_ValidationError_MCPNoTarget(t *testing.T) {
+func TestLoad_MCP_WithoutTarget_IsValid(t *testing.T) {
+	// target is now optional — agents+global replace it.
 	p := writeYAML(t, `
 mcps:
   - name: myserver
     source: https://example.com/mcp.json
+    agents: ["claude-code"]
+    global: true
 `)
 	_, err := Load(p)
-	if err == nil {
-		t.Fatal("expected validation error for mcp without target")
+	if err != nil {
+		t.Fatalf("expected no validation error for mcp without explicit target: %v", err)
+	}
+}
+
+func TestLoad_MCP_WithExplicitTarget_IsValid(t *testing.T) {
+	// Backward-compat: explicit target is still accepted.
+	p := writeYAML(t, `
+mcps:
+  - name: myserver
+    source: https://example.com/mcp.json
+    target: /tmp/mcp.json
+`)
+	_, err := Load(p)
+	if err != nil {
+		t.Fatalf("expected no validation error for mcp with explicit target: %v", err)
 	}
 }
 

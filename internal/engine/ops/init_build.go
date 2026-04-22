@@ -154,7 +154,7 @@ func collectInitMCPs(ctx context.Context, home string) ([]initMCPEntry, error) {
 	var entries []initMCPEntry
 
 	for _, a := range agent.List() {
-		cfgFile, ok := agent.ProjectMCPConfigPath(a.Name, home)
+		cfgFile, ok := agent.GlobalMCPConfigPath(a.Name, home)
 		if !ok {
 			continue
 		}
