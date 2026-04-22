@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -47,6 +48,35 @@ func statusCell(code StatusCode, errMsg string) string {
 	default:
 		return label
 	}
+}
+
+// displaySource shortens a skill source for terminal rendering. Remote
+// sources (URLs and GitHub owner/repo shorthand) are returned unchanged;
+// local paths are reduced to their last segment so deeply-nested plugin
+// cache directories stay readable in the Skills table — e.g.
+// "/Users/.../skills/claude-md-improver" becomes "claude-md-improver".
+// The data model keeps the full source; this helper is display-only.
+func displaySource(s string) string {
+	switch {
+	case strings.HasPrefix(s, "http://"),
+		strings.HasPrefix(s, "https://"),
+		strings.HasPrefix(s, "git@"),
+		strings.HasPrefix(s, "ssh://"):
+		return s
+	case !strings.ContainsAny(s, `/\`):
+		return s
+	case strings.HasPrefix(s, "./"), strings.HasPrefix(s, `.\`),
+		strings.HasPrefix(s, "../"), strings.HasPrefix(s, `..\`),
+		strings.HasPrefix(s, "~/"), strings.HasPrefix(s, `~\`),
+		strings.HasPrefix(s, "/"), filepath.IsAbs(s):
+		return filepath.Base(s)
+	}
+	// Two-segment strings without a leading path marker are treated as
+	// GitHub owner/repo shorthand and left as-is.
+	if strings.Count(s, "/") == 1 {
+		return s
+	}
+	return filepath.Base(s)
 }
 
 // trunc truncates s to max visible runes, appending "…" when shortened.
@@ -417,9 +447,13 @@ func (tr *tableRenderer) skillTable(w io.Writer, entries []SkillEntry, termW int
 		if name == "" {
 			name = "—"
 		}
+		displaySources := make([]string, len(s.Sources))
+		for i, src := range s.Sources {
+			displaySources[i] = displaySource(src)
+		}
 		data = append(data, []string{
 			trunc(name, vw),
-			trunc(strings.Join(s.Sources, ", "), vw),
+			trunc(strings.Join(displaySources, ", "), vw),
 			scope,
 			statusCell(s.Status, s.Error),
 			trunc(installedIn, vw),

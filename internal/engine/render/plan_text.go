@@ -69,7 +69,7 @@ func collectPlanItems(r *PlanReport) []planTextItem {
 	for _, e := range r.Skills {
 		items = append(items, planTextItem{
 			marker: markerFor(e.Action),
-			name:   e.Source,
+			name:   displaySource(e.Source),
 			detail: skillPlanDetail(e),
 		})
 	}

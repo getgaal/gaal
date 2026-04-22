@@ -234,6 +234,37 @@ func TestAggregateSkillsByName_MultipleSourcesMerged(t *testing.T) {
 	}
 }
 
+func TestDisplaySource(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		// Remote sources pass through unchanged.
+		{"https://github.com/owner/repo", "https://github.com/owner/repo"},
+		{"http://example.com/foo", "http://example.com/foo"},
+		{"git@github.com:owner/repo.git", "git@github.com:owner/repo.git"},
+		{"ssh://git@host/path", "ssh://git@host/path"},
+		// GitHub owner/repo shorthand stays intact.
+		{"owner/repo", "owner/repo"},
+		{"anthropics/skills", "anthropics/skills"},
+		// Bare names (no slash) are unchanged.
+		{"skills", "skills"},
+		{"", ""},
+		// Absolute and home-relative local paths reduce to the last segment.
+		{"/Users/nls/.claude/plugins/cache/claude-plugins-official/claude-md-management/1.0.0/skills/claude-md-improver", "claude-md-improver"},
+		{"/abs/path/to/skill", "skill"},
+		{"~/skills/my-skill", "my-skill"},
+		{"./local/path/skill", "skill"},
+		{"../other/skill-dir", "skill-dir"},
+		// Three-plus-segment non-prefixed paths are also reduced.
+		{"a/b/c", "c"},
+	}
+	for _, tc := range tests {
+		if got := displaySource(tc.in); got != tc.want {
+			t.Errorf("displaySource(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestAggregateSkillsByName_ErrorPropagates(t *testing.T) {
 	in := []SkillEntry{
 		{Source: "owner/repo", Agent: "cursor", Status: StatusOK, Installed: []string{"broken"}},

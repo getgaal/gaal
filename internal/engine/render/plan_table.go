@@ -128,7 +128,7 @@ func (pr *planTableRenderer) skillTable(w io.Writer, tr *tableRenderer, entries 
 			detail = e.Error
 		}
 		data = append(data, []string{
-			trunc(e.Source, vw),
+			trunc(displaySource(e.Source), vw),
 			trunc(e.Agent, vw),
 			actionCell(e.Action, e.Error),
 			trunc(detail, vw),
