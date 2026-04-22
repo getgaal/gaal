@@ -34,7 +34,7 @@ If no user-facing behaviour changed, output: `No documentation update required.`
 ## Documentation principles
 
 - **Do NOT duplicate code** — reference source files with line numbers instead:
-  `[Description](https://github.com/gmg-inc/gaal-lite/blob/main/path/to/file.go#L10-L20)`
+  `[Description](https://github.com/getgaal/gaal/blob/main/path/to/file.go#L10-L20)`
 - **Keep it DRY** — link to the source of truth, do not maintain parallel definitions
 - **Structure per file** (where applicable): Overview → Installation → Usage → API Reference → Configuration
 - **English only** — all documentation content

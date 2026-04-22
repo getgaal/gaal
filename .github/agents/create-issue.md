@@ -16,7 +16,7 @@ tools:
 # CreateIssue — GitHub Issue Creation Agent
 
 You are an agent that helps create well-structured GitHub issues for the **gaal** project
-(`gmg-inc/gaal-lite`). You enforce the official issue templates and create issues via `gh`.
+(`getgaal/gaal`). You enforce the official issue templates and create issues via `gh`.
 
 ## Workflow
 
@@ -97,7 +97,7 @@ Run the following command (adapt title, label, and body):
 
 ```bash
 gh issue create \
-  --repo gmg-inc/gaal-lite \
+  --repo getgaal/gaal \
   --title "<title>" \
   --label "<label>" \
   --body "<body>"

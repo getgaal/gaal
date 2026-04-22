@@ -6,7 +6,7 @@
 # to $INSTALL_DIR (default $HOME/.local/bin).
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/getgaal/gaal/main/scripts/install.sh | sh
 #   curl -fsSL ... | VERSION=v0.1.2 sh
 #   curl -fsSL ... | INSTALL_DIR=/usr/local/bin sh
 #
@@ -31,7 +31,7 @@ if [ "${GAAL_INSTALL_DEBUG:-}" = "1" ]; then
 fi
 
 # --- constants ---------------------------------------------------------------
-REPO="gmg-inc/gaal"
+REPO="getgaal/gaal"
 BIN_NAME="gaal"
 DEFAULT_INSTALL_DIR="$HOME/.local/bin"
 
@@ -46,8 +46,8 @@ usage() {
 gaal installer
 
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal/main/scripts/install.sh | sh
-  curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal/main/scripts/install.sh | VERSION=v0.1.2 sh
+  curl -fsSL https://raw.githubusercontent.com/getgaal/gaal/main/scripts/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/getgaal/gaal/main/scripts/install.sh | VERSION=v0.1.2 sh
 
 Environment:
   VERSION              Release tag to install (default: latest from GitHub Releases)
@@ -64,7 +64,7 @@ Examples:
   # System-wide install (will prompt for sudo on install)
   curl -fsSL <URL> | INSTALL_DIR=/usr/local/bin sh
 
-Report issues: https://github.com/gmg-inc/gaal/issues
+Report issues: https://github.com/getgaal/gaal/issues
 EOF
 }
 

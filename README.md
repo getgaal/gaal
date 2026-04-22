@@ -379,7 +379,7 @@ See [`docs/architecture.md`](docs/architecture.md) for a full description of the
 ### Quick install (macOS / Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/getgaal/gaal/main/scripts/install.sh | sh
 ```
 
 Installs the latest release binary to `~/.local/bin/gaal`. Pin a specific
@@ -387,13 +387,13 @@ version with `VERSION=v0.1.2`, or pick a different directory with
 `INSTALL_DIR=/usr/local/bin`.
 
 Pass `GAAL_INSTALL_DEBUG=1` for verbose output, or run
-`curl -fsSL https://raw.githubusercontent.com/gmg-inc/gaal/main/scripts/install.sh | sh -s -- --help`
+`curl -fsSL https://raw.githubusercontent.com/getgaal/gaal/main/scripts/install.sh | sh -s -- --help`
 to see all options.
 
 ### With Go
 
 ```bash
-go install github.com/gmg-inc/gaal@latest
+go install github.com/getgaal/gaal@latest
 ```
 
 ### From source
@@ -401,7 +401,7 @@ go install github.com/gmg-inc/gaal@latest
 **Prerequisites:** Go 1.26+
 
 ```bash
-git clone https://github.com/gmg-inc/gaal.git
+git clone https://github.com/getgaal/gaal.git
 cd gaal
 make build
 ```
