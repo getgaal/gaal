@@ -7,9 +7,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
+
+	"gaal/internal/config/platform"
 
 	"gopkg.in/yaml.v3"
 )
@@ -215,21 +216,10 @@ func isAbsPath(p string) bool {
 }
 
 // userAgentsPath returns the path to the optional user agents config file.
-// On macOS it intentionally diverges from os.UserConfigDir() and prefers
-// XDG_CONFIG_HOME when it is set, otherwise ~/.config/gaal/agents.yaml.
+// Platform-specific XDG/darwin logic is centralised in platform.UserConfigDir.
 func userAgentsPath() (string, bool) {
 	slog.Debug("resolving user agents path")
-	if runtime.GOOS == "darwin" {
-		if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
-			return filepath.Join(xdg, "gaal", "agents.yaml"), true
-		}
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", false
-		}
-		return filepath.Join(home, ".config", "gaal", "agents.yaml"), true
-	}
-	dir, err := os.UserConfigDir()
+	dir, err := platform.UserConfigDir()
 	if err != nil {
 		return "", false
 	}
