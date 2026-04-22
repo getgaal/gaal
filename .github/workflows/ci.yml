@@ -30,13 +30,68 @@ jobs:
         run: make lint
 
   # ──────────────────────────────────────────────────────────────────────────
+  # Changes: detect whether any non-documentation file was modified.
+  # Gates build/test/coverage so markdown-only pushes skip expensive runners.
+  # On workflow_call (used by release.yml) always forces code_changed=true.
+  # ──────────────────────────────────────────────────────────────────────────
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      code_changed: ${{ steps.decide.outputs.code_changed }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether code changed
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE:     ${{ github.event.before }}
+          SHA:        ${{ github.sha }}
+          PR_BASE:    ${{ github.event.pull_request.base.sha }}
+        run: |
+          # workflow_call → called from release.yml; always run the full chain.
+          if [ "$EVENT_NAME" = "workflow_call" ]; then
+            echo "code_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PR_BASE"
+            HEAD="$SHA"
+          else
+            # push event — guard against empty 'before' on first push to a branch.
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              echo "code_changed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            BASE="$BEFORE"
+            HEAD="$SHA"
+          fi
+
+          # Any file that is not *.md and not under docs/ counts as "code".
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD" \
+            | grep -Ev '\.md$' \
+            | grep -Ev '^docs/' \
+            | head -1)
+
+          if [ -n "$CHANGED" ]; then
+            echo "code_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ──────────────────────────────────────────────────────────────────────────
   # Build: cross-compile all release targets from the cheapest runners.
   # Validates every platform/arch compiles cleanly — no native runner needed.
   # ──────────────────────────────────────────────────────────────────────────
   build:
     name: Build / ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
-    needs: lint
+    needs: [lint, changes]
+    if: needs.changes.outputs.code_changed == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -71,7 +126,8 @@ jobs:
   test:
     name: Test / ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    needs: build
+    needs: [build, changes]
+    if: needs.changes.outputs.code_changed == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -182,7 +238,8 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, changes]
+    if: needs.changes.outputs.code_changed == 'true'
     steps:
       - uses: actions/checkout@v6
 
