@@ -13,6 +13,7 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/engine"
+	"gaal/internal/engine/render"
 	"gaal/internal/telemetry"
 	"gaal/internal/tools"
 )
@@ -90,18 +91,34 @@ func runSync(_ *cobra.Command, _ []string) error {
 		return eng.RunService(ctx, interval)
 	}
 
-	slog.Info("one-shot sync", "config", cfgFile)
+	slog.Debug("one-shot sync", "config", cfgFile)
+	plan, err := eng.Plan(ctx)
+	if err != nil {
+		telemetry.TrackError("sync", err)
+		return err
+	}
+
+	start := time.Now()
 	if err := eng.RunOnce(ctx); err != nil {
 		telemetry.TrackError("sync", err)
 		return err
 	}
 	if prune {
-		slog.Info("pruning orphan resources")
+		slog.Debug("pruning orphan resources")
 		if err := eng.Prune(ctx); err != nil {
 			telemetry.TrackError("sync-prune", err)
 			return err
 		}
 	}
+
+	duration := time.Since(start)
+	status, err := eng.Collect(ctx)
+	if err != nil {
+		slog.Debug("post-sync status collection failed; skipping summary", "err", err)
+	} else if rerr := render.RenderSyncSummary(os.Stdout, plan, status, duration); rerr != nil {
+		slog.Debug("rendering sync summary failed", "err", rerr)
+	}
+
 	telemetry.Track("sync")
 	telemetry.TrackFirstSync(0)
 	return nil

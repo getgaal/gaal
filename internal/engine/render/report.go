@@ -110,12 +110,16 @@ type PlanRepoEntry struct {
 }
 
 // PlanSkillEntry describes the planned action for a single skill config.
+// Install, Update, and NoOp together enumerate every skill name the entry
+// covers — they are disjoint lists that let the plan renderer aggregate
+// rows by skill name across (source, agent) pairs.
 type PlanSkillEntry struct {
 	Source  string     `json:"source"`
 	Agent   string     `json:"agent"`
 	Action  PlanAction `json:"action"`
 	Install []string   `json:"install,omitempty"`
 	Update  []string   `json:"update,omitempty"`
+	NoOp    []string   `json:"no_op,omitempty"`
 	Error   string     `json:"error,omitempty"`
 }
 

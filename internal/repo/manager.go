@@ -74,11 +74,11 @@ func (m *Manager) syncOne(ctx context.Context, path string, cfg config.ConfigRep
 	}
 
 	if !backend.IsCloned(path) {
-		slog.Info("cloning repository", "path", path, "url", cfg.URL, "version", cfg.Version)
+		slog.Debug("cloning repository", "path", path, "url", cfg.URL, "version", cfg.Version)
 		return backend.Clone(ctx, cfg.URL, path, cfg.Version)
 	}
 
-	slog.Info("updating repository", "path", path)
+	slog.Debug("updating repository", "path", path)
 	return backend.Update(ctx, path, cfg.Version)
 }
 

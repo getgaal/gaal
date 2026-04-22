@@ -124,6 +124,7 @@ func planSkills(entries []render.SkillEntry) []render.PlanSkillEntry {
 			p.Update = e.Modified
 		default:
 			p.Action = render.PlanNoOp
+			p.NoOp = append([]string(nil), e.Installed...)
 		}
 		out = append(out, p)
 	}

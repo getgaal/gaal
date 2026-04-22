@@ -120,26 +120,26 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 
 // RunOnce performs a single synchronisation pass.
 func (e *Engine) RunOnce(ctx context.Context) error {
-	slog.Info("sync started")
+	slog.Debug("sync started")
 
 	var errs []error
 
 	if len(e.cfg.Repositories) > 0 {
-		slog.Info("syncing repositories", "count", len(e.cfg.Repositories))
+		slog.Debug("syncing repositories", "count", len(e.cfg.Repositories))
 		if err := e.repos.Sync(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("repositories: %w", err))
 		}
 	}
 
 	if len(e.cfg.Skills) > 0 {
-		slog.Info("syncing skills", "count", len(e.cfg.Skills))
+		slog.Debug("syncing skills", "count", len(e.cfg.Skills))
 		if err := e.skills.Sync(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("skills: %w", err))
 		}
 	}
 
 	if len(e.cfg.MCPs) > 0 {
-		slog.Info("syncing MCP configs", "count", len(e.cfg.MCPs))
+		slog.Debug("syncing MCP configs", "count", len(e.cfg.MCPs))
 		if err := e.mcps.Sync(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("mcps: %w", err))
 		}
@@ -150,7 +150,7 @@ func (e *Engine) RunOnce(ctx context.Context) error {
 		return fmt.Errorf("sync errors: %v", errs)
 	}
 
-	slog.Info("sync completed successfully")
+	slog.Debug("sync completed successfully")
 	return nil
 }
 
@@ -209,6 +209,14 @@ func (e *Engine) Collect(ctx context.Context) (*render.StatusReport, error) {
 // exit code logic.
 func (e *Engine) DryRun(ctx context.Context, format OutputFormat) (*render.PlanReport, error) {
 	return ops.RenderPlan(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir, format)
+}
+
+// Plan computes the sync plan without rendering it. It is the same planner
+// used by DryRun; the cmd layer calls this before RunOnce so the sync
+// summary can report past-tense verbs ("cloned", "installed", "upserted")
+// for each managed resource.
+func (e *Engine) Plan(ctx context.Context) (*render.PlanReport, error) {
+	return ops.SyncPlan(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir)
 }
 
 // Status collects the current resource state and renders it to os.Stdout.
