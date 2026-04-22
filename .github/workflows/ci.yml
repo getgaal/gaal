@@ -1,6 +1,6 @@
 name: CI
 
-# Triggered on every pull request.
+# Triggered on every pull request and push to main.
 # Also exposed as a reusable workflow so release.yml can call it.
 on:
   pull_request:
@@ -17,57 +17,56 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   lint:
     name: Lint
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
+          cache: true
 
       - name: Lint (gofmt + go vet)
         run: make lint
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Build: compile the binary on Linux and macOS (make build).
-  # Windows native build is omitted because the org's GitHub-hosted runner
-  # billing is currently restricted; release.yml's binaries job still
-  # cross-compiles Windows on the linux self-hosted runner.
+  # Build: cross-compile all release targets from the cheapest runners.
+  # Validates every platform/arch compiles cleanly — no native runner needed.
   # ──────────────────────────────────────────────────────────────────────────
   build:
-    name: Build / ${{ matrix.name }}
+    name: Build / ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     needs: lint
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: linux, runner: [self-hosted, Linux, X64] }
-          - { name: macOS, runner: [self-hosted, macOS, ARM64] }
+          - { goos: linux,   goarch: amd64, runner: ubuntu-latest }
+          - { goos: linux,   goarch: arm64, runner: ubuntu-latest }
+          - { goos: darwin,  goarch: amd64, runner: macos-latest  }
+          - { goos: darwin,  goarch: arm64, runner: macos-latest  }
+          - { goos: windows, goarch: amd64, runner: ubuntu-latest, ext: .exe }
+          - { goos: windows, goarch: arm64, runner: ubuntu-latest, ext: .exe }
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
+          cache: true
 
-      - name: Build
-        run: make build
-
-      - name: Upload binary
-        if: github.event_name == 'push' || github.event_name == 'workflow_call'
-        uses: actions/upload-artifact@v7
-        with:
-          name: gaal-${{ matrix.name }}
-          path: dist/
-          retention-days: 7
+      - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: >
+          make build-cross
+          BIN_CROSS=dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Test: unit tests with race detector on Linux and macOS (make test-ci)
-  #   - -count=1 forces re-execution (no (cached) results)
-  #   - gotestsum produces GitHub inline annotations + JUnit XML
+  # Test: unit tests with race detector — fast feedback on the two main targets.
+  # Full platform coverage is done in release.yml.
   # ──────────────────────────────────────────────────────────────────────────
   test:
     name: Test / ${{ matrix.name }}
@@ -77,17 +76,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux, runner: [self-hosted, Linux, X64] }
-          - { name: macOS, runner: [self-hosted, macOS, ARM64] }
+          - { name: linux, runner: ubuntu-latest }
+          - { name: macOS, runner: macos-latest  }
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
+          cache: true
+
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@latest
+
       - name: Run tests
         run: make test-ci
 
@@ -120,7 +121,6 @@ jobs:
               skipped = sum(int(s.get("skipped",  0)) for s in suites)
               passed  = tests - failed - skipped
 
-              # Collect per-test details
               failures_list = []
               skipped_list  = []
               for suite in suites:
@@ -181,7 +181,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   coverage:
     name: Coverage
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     needs: test
     steps:
       - uses: actions/checkout@v6
@@ -189,7 +189,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
+          cache: true
 
       - name: Generate coverage report
         run: make coverage-ci
