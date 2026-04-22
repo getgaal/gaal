@@ -123,9 +123,28 @@ Runs the full sync planning pipeline but performs no writes to disk.
 Prints what sync *would* do — which repos would be cloned or updated,
 which skills would be installed, and which MCP entries would be created.
 
-Supports `--output table|json` and `--sandbox`. Incompatible with `--service`.
+Supports `--output text|table|json` and `--sandbox`. Incompatible with `--service`.
 
 Exit codes: **0** = nothing to change, **1** = changes pending, **2** = error.
+
+### Remove orphan resources
+
+```bash
+gaal sync --prune
+```
+
+After syncing, removes skills and MCP entries that are no longer declared in the
+configuration file. Incompatible with `--service`.
+
+### Force-install into all agents
+
+```bash
+gaal sync --force
+```
+
+Installs skills into every registered agent even when the agent's configuration
+directory does not exist yet. Useful when bootstrapping a machine where some
+agents are not installed yet. Only applies to `agents: ["*"]` wildcard entries.
 
 ### Continuous service mode
 
@@ -190,6 +209,16 @@ gaal doctor -o json       # machine-readable JSON output
 
 Exit codes: **0** = all checks passed, **1** = warnings, **2** = errors.
 
+### Discover what is installed
+
+```bash
+gaal audit
+```
+
+Scans all known agent directories and reports every skill and MCP server found on
+the machine, regardless of whether it is declared in `gaal.yaml`. Useful for
+spotting skills installed manually or by another tool.
+
 ### Generate the JSON Schema
 
 ```bash
@@ -223,7 +252,8 @@ gaal info repo -o json
 
 | Format | Description |
 |--------|-------------|
-| `table` | Human-friendly coloured tables (default) |
+| `text`  | Human-friendly plain-text output (default) |
+| `table` | Coloured pterm tables |
 | `json`  | Structured JSON, suitable for scripting / CI |
 
 When `--output json` is set the ASCII banner is automatically suppressed.
@@ -326,7 +356,7 @@ gaal ships with a built-in registry of supported coding agents (claude-code, git
 | macOS | `$XDG_CONFIG_HOME/gaal/agents.yaml` (defaults to `~/.config/gaal/agents.yaml`) |
 | Windows | `%AppData%\gaal\agents.yaml` |
 
-Custom entries **extend** the built-in list — they cannot override built-in entries. Each entry follows the same format as the built-in registry:
+Custom entries are merged with the built-in list. User-defined entries **can override** built-in entries. Each entry follows the same format as the built-in registry:
 
 ```yaml
 agents:

@@ -57,15 +57,20 @@ All sub-commands share the global flags defined on the root command:
 | `--no-banner` | `false` | Suppress the ASCII-art banner |
 | `--sandbox` | `""` | Redirect all writes to this directory |
 | `--log-file` | `""` | Write structured JSON logs to file |
-| `--output / -o` | `table` | Output format: `table` or `json` |
+| `--output / -o` | `text` | Output format: `text`, `table`, or `json` |
 
 ### Registered sub-commands
 
 | Command | Own flags | Description |
 |---------|-----------|-------------|
-| `gaal sync` | `--service/-s`, `--interval/-i` | One-shot or continuous synchronisation |
+| `gaal sync` | `--service/-s`, `--interval/-i`, `--dry-run`, `--prune`, `--force` | One-shot or continuous synchronisation |
 | `gaal status` | — | Current state of all repositories, skills and MCP entries |
 | `gaal info <repo\|skill\|mcp\|agent> [filter]` | — | Detailed card for every entry of a resource type |
+| `gaal agents [name]` | `--installed/-i` | List registered coding agents or show details for one |
+| `gaal audit` | — | Discover all skills and MCP servers installed on this machine |
+| `gaal doctor` | `--offline`, `--no-upsell` | Run configuration health checks and report agent status |
+| `gaal init` | `--scope`, `--import-all`, `--empty`, `--force/-f` | Bootstrap a `gaal.yaml` from discovered skills and MCPs |
+| `gaal migrate` | `--to`, `--dry-run`, `--yes` | Migrate configuration to a Community Edition instance |
 | `gaal version` | — | Version string and build timestamp |
 | `gaal schema` | `--file/-f` | Print the JSON Schema (draft-07) for the config file |
 | `gaal completion <bash\|zsh\|fish\|powershell>` | — | Shell completion script (built-in Cobra) |
@@ -187,12 +192,18 @@ The public surface of the package. All `cmd/*.go` files import only this package
 
 | Symbol | Description |
 |--------|-------------|
-| `Options` | Runtime directory overrides (used by `--sandbox`) |
+| `Options` | Runtime directory overrides (`WorkDir`, `StateDir`, `Force`) — used by `--sandbox` and `--force` |
 | `Engine` | Owns the three managers + home/workDir |
 | `New()` / `NewWithOptions()` | Constructors |
 | `RunOnce()` / `RunService()` | Sync entry-points |
+| `Plan()` / `DryRun()` | Compute sync plan; `DryRun` also renders to stdout |
+| `Prune()` | Remove skills and MCP entries no longer in config |
 | `Collect()`, `Status()`, `Audit()`, `Info()`, `Init()` | Thin wrappers that delegate to `ops/` |
-| Type aliases | `OutputFormat`, `StatusCode`, `StatusReport`, `RepoEntry`, `SkillEntry`, `MCPEntry`, `AgentEntry`, `AuditReport`, `AuditSkillEntry`, `AuditMCPEntry` — all re-exported from `engine/render` for backward compatibility |
+| `ListAgents()` / `AgentDetail()` | Agent registry queries |
+| `BuildImportCandidates()` / `InitFromPlan()` | Import-mode init helpers |
+| `Migrate()` | Delegate to `ops.Migrate()` |
+| `Doctor()` | Run configuration health checks |
+| Type aliases | `OutputFormat`, `StatusCode`, `StatusReport`, `RepoEntry`, `SkillEntry`, `MCPEntry`, `AgentEntry`, `AgentDetail`, `AgentPath`, `AuditReport`, `AuditSkillEntry`, `AuditMCPEntry`, `PlanReport` — all re-exported from `engine/render` for backward compatibility |
 
 ### `engine/render/` — output types and renderers
 
@@ -201,7 +212,7 @@ Pure rendering layer with no dependencies on the manager packages.
 | File | Contents |
 |------|----------|
 | `report.go` | `StatusCode` constants, `RepoEntry`, `SkillEntry`, `MCPEntry`, `AgentEntry`, `StatusReport`, `AuditSkillEntry`, `AuditMCPEntry`, `AuditReport` |
-| `renderer.go` | `OutputFormat` (`table` / `json`), `Renderer` interface, `NewRenderer()` |
+| `renderer.go` | `OutputFormat` (`text` / `table` / `json`), `Renderer` interface, `NewRenderer()` |
 | `json.go` | `jsonRenderer` — indented JSON encoder |
 | `table.go` | `tableRenderer` — adaptive pterm tables, `StatusCell()`, `trunc()`, `varColWidth()` |
 | `audit.go` | `AuditRenderer`, `NewAuditRenderer()`, `auditTableRenderer`, `auditJSONRenderer` |
@@ -215,12 +226,22 @@ Stateless functions that implement each CLI command. Each function receives the 
 | `status.go` | `Collect()`, `Status()` | FS-first resource state via `discover.Scan` — reconciles config-declared (managed) and FS-discovered (unmanaged) resources |
 | `plan.go` | `SyncPlan()`, `RenderPlan()` | Compute sync plan without writing |
 | `audit.go` | `Audit()` | Discover all installed skills and MCP servers |
+| `agents.go` | `ListAgents()`, `AgentDetail()` | Agent registry queries and detail rendering |
+| `doctor.go` | `RunDoctor()`, `DoctorReport`, `DoctorOptions` | Configuration health checks; exit code 0/1/2 |
 | `info.go` | `Info()` | Detailed per-entry card rendering |
-| `init.go` | `Init()`, `InitTemplate` | Write the config file skeleton to disk |
+| `init.go` | `Init()` | Write the config file skeleton to disk |
+| `init_plan.go` | `BuildCandidates()`, `BuildPlan()` | Plan computation for import-mode init |
+| `init_build.go` | `BuildFromPlan()` | Generate YAML content from an import plan |
+| `init_source.go` | `ResolveSource()` | Resolve skill sources for import candidate scanning |
+| `migrate.go` | `Migrate()`, `MigrateResult` | Community Edition migration stub |
 
-### `Options.WorkDir`
+### `Options`
 
-Defaults to `os.Getwd()`. In `--sandbox` mode it is redirected to an isolated subdirectory, preventing any writes outside the sandbox.
+| Field | Description |
+|-------|-------------|
+| `WorkDir` | Defaults to `os.Getwd()`. In `--sandbox` mode it is redirected to an isolated subdirectory. |
+| `StateDir` | Overrides the snapshot state directory (default: `<cacheRoot>/gaal/state`). |
+| `Force` | When `true`, installs skills into all registered agents even when the agent directory does not exist yet (applies to `agents: ["*"]` wildcard). |
 
 ### Bootstrap via `PersistentPreRunE`
 
