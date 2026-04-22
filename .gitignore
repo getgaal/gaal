@@ -124,4 +124,5 @@ gaal.yaml
 dist/
 .sandbox/
 report/
+tmp/
 docs/superpowers/
