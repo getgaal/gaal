@@ -108,6 +108,40 @@ func TestPlanText_VerbAndNameAlignmentPerSection(t *testing.T) {
 	}
 }
 
+func TestPlanText_NoOpsAppearLastWithinSection(t *testing.T) {
+	var buf bytes.Buffer
+	pr := &planTextRenderer{}
+	report := &PlanReport{
+		Repositories: []PlanRepoEntry{
+			{Path: "unchanged-a", Type: "git", Action: PlanNoOp},
+			{Path: "changed-b", Type: "git", Action: PlanClone, Want: "main"},
+			{Path: "unchanged-c", Type: "git", Action: PlanNoOp},
+			{Path: "updated-d", Type: "git", Action: PlanUpdate, Current: "v1", Want: "v2"},
+		},
+		HasChanges: true,
+	}
+	if err := pr.Render(&buf, report); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	out := buf.String()
+
+	changedB := strings.Index(out, "changed-b")
+	updatedD := strings.Index(out, "updated-d")
+	unchangedA := strings.Index(out, "unchanged-a")
+	unchangedC := strings.Index(out, "unchanged-c")
+	if changedB < 0 || updatedD < 0 || unchangedA < 0 || unchangedC < 0 {
+		t.Fatalf("one or more rows missing from output:\n%s", out)
+	}
+	if !(changedB < unchangedA && updatedD < unchangedA) {
+		t.Errorf("expected change actions before no-ops; got offsets: changed-b=%d updated-d=%d unchanged-a=%d unchanged-c=%d\n%s",
+			changedB, updatedD, unchangedA, unchangedC, out)
+	}
+	// Stable within each rank: unchanged-a appeared before unchanged-c in input.
+	if !(unchangedA < unchangedC) {
+		t.Errorf("expected stable input order within no-op rank; got a=%d c=%d", unchangedA, unchangedC)
+	}
+}
+
 func TestPlanText_SkillNameUsesBasenameForLocalSource(t *testing.T) {
 	var buf bytes.Buffer
 	pr := &planTextRenderer{}

@@ -122,6 +122,54 @@ func TestRenderSyncSummary_ErrorMarker(t *testing.T) {
 	}
 }
 
+func TestRenderSyncSummary_NoOpsSinkToBottomOfTheirGroup(t *testing.T) {
+	plan := &PlanReport{
+		Repositories: []PlanRepoEntry{
+			{Path: "changed-repo", Action: PlanClone},
+			{Path: "unchanged-repo", Action: PlanNoOp},
+		},
+		MCPs: []PlanMCPEntry{
+			{Name: "unchanged-mcp", Target: "/x/a.json", Action: PlanNoOp},
+			{Name: "changed-mcp", Target: "/x/b.json", Action: PlanCreate},
+		},
+	}
+	status := &StatusReport{
+		Repositories: []RepoEntry{
+			{Path: "changed-repo", Status: StatusOK},
+			{Path: "unchanged-repo", Status: StatusOK},
+		},
+		MCPs: []MCPEntry{
+			{Name: "unchanged-mcp", Target: "/x/a.json", Status: StatusPresent},
+			{Name: "changed-mcp", Target: "/x/b.json", Status: StatusPresent},
+		},
+	}
+	var buf bytes.Buffer
+	if err := RenderSyncSummary(&buf, plan, status, 0); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+
+	// Within repositories: change action must come before the no-op.
+	// Within MCPs: same rule, independent of repo ordering.
+	changedRepo := strings.Index(out, "changed-repo")
+	unchangedRepo := strings.Index(out, "unchanged-repo")
+	changedMCP := strings.Index(out, "changed-mcp")
+	unchangedMCP := strings.Index(out, "unchanged-mcp")
+	if changedRepo < 0 || unchangedRepo < 0 || changedMCP < 0 || unchangedMCP < 0 {
+		t.Fatalf("missing row in output:\n%s", out)
+	}
+	if !(changedRepo < unchangedRepo) {
+		t.Errorf("expected changed-repo above unchanged-repo, got %d vs %d\n%s", changedRepo, unchangedRepo, out)
+	}
+	if !(changedMCP < unchangedMCP) {
+		t.Errorf("expected changed-mcp above unchanged-mcp, got %d vs %d\n%s", changedMCP, unchangedMCP, out)
+	}
+	// Groups must not interleave: all repos come before all MCPs.
+	if !(unchangedRepo < changedMCP) {
+		t.Errorf("MCP rows interleaved with repo rows:\n%s", out)
+	}
+}
+
 func TestRenderSyncSummary_EmptySummaryPrintsCompleteLine(t *testing.T) {
 	var buf bytes.Buffer
 	if err := RenderSyncSummary(&buf, &PlanReport{}, &StatusReport{}, 100*time.Millisecond); err != nil {

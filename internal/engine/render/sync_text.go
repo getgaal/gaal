@@ -45,6 +45,7 @@ type syncRow struct {
 	marker string
 	name   string
 	detail string
+	action PlanAction // retained so rows sort with no-ops at the bottom
 }
 
 func collectSyncRows(plan *PlanReport, status *StatusReport) []syncRow {
@@ -55,60 +56,96 @@ func collectSyncRows(plan *PlanReport, status *StatusReport) []syncRow {
 		status = &StatusReport{}
 	}
 
-	var rows []syncRow
+	// Each resource type is built and sorted independently so no-ops sink
+	// to the bottom of their own group without interleaving across groups.
+	repoRows := buildRepoSyncRows(plan, status)
+	skillRows := buildSkillSyncRows(plan, status)
+	mcpRows := buildMCPSyncRows(plan, status)
 
-	// Repositories — one row per repo, alphabetised by path.
-	repoActions := make(map[string]PlanAction, len(plan.Repositories))
-	repoErrors := make(map[string]string, len(plan.Repositories))
-	for _, r := range plan.Repositories {
-		repoActions[r.Path] = r.Action
-		repoErrors[r.Path] = r.Error
+	sortByAction := func(rows []syncRow) {
+		sort.SliceStable(rows, func(i, j int) bool {
+			return actionRank(rows[i].action) < actionRank(rows[j].action)
+		})
 	}
-	repoEntries := append([]RepoEntry(nil), status.Repositories...)
-	sort.Slice(repoEntries, func(i, j int) bool { return repoEntries[i].Path < repoEntries[j].Path })
-	for _, e := range repoEntries {
-		action := repoActions[e.Path]
+	sortByAction(repoRows)
+	sortByAction(skillRows)
+	sortByAction(mcpRows)
+
+	out := make([]syncRow, 0, len(repoRows)+len(skillRows)+len(mcpRows))
+	out = append(out, repoRows...)
+	out = append(out, skillRows...)
+	out = append(out, mcpRows...)
+	return out
+}
+
+func buildRepoSyncRows(plan *PlanReport, status *StatusReport) []syncRow {
+	actions := make(map[string]PlanAction, len(plan.Repositories))
+	errs := make(map[string]string, len(plan.Repositories))
+	for _, r := range plan.Repositories {
+		actions[r.Path] = r.Action
+		errs[r.Path] = r.Error
+	}
+	entries := append([]RepoEntry(nil), status.Repositories...)
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+
+	rows := make([]syncRow, 0, len(entries))
+	for _, e := range entries {
+		action := actions[e.Path]
 		if action == "" {
 			action = PlanNoOp
 		}
 		rows = append(rows, syncRow{
 			marker: summaryMarker(e.Status),
 			name:   e.Path,
-			detail: repoSyncDetail(action, e, repoErrors[e.Path]),
+			detail: repoSyncDetail(action, e, errs[e.Path]),
+			action: action,
 		})
 	}
+	return rows
+}
 
-	// Skills — aggregate by name and pair with the plan's per-skill action.
+func buildSkillSyncRows(plan *PlanReport, status *StatusReport) []syncRow {
 	skillActions := skillActionIndex(plan.Skills)
-	for _, s := range aggregateSkillsByName(status.Skills) {
+	aggregated := aggregateSkillsByName(status.Skills)
+	rows := make([]syncRow, 0, len(aggregated))
+	for _, s := range aggregated {
+		action := skillActions[s.Name]
+		if action == "" {
+			action = PlanNoOp
+		}
 		rows = append(rows, syncRow{
 			marker: summaryMarker(s.Status),
 			name:   displayName(s.Name),
-			detail: skillSyncDetail(skillActions[s.Name], s),
+			detail: skillSyncDetail(action, s),
+			action: action,
 		})
 	}
+	return rows
+}
 
-	// MCPs — alphabetised by name, basename-only for the target path.
-	mcpActions := make(map[string]PlanAction, len(plan.MCPs))
-	mcpErrors := make(map[string]string, len(plan.MCPs))
+func buildMCPSyncRows(plan *PlanReport, status *StatusReport) []syncRow {
+	actions := make(map[string]PlanAction, len(plan.MCPs))
+	errs := make(map[string]string, len(plan.MCPs))
 	for _, m := range plan.MCPs {
-		mcpActions[m.Name] = m.Action
-		mcpErrors[m.Name] = m.Error
+		actions[m.Name] = m.Action
+		errs[m.Name] = m.Error
 	}
-	mcpEntries := append([]MCPEntry(nil), status.MCPs...)
-	sort.Slice(mcpEntries, func(i, j int) bool { return mcpEntries[i].Name < mcpEntries[j].Name })
-	for _, e := range mcpEntries {
-		action := mcpActions[e.Name]
+	entries := append([]MCPEntry(nil), status.MCPs...)
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+
+	rows := make([]syncRow, 0, len(entries))
+	for _, e := range entries {
+		action := actions[e.Name]
 		if action == "" {
 			action = PlanNoOp
 		}
 		rows = append(rows, syncRow{
 			marker: summaryMarker(e.Status),
 			name:   e.Name,
-			detail: mcpSyncDetail(action, e, mcpErrors[e.Name]),
+			detail: mcpSyncDetail(action, e, errs[e.Name]),
+			action: action,
 		})
 	}
-
 	return rows
 }
 

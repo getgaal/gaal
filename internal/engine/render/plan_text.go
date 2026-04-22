@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 	"strings"
 )
 
@@ -62,16 +63,23 @@ type planRow struct {
 	verb   string
 	name   string
 	detail string
+	action PlanAction // retained so sections can sort by action rank
 }
 
 // writeSection prints a section header and its rows with per-section
 // alignment: each verb is padded to the longest verb length in the section,
-// and each name to the longest display-name length.
+// and each name to the longest display-name length. Rows are stably sorted
+// so errors surface first, changed resources next, and no-ops sink to the
+// bottom.
 func (pr *planTextRenderer) writeSection(w io.Writer, title string, rows []planRow) {
 	if len(rows) == 0 {
 		return
 	}
 	fmt.Fprintf(w, "  %s\n", title)
+
+	sort.SliceStable(rows, func(i, j int) bool {
+		return actionRank(rows[i].action) < actionRank(rows[j].action)
+	})
 
 	verbWidth, nameWidth := 0, 0
 	for _, r := range rows {
@@ -103,6 +111,7 @@ func (pr *planTextRenderer) writeRepos(w io.Writer, entries []PlanRepoEntry) {
 			verb:   planVerb(e.Action, "repo"),
 			name:   e.Path,
 			detail: repoPlanDetail(e),
+			action: e.Action,
 		})
 	}
 	pr.writeSection(w, "repositories", rows)
@@ -162,6 +171,7 @@ func buildSkillPlanRows(entries []PlanSkillEntry) []planRow {
 				verb:   planVerb(PlanError, "skill"),
 				name:   displaySkillName(e.Source),
 				detail: "(" + e.Error + ")",
+				action: PlanError,
 			})
 			continue
 		case PlanCreate:
@@ -193,6 +203,7 @@ func buildSkillPlanRows(entries []PlanSkillEntry) []planRow {
 			verb:   planVerb(k.action, "skill"),
 			name:   k.name,
 			detail: detail,
+			action: k.action,
 		})
 	}
 	return rows
@@ -209,9 +220,26 @@ func (pr *planTextRenderer) writeMCPs(w io.Writer, entries []PlanMCPEntry) {
 			verb:   planVerb(e.Action, "mcp"),
 			name:   e.Name,
 			detail: mcpPlanDetail(e),
+			action: e.Action,
 		})
 	}
 	pr.writeSection(w, "mcps", rows)
+}
+
+// actionRank orders plan actions within a section: errors first (most
+// urgent), then creates/updates, then no-ops (passive / already done).
+// Stable sorts preserve input order within each rank.
+func actionRank(a PlanAction) int {
+	switch a {
+	case PlanError:
+		return 0
+	case PlanClone, PlanCreate, PlanUpdate:
+		return 1
+	case PlanNoOp:
+		return 2
+	default:
+		return 3
+	}
 }
 
 // planMarker returns the one-character leading glyph for a plan action.
