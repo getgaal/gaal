@@ -162,7 +162,7 @@ func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
 			if err := installSkill(sk.Dir, dest); err != nil {
 				return fmt.Errorf("installing skill %q to agent %q: %w", sk.Name, agent, err)
 			}
-			slog.Info("installed skill", "name", sk.Name, "agent", agent, "dest", dest)
+			slog.Debug("installed skill", "name", sk.Name, "agent", agent, "dest", dest)
 			m.writeSkillSnapshot(dest)
 		}
 	}
@@ -201,12 +201,12 @@ func (m *Manager) resolveSource(ctx context.Context, source string) (string, err
 	}
 
 	if !backend.IsCloned(localPath) {
-		slog.Info("cloning skill source", "url", cloneURL, "path", localPath)
+		slog.Debug("cloning skill source", "url", cloneURL, "path", localPath)
 		if err := backend.Clone(ctx, cloneURL, localPath, ""); err != nil {
 			return "", fmt.Errorf("cloning %s: %w", cloneURL, err)
 		}
 	} else {
-		slog.Info("updating skill source", "path", localPath)
+		slog.Debug("updating skill source", "path", localPath)
 		if err := backend.Update(ctx, localPath, ""); err != nil {
 			slog.Warn("could not update skill source", "path", localPath, "err", err)
 		}

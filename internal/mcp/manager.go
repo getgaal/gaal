@@ -259,7 +259,7 @@ func mergeIntoTarget(target, name string, entry serverEntry) error {
 		return fmt.Errorf("writing config %s: %w", target, err)
 	}
 
-	slog.Info("mcp config updated", "name", name, "target", target)
+	slog.Debug("mcp config updated", "name", name, "target", target)
 	return nil
 }
 

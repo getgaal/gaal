@@ -4,39 +4,46 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 	"strings"
 )
 
-// planTextRenderer implements PlanRenderer producing a compact, line-per-item
-// layout matching cli/sync.mdx:
+// planTextRenderer implements PlanRenderer producing a nested, indented
+// plan for `gaal sync --dry-run`, matching the format documented at
+// https://docs.getgaal.com/cli/sync:
 //
-//	✓ src/example          cloned
-//	✓ code-review          installed in claude-code, cursor
-//	✓ filesystem           upserted in claude_desktop_config.json
-//	sync complete in 1.2s
+//	plan:
+//	  repositories
+//	    + clone     src/example          (git, main)
+//	    ~ update    src/gaal             (git, main → main, 2 commits ahead)
+//	    = unchanged src/dataset
+//	  skills
+//	    + install   code-review          → claude-code, cursor
+//	    = unchanged refactor             → claude-code
+//	  mcps
+//	    + upsert    filesystem           → ~/.config/claude/claude_desktop_config.json
 //
-// For dry-run mode the trailing summary line is replaced with a status hint.
+// Verb and name column widths are computed per-section so each block stays
+// tight. Skill names use [displaySkillName]; MCP targets use [displayTarget]
+// with a soft length cap.
 type planTextRenderer struct{}
+
+// planTargetSoftLimit is the maximum visual length of an MCP target before
+// it gets truncated to "…/<last three segments>" in the plan renderer.
+const planTargetSoftLimit = 60
 
 func (pr *planTextRenderer) Render(w io.Writer, r *PlanReport) error {
 	slog.Debug("rendering plan text output")
 
-	items := collectPlanItems(r)
-	nameWidth := 0
-	for _, it := range items {
-		if n := len(it.name); n > nameWidth {
-			nameWidth = n
-		}
-	}
-
-	for _, it := range items {
-		fmt.Fprintf(w, "%s %s  %s\n", it.marker, padText(it.name, nameWidth), it.detail)
-	}
-
-	if len(items) == 0 {
+	if len(r.Repositories) == 0 && len(r.Skills) == 0 && len(r.MCPs) == 0 {
 		fmt.Fprintln(w, "nothing to do")
 		return nil
 	}
+
+	fmt.Fprintln(w, "plan:")
+	pr.writeRepos(w, r.Repositories)
+	pr.writeSkills(w, r.Skills)
+	pr.writeMCPs(w, r.MCPs)
 
 	switch {
 	case r.HasErrors:
@@ -49,44 +56,197 @@ func (pr *planTextRenderer) Render(w io.Writer, r *PlanReport) error {
 	return nil
 }
 
-type planTextItem struct {
+// planRow captures one rendered row: marker, verb, name, and an optional
+// post-name detail clause. All strings are pre-formatted for display.
+type planRow struct {
 	marker string
+	verb   string
 	name   string
 	detail string
+	action PlanAction // retained so sections can sort by action rank
 }
 
-func collectPlanItems(r *PlanReport) []planTextItem {
-	items := make([]planTextItem, 0,
-		len(r.Repositories)+len(r.Skills)+len(r.MCPs))
+// writeSection prints a section header and its rows with per-section
+// alignment: each verb is padded to the longest verb length in the section,
+// and each name to the longest display-name length. Rows are stably sorted
+// so errors surface first, changed resources next, and no-ops sink to the
+// bottom.
+func (pr *planTextRenderer) writeSection(w io.Writer, title string, rows []planRow) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "  %s\n", title)
 
-	for _, e := range r.Repositories {
-		items = append(items, planTextItem{
-			marker: markerFor(e.Action),
+	sort.SliceStable(rows, func(i, j int) bool {
+		return actionRank(rows[i].action) < actionRank(rows[j].action)
+	})
+
+	verbWidth, nameWidth := 0, 0
+	for _, r := range rows {
+		if n := len(r.verb); n > verbWidth {
+			verbWidth = n
+		}
+		if n := len(r.name); n > nameWidth {
+			nameWidth = n
+		}
+	}
+
+	for _, r := range rows {
+		line := fmt.Sprintf("    %s %s %s", r.marker, padText(r.verb, verbWidth), padText(r.name, nameWidth))
+		if r.detail != "" {
+			line += "  " + r.detail
+		}
+		fmt.Fprintln(w, strings.TrimRight(line, " "))
+	}
+}
+
+func (pr *planTextRenderer) writeRepos(w io.Writer, entries []PlanRepoEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	rows := make([]planRow, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, planRow{
+			marker: planMarker(e.Action),
+			verb:   planVerb(e.Action, "repo"),
 			name:   e.Path,
 			detail: repoPlanDetail(e),
+			action: e.Action,
 		})
 	}
-	for _, e := range r.Skills {
-		items = append(items, planTextItem{
-			marker: markerFor(e.Action),
-			name:   e.Source,
-			detail: skillPlanDetail(e),
-		})
-	}
-	for _, e := range r.MCPs {
-		items = append(items, planTextItem{
-			marker: markerFor(e.Action),
-			name:   e.Name,
-			detail: mcpPlanDetail(e),
-		})
-	}
-	return items
+	pr.writeSection(w, "repositories", rows)
 }
 
-func markerFor(a PlanAction) string {
+func (pr *planTextRenderer) writeSkills(w io.Writer, entries []PlanSkillEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	rows := buildSkillPlanRows(entries)
+	if len(rows) == 0 {
+		return
+	}
+	pr.writeSection(w, "skills", rows)
+}
+
+// buildSkillPlanRows pivots plan.Skills (keyed by source+agent) into one row
+// per skill name so the user sees "code-review → claude-code, cursor"
+// instead of two source-level lines. PlanError entries stay ungrouped since
+// no per-skill-name information is available.
+func buildSkillPlanRows(entries []PlanSkillEntry) []planRow {
+	type key struct {
+		name   string
+		action PlanAction
+	}
+	type bucket struct {
+		agents  []string
+		seen    map[string]struct{}
+		updates []string // e.g. "v1 → v2" strings accumulated for PlanUpdate
+	}
+	byKey := map[key]*bucket{}
+	var order []key
+
+	add := func(k key, agent string) {
+		b, ok := byKey[k]
+		if !ok {
+			b = &bucket{seen: map[string]struct{}{}}
+			byKey[k] = b
+			order = append(order, k)
+		}
+		if agent == "" {
+			return
+		}
+		if _, dup := b.seen[agent]; dup {
+			return
+		}
+		b.seen[agent] = struct{}{}
+		b.agents = append(b.agents, agent)
+	}
+
+	rows := make([]planRow, 0, len(entries))
+	for _, e := range entries {
+		switch e.Action {
+		case PlanError:
+			rows = append(rows, planRow{
+				marker: planMarker(PlanError),
+				verb:   planVerb(PlanError, "skill"),
+				name:   displaySkillName(e.Source),
+				detail: "(" + e.Error + ")",
+				action: PlanError,
+			})
+			continue
+		case PlanCreate:
+			for _, n := range e.Install {
+				add(key{n, PlanCreate}, e.Agent)
+			}
+			for _, n := range e.Update {
+				add(key{n, PlanUpdate}, e.Agent)
+			}
+		case PlanUpdate:
+			for _, n := range e.Update {
+				add(key{n, PlanUpdate}, e.Agent)
+			}
+		case PlanNoOp:
+			for _, n := range e.NoOp {
+				add(key{n, PlanNoOp}, e.Agent)
+			}
+		}
+	}
+
+	for _, k := range order {
+		b := byKey[k]
+		detail := ""
+		if len(b.agents) > 0 {
+			detail = "→ " + strings.Join(b.agents, ", ")
+		}
+		rows = append(rows, planRow{
+			marker: planMarker(k.action),
+			verb:   planVerb(k.action, "skill"),
+			name:   k.name,
+			detail: detail,
+			action: k.action,
+		})
+	}
+	return rows
+}
+
+func (pr *planTextRenderer) writeMCPs(w io.Writer, entries []PlanMCPEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	rows := make([]planRow, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, planRow{
+			marker: planMarker(e.Action),
+			verb:   planVerb(e.Action, "mcp"),
+			name:   e.Name,
+			detail: mcpPlanDetail(e),
+			action: e.Action,
+		})
+	}
+	pr.writeSection(w, "mcps", rows)
+}
+
+// actionRank orders plan actions within a section: errors first (most
+// urgent), then creates/updates, then no-ops (passive / already done).
+// Stable sorts preserve input order within each rank.
+func actionRank(a PlanAction) int {
+	switch a {
+	case PlanError:
+		return 0
+	case PlanClone, PlanCreate, PlanUpdate:
+		return 1
+	case PlanNoOp:
+		return 2
+	default:
+		return 3
+	}
+}
+
+// planMarker returns the one-character leading glyph for a plan action.
+func planMarker(a PlanAction) string {
 	switch a {
 	case PlanNoOp:
-		return "✓"
+		return "="
 	case PlanClone, PlanCreate:
 		return "+"
 	case PlanUpdate:
@@ -98,58 +258,88 @@ func markerFor(a PlanAction) string {
 	}
 }
 
-func repoPlanDetail(e PlanRepoEntry) string {
-	switch e.Action {
-	case PlanNoOp:
-		if e.Current != "" {
-			return "up to date (" + e.Current + ")"
-		}
-		return "up to date"
-	case PlanClone:
-		if e.URL != "" {
-			return "would clone " + e.URL
-		}
-		return "would clone"
-	case PlanUpdate:
-		return "would update " + e.Current + " → " + e.Want
-	case PlanError:
-		return "error: " + e.Error
-	default:
-		return string(e.Action)
+// planVerb returns the action verb for a plan row, specialised per resource
+// kind so repositories say "clone", skills say "install", and MCPs say
+// "upsert" for the create action.
+func planVerb(a PlanAction, kind string) string {
+	if a == PlanNoOp {
+		return "unchanged"
 	}
+	switch kind {
+	case "repo":
+		switch a {
+		case PlanClone:
+			return "clone"
+		case PlanUpdate:
+			return "update"
+		case PlanError:
+			return "error"
+		}
+	case "skill":
+		switch a {
+		case PlanCreate:
+			return "install"
+		case PlanUpdate:
+			return "update"
+		case PlanError:
+			return "error"
+		}
+	case "mcp":
+		switch a {
+		case PlanCreate:
+			return "upsert"
+		case PlanUpdate:
+			return "update"
+		case PlanError:
+			return "error"
+		}
+	}
+	return string(a)
 }
 
-func skillPlanDetail(e PlanSkillEntry) string {
+func repoPlanDetail(e PlanRepoEntry) string {
 	switch e.Action {
-	case PlanNoOp:
-		return "installed in " + e.Agent
-	case PlanCreate:
-		names := append([]string{}, e.Install...)
-		names = append(names, e.Update...)
-		if len(names) == 0 {
-			return "would install in " + e.Agent
+	case PlanClone:
+		parts := []string{}
+		if e.Type != "" {
+			parts = append(parts, e.Type)
 		}
-		return "would install " + strings.Join(names, ", ") + " in " + e.Agent
+		if e.Want != "" {
+			parts = append(parts, e.Want)
+		} else if e.URL != "" {
+			parts = append(parts, e.URL)
+		}
+		if len(parts) == 0 {
+			return ""
+		}
+		return "(" + strings.Join(parts, ", ") + ")"
 	case PlanUpdate:
-		return "would update " + strings.Join(e.Update, ", ") + " in " + e.Agent
+		parts := []string{}
+		if e.Type != "" {
+			parts = append(parts, e.Type)
+		}
+		if e.Current != "" || e.Want != "" {
+			parts = append(parts, e.Current+" → "+e.Want)
+		}
+		if len(parts) == 0 {
+			return ""
+		}
+		return "(" + strings.Join(parts, ", ") + ")"
 	case PlanError:
-		return "error: " + e.Error
+		return "(" + e.Error + ")"
 	default:
-		return string(e.Action)
+		return ""
 	}
 }
 
 func mcpPlanDetail(e PlanMCPEntry) string {
 	switch e.Action {
-	case PlanNoOp:
-		return "upserted in " + e.Target
-	case PlanCreate:
-		return "would upsert in " + e.Target
-	case PlanUpdate:
-		return "would update in " + e.Target
 	case PlanError:
-		return "error: " + e.Error
+		return "(" + e.Error + ")"
 	default:
-		return string(e.Action)
+		if e.Target == "" {
+			return ""
+		}
+		return "→ " + displayTarget(e.Target, planTargetSoftLimit)
 	}
 }
