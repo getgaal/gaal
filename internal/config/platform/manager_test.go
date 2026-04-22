@@ -184,3 +184,112 @@ func TestUserConfigFilePath_DarwinExported_NoXDG(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// UserConfigDir (exported)
+// ---------------------------------------------------------------------------
+
+func TestUserConfigDir_ReturnsNonEmpty(t *testing.T) {
+	got, err := UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir returned error: %v", err)
+	}
+	if got == "" {
+		t.Fatal("UserConfigDir returned empty string")
+	}
+}
+
+func TestUserConfigDir_MatchesUserConfigFilePath(t *testing.T) {
+	dir, err := UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir returned error: %v", err)
+	}
+	filePath := UserConfigFilePath()
+	// The file path must be dir/gaal/config.yaml
+	want := filepath.Join(dir, "gaal", "config.yaml")
+	if filePath != want {
+		t.Errorf("UserConfigFilePath=%q, want %q (derived from UserConfigDir=%q)", filePath, want, dir)
+	}
+}
+
+func TestUserConfigDir_LinuxUsesXDGConfigHome(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-only test")
+	}
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+
+	got, err := UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir returned error: %v", err)
+	}
+	if got != xdg {
+		t.Errorf("got %q, want %q", got, xdg)
+	}
+}
+
+func TestUserConfigDir_LinuxDefaultsToConfigDir(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-only test")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	got, err := UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir returned error: %v", err)
+	}
+	want := filepath.Join(home, ".config")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestUserConfigDir_DarwinUsesXDGConfigHome(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only test")
+	}
+	xdg := filepath.Join(t.TempDir(), "xdg-config")
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+
+	got, err := UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir returned error: %v", err)
+	}
+	if got != xdg {
+		t.Errorf("got %q, want %q", got, xdg)
+	}
+}
+
+func TestUserConfigDir_DarwinNoXDGFallsBackToHome(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin-only test")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	got, err := UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir returned error: %v", err)
+	}
+	want := filepath.Join(home, ".config")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestUserConfigDir_WindowsUsesAppData(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-only test")
+	}
+	got, err := UserConfigDir()
+	if err != nil {
+		t.Fatalf("UserConfigDir returned error: %v", err)
+	}
+	appData := os.Getenv("APPDATA")
+	if appData != "" && !strings.HasPrefix(got, appData) {
+		t.Errorf("got %q, expected path under APPDATA=%q", got, appData)
+	}
+}

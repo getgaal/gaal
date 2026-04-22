@@ -46,6 +46,15 @@ func UserConfigFilePath() string {
 	return userConfigFilePath()
 }
 
+// UserConfigDir is the exported accessor for the per-user config directory.
+// It delegates to the OS-specific userConfigDir() and is the single source of
+// truth for any code that needs to resolve the user config directory without
+// also appending the config filename (e.g. registry.go).
+func UserConfigDir() (string, error) {
+	slog.Debug("resolving user config directory")
+	return userConfigDir()
+}
+
 // userConfigFilePath returns the per-user config path for the current OS.
 // It respects XDG_CONFIG_HOME on Linux and macOS when set, otherwise ~/.config
 // on macOS (see userConfigDir), and %AppData% on Windows.
