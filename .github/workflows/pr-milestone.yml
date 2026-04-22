@@ -1,0 +1,117 @@
+name: Assign PR to Next Milestone
+
+# Triggered when a PR is closed (merged or not) targeting the default branch.
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  assign-milestone:
+    name: Assign to next milestone
+    # Only run when:
+    #   - the PR was actually merged (not just closed)
+    #   - no milestone is already set on the PR
+    if: github.event.pull_request.merged == true && github.event.pull_request.milestone == null
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Find next open milestone by due date
+        id: milestone
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO:     ${{ github.repository }}
+        run: |
+          # Fetch all open milestones sorted ascending by due date.
+          # Milestones without a due date (due_on == null) are excluded.
+          MILESTONES=$(gh api \
+            "/repos/${REPO}/milestones?state=open&sort=due_on&direction=asc&per_page=100" \
+            --jq '[.[] | select(.due_on != null) | {number: .number, title: .title, due_on: .due_on}]')
+
+          echo "Open milestones with due dates: $MILESTONES"
+
+          NOW=$(date -u +%s)
+
+          # Pick the first milestone whose due_on is in the future.
+          NEXT=$(echo "$MILESTONES" | jq -r \
+            --argjson now "$NOW" \
+            'map(select((.due_on | fromdateiso8601) >= $now)) | first // empty | "\(.number)|\(.title)|\(.due_on)"')
+
+          if [ -z "$NEXT" ]; then
+            # Fallback: if all due dates are past, pick the nearest one (last resort).
+            NEXT=$(echo "$MILESTONES" | jq -r \
+              'last // empty | "\(.number)|\(.title)|\(.due_on)"')
+          fi
+
+          if [ -z "$NEXT" ]; then
+            echo "::warning::No open milestone with a due date found. Skipping assignment."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          MILESTONE_NUMBER=$(echo "$NEXT" | cut -d'|' -f1)
+          MILESTONE_TITLE=$(echo "$NEXT"  | cut -d'|' -f2)
+          MILESTONE_DUE=$(echo "$NEXT"    | cut -d'|' -f3)
+
+          echo "Selected milestone: #${MILESTONE_NUMBER} '${MILESTONE_TITLE}' (due ${MILESTONE_DUE})"
+          echo "found=true"                 >> "$GITHUB_OUTPUT"
+          echo "number=${MILESTONE_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "title=${MILESTONE_TITLE}"   >> "$GITHUB_OUTPUT"
+
+      - name: Assign milestone to PR
+        if: steps.milestone.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO:     ${{ github.repository }}
+          PR:       ${{ github.event.pull_request.number }}
+          MILESTONE: ${{ steps.milestone.outputs.number }}
+        run: |
+          gh api \
+            --method PATCH \
+            "/repos/${REPO}/issues/${PR}" \
+            --field milestone="$MILESTONE"
+
+          echo "PR #${PR} assigned to milestone #${MILESTONE} ('${{ steps.milestone.outputs.title }}')"
+
+      - name: Assign milestone to linked issues
+        if: steps.milestone.outputs.found == 'true'
+        env:
+          GH_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
+          REPO:      ${{ github.repository }}
+          MILESTONE: ${{ steps.milestone.outputs.number }}
+          PR_BODY:   ${{ github.event.pull_request.body }}
+        run: |
+          # Extract issue numbers from closing keywords in the PR body.
+          # Supported: close(s|d), fix(es|ed), resolve(s|d) — case-insensitive.
+          ISSUE_NUMBERS=$(echo "$PR_BODY" \
+            | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)\s*:?\s*#[0-9]+' \
+            | grep -oE '#[0-9]+' \
+            | tr -d '#' \
+            | sort -u)
+
+          if [ -z "$ISSUE_NUMBERS" ]; then
+            echo "No linked issues found in PR body."
+            exit 0
+          fi
+
+          echo "Linked issues: $ISSUE_NUMBERS"
+
+          for ISSUE in $ISSUE_NUMBERS; do
+            # Skip if the issue already has a milestone set.
+            CURRENT=$(gh api "/repos/${REPO}/issues/${ISSUE}" --jq '.milestone.number // empty')
+            if [ -n "$CURRENT" ]; then
+              echo "Issue #${ISSUE} already has milestone #${CURRENT}, skipping."
+              continue
+            fi
+
+            gh api \
+              --method PATCH \
+              "/repos/${REPO}/issues/${ISSUE}" \
+              --field milestone="$MILESTONE"
+
+            echo "Issue #${ISSUE} assigned to milestone #${MILESTONE} ('${{ steps.milestone.outputs.title }}')"
+          done
