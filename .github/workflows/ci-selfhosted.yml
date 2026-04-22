@@ -1,0 +1,123 @@
+name: CI (self-hosted)
+
+# Manual-only workflow for running the full CI suite on internal self-hosted
+# runners. Useful for validating platform-specific behaviour or testing on
+# private infrastructure without consuming GitHub-hosted runner minutes.
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for triggering self-hosted CI'
+        required: false
+        default: 'Manual validation on internal infrastructure'
+
+permissions:
+  contents: read
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Lint: gofmt formatting check + go vet (make lint)
+  # ──────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false  # self-hosted runners persist ~/go/pkg/mod across runs
+
+      - name: Lint (gofmt + go vet)
+        run: make lint
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Build: compile the binary on Linux and macOS (make build)
+  # ──────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, runner: [self-hosted, Linux, X64] }
+          - { name: macOS, runner: [self-hosted, macOS, ARM64] }
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false  # self-hosted runners persist ~/go/pkg/mod across runs
+
+      - name: Build
+        run: make build
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Test: unit tests with race detector on Linux and macOS (make test-ci)
+  # ──────────────────────────────────────────────────────────────────────────
+  test:
+    name: Test / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, runner: [self-hosted, Linux, X64] }
+          - { name: macOS, runner: [self-hosted, macOS, ARM64] }
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false  # self-hosted runners persist ~/go/pkg/mod across runs
+
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
+      - name: Run tests
+        run: make test-ci
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-selfhosted-${{ matrix.name }}
+          path: report/tests.xml
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Coverage: generate HTML report
+  # ──────────────────────────────────────────────────────────────────────────
+  coverage:
+    name: Coverage
+    runs-on: [self-hosted, Linux, X64]
+    needs: test
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false  # self-hosted runners persist ~/go/pkg/mod across runs
+
+      - name: Generate coverage report
+        run: make coverage-ci
+
+      - name: Post coverage summary
+        run: |
+          echo "## Coverage Report" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat report/coverage-summary.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report-selfhosted
+          path: report/
+          retention-days: 30

@@ -26,7 +26,7 @@ permissions:
 jobs:
   shellcheck:
     name: Shellcheck (POSIX sh)
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
@@ -45,15 +45,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux, runner: [self-hosted, Linux, X64] }
-          - { name: macOS, runner: [self-hosted, macOS, ARM64] }
+          - { name: linux, runner: ubuntu-latest }
+          - { name: macOS, runner: macos-latest }
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
+          cache: true
 
       - name: Run install script integration tests
         run: go test -race ./internal/installscript/ -v

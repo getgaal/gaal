@@ -2,7 +2,6 @@ name: Release
 
 # Triggered on:
 #   - semver release tags (v0.1.0, v1.2.3) → builds + publishes GitHub Release
-#   - pull requests → smoke-tests the release pipeline (no publishing)
 #   - workflow_dispatch → manual run from any branch (no publishing unless tagged)
 on:
   push:
@@ -15,43 +14,39 @@ permissions:
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
-  # Reuse the full CI workflow: lint + build (3 OS) + test (3 OS) + coverage.
-  # Skipped on pull_request because ci.yml already runs standalone on PRs.
+  # Reuse the CI workflow: lint + cross-compile builds + test (linux + macOS).
   # ──────────────────────────────────────────────────────────────────────────
   ci:
     name: CI
-    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
 
   # ──────────────────────────────────────────────────────────────────────────
   # Cross-compile release binaries for all supported platforms / architectures.
-  # Darwin builds run on macOS for code signing and notarization.
-  # Runs even when `ci` is skipped (PR runs) so the release pipeline is exercised.
+  # Darwin builds run on macos-latest for code signing and notarization.
   # ──────────────────────────────────────────────────────────────────────────
   binaries:
     name: Binary / ${{ matrix.goos }}-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     needs: ci
-    if: ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux,   goarch: amd64, runner: [self-hosted, Linux, X64] }
-          - { goos: linux,   goarch: arm64, runner: [self-hosted, Linux, X64] }
-          - { goos: darwin,  goarch: amd64, runner: [self-hosted, macOS, ARM64] }
-          - { goos: darwin,  goarch: arm64, runner: [self-hosted, macOS, ARM64] }
-          - { goos: windows, goarch: amd64, runner: [self-hosted, Linux, X64], ext: .exe }
-          - { goos: windows, goarch: arm64, runner: [self-hosted, Linux, X64], ext: .exe }
+          - { goos: linux,   goarch: amd64, runner: ubuntu-latest }
+          - { goos: linux,   goarch: arm64, runner: ubuntu-latest }
+          - { goos: darwin,  goarch: amd64, runner: macos-latest }
+          - { goos: darwin,  goarch: arm64, runner: macos-latest }
+          - { goos: windows, goarch: amd64, runner: ubuntu-latest, ext: .exe }
+          - { goos: windows, goarch: arm64, runner: ubuntu-latest, ext: .exe }
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          # cache disabled: self-hosted runners persist ~/go/pkg/mod across runs
+          cache: true
 
       - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
         env:
@@ -81,7 +76,7 @@ jobs:
           RCODESIGN_VERSION: "0.29.0"
           RCODESIGN_SHA256: "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a"
         run: |
-          # Self-hosted runner is aarch64 regardless of $GOARCH (we cross-compile).
+          # macos-latest GitHub-hosted runners are ARM64 (M-series).
           ARCHIVE="apple-codesign-${RCODESIGN_VERSION}-aarch64-apple-darwin.tar.gz"
           curl -fsSL -o "$RUNNER_TEMP/$ARCHIVE" \
             "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${ARCHIVE}"
@@ -153,15 +148,59 @@ jobs:
           if-no-files-found: error
 
   # ──────────────────────────────────────────────────────────────────────────
+  # Test: run the full test suite natively on every release platform.
+  # Guarantees that deliverables are 100% validated on their target platform.
+  # Runs in parallel with binaries (both need ci to pass first).
+  # ──────────────────────────────────────────────────────────────────────────
+  test:
+    name: Test / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    needs: ci
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux,       runner: ubuntu-latest    }
+          - { name: linux-arm64, runner: ubuntu-24.04-arm }
+          - { name: macOS,       runner: macos-latest     }
+          - { name: macOS-amd64, runner: macos-13         }
+          - { name: windows,     runner: windows-latest   }
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install gotestsum
+        shell: bash
+        run: go install gotest.tools/gotestsum@latest
+
+      - name: Run tests
+        shell: bash
+        run: |
+          mkdir -p report
+          gotestsum --junitfile report/tests.xml --format github-actions -- -race -count=1 -timeout 5m ./...
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-release-${{ matrix.name }}
+          path: report/tests.xml
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────────────────
   # Create the GitHub Release and attach all compiled binaries + checksums.
-  # Only runs on semver tag pushes — PRs and manual dispatches build artifacts
+  # Only runs on semver tag pushes — manual dispatches build artifacts
   # but do not publish.
   # ──────────────────────────────────────────────────────────────────────────
   release:
     name: Create Release
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: [self-hosted, Linux, X64]
-    needs: binaries
+    runs-on: ubuntu-latest
+    needs: [binaries, test]
     steps:
       - uses: actions/download-artifact@v7
         with:
