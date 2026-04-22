@@ -1,29 +1,31 @@
-# La commande `gaal status` — Guide de lecture
+# The `gaal status` command — Reading guide
 
-> **Pour qui ?** Ce guide s'adresse à quelqu'un qui n'a jamais utilisé `gaal`
-> et veut comprendre ce qu'affiche `gaal status` sans avoir à lire le code source.
+> **Audience:** This guide is for anyone who has never used `gaal` before
+> and wants to understand what `gaal status` prints without reading the source code.
 
 ---
 
-## Principe général
+## How it works
 
-`gaal` lit un fichier de configuration (`gaal.yaml`) qui déclare trois types de ressources à gérer sur ta machine :
+`gaal` reads a configuration file (`gaal.yaml`) that declares three types of
+resources to manage on your machine:
 
-| Type | Ce que c'est |
+| Type | Description |
 |------|-------------|
-| **Repositories** | Des dépôts de code (git, svn, hg…) à cloner et maintenir à jour localement |
-| **Skills** | Des collections de fichiers `SKILL.md` à installer dans les répertoires de tes agents IA (GitHub Copilot, Claude, Cursor…) |
-| **MCP Configs** | Des entrées de serveur MCP (*Model Context Protocol*) à injecter dans les fichiers de configuration JSON de tes agents |
+| **Repositories** | Code repositories (git, svn, hg, …) to clone and keep up-to-date locally |
+| **Skills** | Collections of `SKILL.md` files to install into your AI agent directories (GitHub Copilot, Claude, Cursor, …) |
+| **MCP Configs** | MCP (*Model Context Protocol*) server entries to inject into your agent JSON configuration files |
 
-La commande `gaal status` **ne fait rien** — elle se contente de **lire l'état actuel du disque** et de te dire si ce que tu as déclaré dans `gaal.yaml` correspond à ce qui est réellement installé.
+`gaal status` **does nothing** — it only **reads the current state from disk** and tells
+you whether what you declared in `gaal.yaml` matches what is actually installed.
 
-Pour synchroniser (installer / mettre à jour), tu utilises `gaal sync`.
+To synchronise (install / update), use `gaal sync`.
 
 ---
 
-## Structure de l'écran
+## Screen layout
 
-L'affichage est divisé en **quatre sections** présentées l'une après l'autre.
+The output is divided into **four sections** displayed one after the other.
 
 ---
 
@@ -35,22 +37,22 @@ L'affichage est divisé en **quatre sections** présentées l'une après l'autre
 │ PATH         │ TYPE │ STATUS         │ VERSION / URL    │
 ```
 
-| Colonne | Signification |
-|---------|--------------|
-| **PATH** | Chemin local où le dépôt est (ou devrait être) cloné, relatif au répertoire courant |
-| **TYPE** | Protocole utilisé : `git`, `hg`, `svn`, `bzr`, `tar`, `zip` |
-| **STATUS** | État du dépôt (voir tableau ci-dessous) |
-| **VERSION / URL** | Pour les dépôts clonés : version actuelle + version voulue. Pour les dépôts absents : URL source |
+| Column | Meaning |
+|--------|---------|
+| **PATH** | Local path where the repository is (or should be) cloned, relative to the current directory |
+| **TYPE** | Protocol in use: `git`, `hg`, `svn`, `bzr`, `tar`, `zip` |
+| **STATUS** | Current state of the repository (see table below) |
+| **VERSION / URL** | For cloned repos: current version + wanted version. For missing repos: source URL |
 
-**Valeurs possibles de STATUS :**
+**Possible STATUS values:**
 
-| Icône | Label | Signification |
-|-------|-------|--------------|
-| ✓ | `synced` | Cloné et à la bonne version |
-| ⚠ | `dirty` | Cloné mais la version locale ne correspond pas à ce que demande la config |
-| ~ | `not cloned` | Pas encore téléchargé sur le disque — fait un `gaal sync` |
-| ? | `unmanaged` | Présent sur le disque mais non déclaré dans la config |
-| ✗ | `error` | Erreur lors de la vérification (permissions, réseau…) |
+| Icon | Label | Meaning |
+|------|-------|---------|
+| ✓ | `synced` | Cloned and at the correct version |
+| ⚠ | `dirty` | Cloned but the local version does not match what the config requests |
+| ~ | `not cloned` | Not yet downloaded to disk — run `gaal sync` |
+| ? | `unmanaged` | Present on disk but not declared in the config |
+| ✗ | `error` | Error during the check (permissions, network, …) |
 
 ---
 
@@ -62,62 +64,68 @@ L'affichage est divisé en **quatre sections** présentées l'une après l'autre
 │ SKILL            │ SOURCE     │ SCOPE     │ STATUS     │ INSTALLED IN │
 ```
 
-C'est la section la plus importante si tu travailles avec des agents IA.
+This is the most important section if you work with AI agents.
 
-#### Comprendre les concepts clés
+#### Key concepts
 
-Un **skill** est un dossier contenant un fichier `SKILL.md` que les agents IA lisent pour obtenir des instructions spécialisées (ex. : "comment écrire du React performant"). `gaal` s'occupe de copier ces dossiers dans les bons répertoires de tes agents.
+A **skill** is a directory containing a `SKILL.md` file that AI agents read to obtain
+specialised instructions (e.g. "how to write performant React"). `gaal` copies these
+directories into the correct agent directories on your machine.
 
-Une **source** est le dépôt GitHub (ou chemin local) depuis lequel `gaal` télécharge les skills. Par exemple `vercel-labs/agent-skills` est un dépôt GitHub public.
+A **source** is the GitHub repository (or local path) from which `gaal` downloads
+skills. For example `vercel-labs/agent-skills` is a public GitHub repository.
 
-#### Colonnes
+#### Columns
 
-| Colonne | Signification |
-|---------|--------------|
-| **SKILL** | Nom du skill (extrait du `SKILL.md`) |
-| **SOURCE** | D'où vient ce skill : dépôt GitHub (`owner/repo`) ou chemin local |
-| **SCOPE** | `global` = installé dans `~/.copilot/skills` (pour tous tes projets) · `workspace` = installé dans `.github/skills` (uniquement pour ce projet) |
-| **STATUS** | État de l'installation (voir tableau ci-dessous) |
-| **INSTALLED IN** | Dans quels agents le skill est actuellement présent sur le disque |
+| Column | Meaning |
+|--------|---------|
+| **SKILL** | Name of the skill (extracted from `SKILL.md`) |
+| **SOURCE** | Where the skill comes from: a GitHub repository (`owner/repo`) or a local path |
+| **SCOPE** | `global` = installed in `~/.copilot/skills` (for all your projects) · `workspace` = installed in `.github/skills` (this project only) |
+| **STATUS** | Installation state (see table below) |
+| **INSTALLED IN** | Which agents currently have this skill on disk |
 
-**Valeurs possibles de STATUS :**
+**Possible STATUS values:**
 
-| Icône | Label | Signification |
-|-------|-------|--------------|
-| ✓ | `synced` | Le skill est installé et ses fichiers correspondent exactement à la source |
-| ⚠ | `dirty` | Le skill est installé mais des fichiers ont été modifiés localement depuis la dernière sync |
-| ~ | `partial` | Déclaré dans la config mais pas encore installé — fait un `gaal sync` |
-| ? | `unmanaged` | Trouvé sur le disque dans un répertoire agent mais non déclaré dans la config |
-| ✗ | `error` | Erreur (source non cachée, agent inconnu…) |
+| Icon | Label | Meaning |
+|------|-------|---------|
+| ✓ | `synced` | The skill is installed and its files exactly match the source |
+| ⚠ | `dirty` | The skill is installed but some files have been modified locally since the last sync |
+| ~ | `partial` | Declared in the config but not yet installed — run `gaal sync` |
+| ? | `unmanaged` | Found on disk in an agent directory but not declared in the config |
+| ✗ | `error` | Error (source not cached, unknown agent, …) |
 
-**Valeurs possibles de INSTALLED IN :**
+**Possible INSTALLED IN values:**
 
-| Valeur | Signification |
-|--------|--------------|
-| `all` (vert) | Installé dans tous les agents ciblés par la config |
-| `none` (jaune) | Non encore installé dans aucun agent — `gaal sync` requis |
-| liste de noms | Installé uniquement dans ces agents (sous-ensemble des agents ciblés) |
+| Value | Meaning |
+|-------|---------|
+| `all` (green) | Installed in all agents targeted by the config |
+| `none` (yellow) | Not yet installed in any agent — `gaal sync` required |
+| list of names | Installed only in these agents (a subset of the targeted agents) |
 
-> **Astuce lecture :** une ligne `~ partial | none` signifie que le skill est déclaré dans
-> `gaal.yaml` mais que sa source n'a pas encore été téléchargée localement. Lance
-> `gaal sync` pour corriger ça.
+> **Reading tip:** a `~ partial | none` line means the skill is declared in
+> `gaal.yaml` but its source has not been downloaded locally yet. Run
+> `gaal sync` to fix this.
 
-#### Exemple de lecture
+#### Example rows
 
 ```
 │ react-best-practices │ vercel-labs/agent-skills │ workspace │ ✓ synced  │ all  │
 ```
-→ Le skill `react-best-practices`, tiré du dépôt GitHub `vercel-labs/agent-skills`, est installé dans le répertoire `.github/skills` du projet et est synchronisé dans tous les agents ciblés.
+→ The `react-best-practices` skill, sourced from the `vercel-labs/agent-skills` GitHub
+repository, is installed in the project's `.github/skills` directory and is in sync
+across all targeted agents.
 
 ```
 │ canvas-design        │ anthropics/skills        │ global    │ ✓ synced  │ all  │
 ```
-→ Ce skill est installé **globalement** (`~/.copilot/skills`) : il sera disponible dans tous tes projets, pas seulement celui-ci.
+→ This skill is installed **globally** (`~/.copilot/skills`): it is available in all
+your projects, not just the current one.
 
 ```
 │ vercel-composition…  │ vercel-labs/agent-…      │ workspace │ ~ partial │ none │
 ```
-→ Ce skill est dans ta config mais pas encore téléchargé. Lance `gaal sync`.
+→ This skill is in your config but has not been downloaded yet. Run `gaal sync`.
 
 ---
 
@@ -129,20 +137,20 @@ Une **source** est le dépôt GitHub (ou chemin local) depuis lequel `gaal` tél
 │ NAME       │ STATUS     │ TARGET                            │
 ```
 
-| Colonne | Signification |
-|---------|--------------|
-| **NAME** | Nom de l'entrée MCP telle que déclarée dans `gaal.yaml` |
-| **STATUS** | État de la configuration (voir tableau ci-dessous) |
-| **TARGET** | Fichier JSON de configuration de l'agent où l'entrée doit être injectée |
+| Column | Meaning |
+|--------|---------|
+| **NAME** | Name of the MCP entry as declared in `gaal.yaml` |
+| **STATUS** | Configuration state (see table below) |
+| **TARGET** | Agent JSON config file where the entry should be injected |
 
-**Valeurs possibles de STATUS :**
+**Possible STATUS values:**
 
-| Icône | Label | Signification |
-|-------|-------|--------------|
-| ✓ | `present` | L'entrée est présente dans le fichier cible et correspond à la config |
-| ⚠ | `dirty` | L'entrée existe mais a été modifiée localement depuis la dernière sync |
-| ~ | `absent` | L'entrée n'est pas dans le fichier cible — `gaal sync` requis |
-| ✗ | `error` | Impossible de lire/écrire le fichier cible |
+| Icon | Label | Meaning |
+|------|-------|---------|
+| ✓ | `present` | The entry is present in the target file and matches the config |
+| ⚠ | `dirty` | The entry exists but has been modified locally since the last sync |
+| ~ | `absent` | The entry is not in the target file — `gaal sync` required |
+| ✗ | `error` | Cannot read / write the target file |
 
 ---
 
@@ -154,38 +162,39 @@ Une **source** est le dépôt GitHub (ou chemin local) depuis lequel `gaal` tél
 │ AGENT         │ INSTALLED │ PROJECT SKILLS DIR │ GLOBAL SKILLS DIR │ PROJECT MCP CONFIG│
 ```
 
-Cette section est **informative uniquement** — elle te montre quels agents IA `gaal` connaît et lesquels sont détectés comme présents sur ta machine.
+This section is **informational only** — it shows which AI agents `gaal` knows about
+and which ones are detected as present on your machine.
 
-| Colonne | Signification |
-|---------|--------------|
-| **AGENT** | Identifiant de l'agent (ex. `github-copilot`, `cursor`, `claude-code`) |
-| **INSTALLED** | `✓` si le répertoire de configuration de l'agent existe sur la machine · `—` si absent |
-| **PROJECT SKILLS DIR** | Répertoire (relatif au projet) où `gaal` installe les skills workspace pour cet agent |
-| **GLOBAL SKILLS DIR** | Répertoire absolu (`~/ …`) où `gaal` installe les skills globaux pour cet agent |
-| **PROJECT MCP CONFIG** | Fichier JSON de l'agent où les entrées MCP sont injectées |
+| Column | Meaning |
+|--------|---------|
+| **AGENT** | Agent identifier (e.g. `github-copilot`, `cursor`, `claude-code`) |
+| **INSTALLED** | `✓` if the agent's configuration directory exists on the machine · `—` if absent |
+| **PROJECT SKILLS DIR** | Directory (relative to the project) where `gaal` installs workspace skills for this agent |
+| **GLOBAL SKILLS DIR** | Absolute path (`~/…`) where `gaal` installs global skills for this agent |
+| **PROJECT MCP CONFIG** | Agent JSON file where MCP entries are injected |
 
-> `gaal` ne synchronise vers un agent que s'il est **installé** (`✓`). Les agents
-> marqués `—` sont ignorés lors du `gaal sync`.
-
----
-
-## Statuts en un coup d'œil
-
-| Icône | Couleur | Signification rapide |
-|-------|---------|---------------------|
-| ✓ synced / present | vert | Tout est à jour |
-| ⚠ dirty | jaune | Modifié localement depuis la dernière sync |
-| ~ partial / not cloned / absent | jaune | Déclaré mais pas encore installé → `gaal sync` |
-| ? unmanaged | cyan | Présent sur le disque mais pas dans la config |
-| ✗ error | rouge | Problème à corriger (voir le message d'erreur) |
+> `gaal` only syncs to an agent if it is **installed** (`✓`). Agents marked `—`
+> are skipped during `gaal sync`.
 
 ---
 
-## Workflow typique
+## Status at a glance
+
+| Icon | Colour | Quick meaning |
+|------|--------|---------------|
+| ✓ synced / present | green | Everything is up to date |
+| ⚠ dirty | yellow | Modified locally since the last sync |
+| ~ partial / not cloned / absent | yellow | Declared but not yet installed → `gaal sync` |
+| ? unmanaged | cyan | Present on disk but not in the config |
+| ✗ error | red | Problem to fix (see the error message) |
+
+---
+
+## Typical workflow
 
 ```
-1. Tu édites gaal.yaml          → ajoute/modifie des ressources
-2. gaal status                  → vois ce qui est désynchronisé
-3. gaal sync                    → installe / met à jour tout
-4. gaal status                  → confirme que tout est ✓ synced
+1. Edit gaal.yaml          → add / modify resources
+2. gaal status             → see what is out of sync
+3. gaal sync               → install / update everything
+4. gaal status             → confirm everything is ✓ synced
 ```
