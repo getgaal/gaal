@@ -24,6 +24,11 @@ var (
 	statePath  string
 	appVersion string
 	pending    sync.WaitGroup
+
+	// pendingConsentPath and pendingConsentValue hold a deferred consent write
+	// requested by Init when deferPersist is true. FlushConsent drains them.
+	pendingConsentPath  string
+	pendingConsentValue *bool
 )
 
 // milestoneState tracks which one-time events have already been sent.
@@ -35,7 +40,7 @@ type milestoneState struct {
 // Init resolves consent state and initialises the telemetry client.
 // version is the gaal binary version string (passed from cmd.Version to avoid
 // circular import).
-func Init(cfgTelemetry *bool, promptFn func() (bool, error), version string) (bool, error) {
+func Init(cfgTelemetry *bool, promptFn func() (bool, error), version string, deferPersist bool) (bool, error) {
 	appVersion = version
 
 	state := resolveState(cfgTelemetry)
@@ -46,8 +51,15 @@ func Init(cfgTelemetry *bool, promptFn func() (bool, error), version string) (bo
 		if err != nil {
 			return false, fmt.Errorf("telemetry prompt: %w", err)
 		}
-		if err := persistConsent(config.UserConfigFilePath(), consent); err != nil {
-			slog.Warn("failed to persist telemetry consent", "err", err)
+		if deferPersist {
+			path := config.UserConfigFilePath()
+			slog.Debug("deferring telemetry consent persist", "path", path, "enabled", consent)
+			pendingConsentPath = path
+			pendingConsentValue = &consent
+		} else {
+			if err := persistConsent(config.UserConfigFilePath(), consent); err != nil {
+				slog.Warn("failed to persist telemetry consent", "err", err)
+			}
 		}
 		state.Enabled = consent
 
@@ -113,6 +125,24 @@ func Shutdown() {
 	case <-time.After(2 * time.Second):
 		slog.Debug("telemetry shutdown timed out, some events may be lost")
 	}
+}
+
+// FlushConsent writes any deferred telemetry consent choice to disk.
+// It is a no-op when Init was called without deferPersist or when consent
+// was already persisted immediately. Called from PersistentPostRunE so that
+// it runs after the command (e.g. "init") has written the config file itself,
+// allowing persistConsent to merge the telemetry field into the full config.
+func FlushConsent() error {
+	slog.Debug("flushing pending telemetry consent",
+		"path", pendingConsentPath, "pending", pendingConsentValue != nil)
+	if pendingConsentValue == nil {
+		return nil
+	}
+	path := pendingConsentPath
+	value := *pendingConsentValue
+	pendingConsentPath = ""
+	pendingConsentValue = nil
+	return persistConsent(path, value)
 }
 
 // Track sends a pageview event for the given command in a fire-and-forget

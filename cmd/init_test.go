@@ -207,3 +207,38 @@ func TestInit_BuildPlanGroupsSkills(t *testing.T) {
 		t.Errorf("expected 2 entries, got %d: %+v", len(cfg.Skills), cfg.Skills)
 	}
 }
+
+// TestInit_GlobalScope_NoTelemetryPrewrite is a regression test for GitHub
+// issue #74. It verifies that calling runInit with global scope on a fresh
+// machine (no pre-existing user config) does NOT fail with "already exists"
+// — which would happen if telemetry.Init wrote the user config file before
+// preflightDestination ran.
+func TestInit_GlobalScope_NoTelemetryPrewrite(t *testing.T) {
+	resetInitFlags(t)
+
+	home := t.TempDir()
+	workDir := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+
+	// Pre-condition: fresh machine simulation — user config must not exist.
+	userConfigPath := config.UserConfigFilePath()
+	if _, err := os.Stat(userConfigPath); err == nil {
+		t.Fatalf("pre-condition failed: user config already exists at %s", userConfigPath)
+	}
+
+	// Default cfgFile triggers global-scope path resolution via resolveInitDestination.
+	cfgFile = "gaal.yaml"
+	initScopeFlag = "global"
+	initImportAll = true
+	forceInit = false
+	engineOpts = engine.Options{WorkDir: workDir}
+
+	err := runInit(initCmd, nil)
+
+	// The test only asserts the specific regression: preflightDestination must
+	// not reject a non-existent file. Other engine failures are acceptable.
+	if err != nil && strings.Contains(err.Error(), "already exists — use --force to overwrite") {
+		t.Errorf("telemetry pre-wrote user config before runInit: %v", err)
+	}
+}
