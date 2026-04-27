@@ -54,6 +54,26 @@ func Status(cfgValue *bool) (status string, source string) {
 	return "disabled", s.Source
 }
 
+// pendingConsentWrite holds a deferred consent write so that the file is not
+// created before a sub-command (e.g. init) that targets the same path has had a
+// chance to run. Call PersistPendingConsent to flush it.
+var pendingConsentWrite *struct {
+	Path    string
+	Enabled bool
+}
+
+// PersistPendingConsent writes any deferred telemetry consent to disk. It is
+// safe to call even when there is nothing pending.
+func PersistPendingConsent() {
+	if pendingConsentWrite == nil {
+		return
+	}
+	if err := persistConsent(pendingConsentWrite.Path, pendingConsentWrite.Enabled); err != nil {
+		slog.Warn("failed to persist telemetry consent", "err", err)
+	}
+	pendingConsentWrite = nil
+}
+
 // persistConsent writes or updates the telemetry field in the user config file.
 func persistConsent(cfgPath string, enabled bool) error {
 	slog.Debug("persisting telemetry consent", "path", cfgPath, "enabled", enabled)

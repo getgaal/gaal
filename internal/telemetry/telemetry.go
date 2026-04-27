@@ -46,9 +46,13 @@ func Init(cfgTelemetry *bool, promptFn func() (bool, error), version string) (bo
 		if err != nil {
 			return false, fmt.Errorf("telemetry prompt: %w", err)
 		}
-		if err := persistConsent(config.UserConfigFilePath(), consent); err != nil {
-			slog.Warn("failed to persist telemetry consent", "err", err)
-		}
+		// Defer the file write so that sub-commands like "init" that target
+		// the same config path are not blocked by a premature file creation.
+		// The caller flushes via PersistPendingConsent in PersistentPostRunE.
+		pendingConsentWrite = &struct {
+			Path    string
+			Enabled bool
+		}{Path: config.UserConfigFilePath(), Enabled: consent}
 		state.Enabled = consent
 
 		// Fire consent event regardless of the answer so we can track

@@ -177,6 +177,41 @@ func TestStatusUnconfigured(t *testing.T) {
 	}
 }
 
+func TestPersistPendingConsentDefersWrite(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	// Simulate deferred consent (set by Init when a prompt was answered).
+	pendingConsentWrite = &struct {
+		Path    string
+		Enabled bool
+	}{Path: cfgPath, Enabled: false}
+
+	// File must not exist yet — this is the whole point of deferring.
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Fatal("config file should not exist before PersistPendingConsent")
+	}
+
+	PersistPendingConsent()
+
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("reading config after PersistPendingConsent: %v", err)
+	}
+	if got := string(data); got != "telemetry: false\n" {
+		t.Errorf("expected %q, got %q", "telemetry: false\n", got)
+	}
+
+	// Calling again is a no-op (pendingConsentWrite was cleared).
+	PersistPendingConsent()
+}
+
+func TestPersistPendingConsentNoopWhenNil(t *testing.T) {
+	pendingConsentWrite = nil
+	// Should not panic or error.
+	PersistPendingConsent()
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }

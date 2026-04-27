@@ -21,6 +21,7 @@ func resetGlobals() {
 	baseProps = nil
 	statePath = ""
 	appVersion = ""
+	pendingConsentWrite = nil
 }
 
 func TestTrackSendsPageviewWhenEnabled(t *testing.T) {

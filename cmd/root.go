@@ -100,6 +100,7 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 	// PersistentPostRunE runs after every sub-command. Waits briefly for
 	// in-flight telemetry events to complete before the process exits.
 	PersistentPostRunE: func(_ *cobra.Command, _ []string) error {
+		telemetry.PersistPendingConsent()
 		telemetry.Shutdown()
 		return nil
 	},
@@ -113,6 +114,7 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 // Execute is the entry-point called by main.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
+		telemetry.PersistPendingConsent()
 		telemetry.Shutdown()
 		os.Exit(1)
 	}
