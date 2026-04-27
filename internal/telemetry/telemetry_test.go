@@ -21,6 +21,8 @@ func resetGlobals() {
 	baseProps = nil
 	statePath = ""
 	appVersion = ""
+	pendingConsentPath = ""
+	pendingConsentValue = nil
 }
 
 func TestTrackSendsPageviewWhenEnabled(t *testing.T) {
@@ -190,4 +192,99 @@ func TestCopyProps(t *testing.T) {
 	if src["a"] == "changed" {
 		t.Error("copy is not independent of source")
 	}
+}
+
+func TestInit_DeferPersistDoesNotWriteFile(t *testing.T) {
+	resetGlobals()
+	defer resetGlobals()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home+"/.config")
+
+	// Use consent=false to avoid spawning a real HTTP goroutine.
+	promptFn := func() (bool, error) { return false, nil }
+
+	_, err := Init(nil, promptFn, "0.0.0", true)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	// File must NOT exist: consent was deferred, not written yet.
+	cfgPath := home + "/.config/gaal/config.yaml"
+	if _, statErr := os.Stat(cfgPath); statErr == nil {
+		t.Errorf("Init with deferPersist=true must not write the config file; found %s", cfgPath)
+	}
+
+	// But the pending state must be populated.
+	if pendingConsentValue == nil {
+		t.Error("pendingConsentValue must be non-nil after deferred Init")
+	}
+}
+
+func TestFlushConsent_WritesPendingConsent(t *testing.T) {
+	resetGlobals()
+	defer resetGlobals()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home+"/.config")
+
+	// Use consent=false to avoid spawning a real HTTP goroutine.
+	promptFn := func() (bool, error) { return false, nil }
+
+	_, err := Init(nil, promptFn, "0.0.0", true)
+	if err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	if err := FlushConsent(); err != nil {
+		t.Fatalf("FlushConsent: %v", err)
+	}
+
+	// File must now exist with telemetry: false (the user declined).
+	cfgPath := home + "/.config/gaal/config.yaml"
+	data, readErr := os.ReadFile(cfgPath)
+	if readErr != nil {
+		t.Fatalf("expected config file after FlushConsent; got: %v", readErr)
+	}
+	if !containsStr(string(data), "telemetry: false") {
+		t.Errorf("expected telemetry: false in config, got:\n%s", data)
+	}
+
+	// Pending state must be cleared.
+	if pendingConsentValue != nil {
+		t.Error("pendingConsentValue must be nil after FlushConsent")
+	}
+}
+
+func TestFlushConsent_NoopWhenNoPending(t *testing.T) {
+	resetGlobals()
+	defer resetGlobals()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home+"/.config")
+
+	if err := FlushConsent(); err != nil {
+		t.Fatalf("FlushConsent with no pending state returned error: %v", err)
+	}
+
+	// No file should be created.
+	cfgPath := home + "/.config/gaal/config.yaml"
+	if _, statErr := os.Stat(cfgPath); statErr == nil {
+		t.Errorf("FlushConsent with no pending state must not create a file")
+	}
+}
+
+// containsStr is a helper for substring checks in test output.
+func containsStr(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(s) > 0 && (func() bool {
+		for i := 0; i+len(sub) <= len(s); i++ {
+			if s[i:i+len(sub)] == sub {
+				return true
+			}
+		}
+		return false
+	})())
 }

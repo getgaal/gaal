@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestApplyOptions_SandboxRedirectsUserDirs(t *testing.T) {
@@ -51,5 +53,57 @@ func TestApplyOptions_SandboxRedirectsUserDirs(t *testing.T) {
 	}
 	if got, want := os.Getenv("XDG_CACHE_HOME"), filepath.Join(sandboxDir, ".cache"); got != want {
 		t.Fatalf("XDG_CACHE_HOME = %q, want %q", got, want)
+	}
+}
+
+func TestSkipTelemetry(t *testing.T) {
+	completionParent := &cobra.Command{Use: "completion"}
+
+	tests := []struct {
+		name string
+		cmd  *cobra.Command
+		want bool
+	}{
+		{
+			name: "version",
+			cmd:  &cobra.Command{Use: "version"},
+			want: true,
+		},
+		{
+			name: "schema",
+			cmd:  &cobra.Command{Use: "schema"},
+			want: true,
+		},
+		{
+			name: "init",
+			cmd:  &cobra.Command{Use: "init"},
+			want: false,
+		},
+		{
+			name: "sync",
+			cmd:  &cobra.Command{Use: "sync"},
+			want: false,
+		},
+		{
+			name: "status",
+			cmd:  &cobra.Command{Use: "status"},
+			want: false,
+		},
+		{
+			name: "subcommand of completion",
+			cmd: func() *cobra.Command {
+				child := &cobra.Command{Use: "bash"}
+				completionParent.AddCommand(child)
+				return child
+			}(),
+			want: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := skipTelemetry(tc.cmd); got != tc.want {
+				t.Errorf("skipTelemetry(%q) = %v, want %v", tc.cmd.Name(), got, tc.want)
+			}
+		})
 	}
 }

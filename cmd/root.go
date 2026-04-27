@@ -90,7 +90,7 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 			if term.IsTerminal(int(os.Stdin.Fd())) {
 				promptFn = showConsentPrompt
 			}
-			if _, err := telemetry.Init(userCfg, promptFn, Version); err != nil {
+			if _, err := telemetry.Init(userCfg, promptFn, Version, cmd.Name() == "init"); err != nil {
 				slog.Debug("telemetry init failed", "err", err)
 			}
 		}
@@ -100,6 +100,9 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 	// PersistentPostRunE runs after every sub-command. Waits briefly for
 	// in-flight telemetry events to complete before the process exits.
 	PersistentPostRunE: func(_ *cobra.Command, _ []string) error {
+		if err := telemetry.FlushConsent(); err != nil {
+			slog.Warn("failed to persist telemetry consent", "err", err)
+		}
 		telemetry.Shutdown()
 		return nil
 	},
