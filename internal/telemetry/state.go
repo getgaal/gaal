@@ -9,6 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"gaal/internal/config"
 	configtemplate "gaal/internal/config/template"
 )
 
@@ -128,7 +129,7 @@ func persistConsent(cfgPath string, enabled bool) error {
 	} else {
 		// File absent — generate the full documented template and parse it.
 		slog.Debug("creating new config from template", "path", cfgPath)
-		tmplBytes, genErr := configtemplate.Generate()
+		tmplBytes, genErr := configtemplate.Generate(config.ScopeUser)
 		if genErr != nil {
 			return fmt.Errorf("generating config template: %w", genErr)
 		}

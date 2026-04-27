@@ -3,10 +3,12 @@ package template
 import (
 	"strings"
 	"testing"
+
+	"gaal/internal/config"
 )
 
 func TestGenerate_ContainsAllSections(t *testing.T) {
-	out, err := Generate()
+	out, err := Generate(config.ScopeWorkspace)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -19,7 +21,7 @@ func TestGenerate_ContainsAllSections(t *testing.T) {
 }
 
 func TestGenerate_RepoEnumsPresent(t *testing.T) {
-	out, err := Generate()
+	out, err := Generate(config.ScopeWorkspace)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -32,7 +34,7 @@ func TestGenerate_RepoEnumsPresent(t *testing.T) {
 }
 
 func TestGenerate_TargetNotDocumented(t *testing.T) {
-	out, err := Generate()
+	out, err := Generate(config.ScopeWorkspace)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -54,7 +56,7 @@ func TestGenerate_TargetNotDocumented(t *testing.T) {
 }
 
 func TestGenerate_AgentsDocumentedInMCPs(t *testing.T) {
-	out, err := Generate()
+	out, err := Generate(config.ScopeWorkspace)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -70,7 +72,7 @@ func TestGenerate_AgentsDocumentedInMCPs(t *testing.T) {
 }
 
 func TestGenerate_InlineSubFieldsDocumented(t *testing.T) {
-	out, err := Generate()
+	out, err := Generate(config.ScopeWorkspace)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -82,7 +84,7 @@ func TestGenerate_InlineSubFieldsDocumented(t *testing.T) {
 }
 
 func TestGenerate_ContainsIntroAndCLICommands(t *testing.T) {
-	out, err := Generate()
+	out, err := Generate(config.ScopeWorkspace)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -95,7 +97,7 @@ func TestGenerate_ContainsIntroAndCLICommands(t *testing.T) {
 }
 
 func TestGenerate_SectionOrder(t *testing.T) {
-	out, err := Generate()
+	out, err := Generate(config.ScopeWorkspace)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -112,7 +114,7 @@ func TestGenerate_SectionOrder(t *testing.T) {
 }
 
 func TestGenerate_IsValidYAML(t *testing.T) {
-	out, err := Generate()
+	out, err := Generate(config.ScopeWorkspace)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -121,5 +123,25 @@ func TestGenerate_IsValidYAML(t *testing.T) {
 	s := string(out)
 	if strings.Contains(s, "\t") {
 		t.Error("generated template contains tab characters, invalid YAML")
+	}
+}
+
+func TestGenerate_ScopeLabel(t *testing.T) {
+	tests := []struct {
+		scope config.ConfigScope
+		want  string
+	}{
+		{config.ScopeWorkspace, "# Scope level: Workspace"},
+		{config.ScopeUser, "# Scope level: User"},
+		{config.ScopeGlobal, "# Scope level: Global"},
+	}
+	for _, tc := range tests {
+		out, err := Generate(tc.scope)
+		if err != nil {
+			t.Fatalf("Generate(%v): %v", tc.scope, err)
+		}
+		if !strings.Contains(string(out), tc.want) {
+			t.Errorf("scope %v: expected header to contain %q", tc.scope, tc.want)
+		}
 	}
 }

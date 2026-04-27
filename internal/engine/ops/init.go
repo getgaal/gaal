@@ -24,7 +24,7 @@ func Init(dest string, force bool) error {
 		return err
 	}
 
-	tmpl, err := configtemplate.Generate()
+	tmpl, err := configtemplate.Generate(config.ScopeWorkspace)
 	if err != nil {
 		return fmt.Errorf("generating template: %w", err)
 	}
@@ -103,7 +103,7 @@ func checkDestination(dest string, force bool) error {
 // and replaces the empty repositories: / skills: / mcps: blocks with the plan
 // content serialised via yaml.v3 for safety.
 func renderPlanYAML(plan Plan) ([]byte, error) {
-	tmpl, err := configtemplate.Generate()
+	tmpl, err := configtemplate.Generate(config.ScopeWorkspace)
 	if err != nil {
 		return nil, fmt.Errorf("generating template: %w", err)
 	}
