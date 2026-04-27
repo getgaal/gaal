@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"log/slog"
 	"sort"
 
 	"gaal/internal/config"
@@ -74,6 +75,7 @@ type Plan struct {
 // single SkillConfig with a sorted, deduplicated Select list. MCPs are never
 // grouped. Output entries are sorted for deterministic YAML.
 func BuildPlan(selected []Candidate, scope Scope) Plan {
+	slog.Debug("building plan", "candidates", len(selected), "scope", scope)
 	global := scope == ScopeGlobal
 
 	type skillKey struct {
@@ -95,7 +97,8 @@ func BuildPlan(selected []Candidate, scope Scope) Plan {
 		case CandidateMCP:
 			entry := config.ConfigMcp{
 				Name:   c.MCPName,
-				Target: c.MCPTarget,
+				Agents: []string{c.AgentName},
+				Global: true,
 			}
 			if c.MCPInline != nil {
 				inline := *c.MCPInline

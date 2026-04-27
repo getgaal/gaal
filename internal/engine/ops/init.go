@@ -2,7 +2,6 @@ package ops
 
 import (
 	"bytes"
-	_ "embed"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,10 +11,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"gaal/internal/config"
+	configtemplate "gaal/internal/config/template"
 )
-
-//go:embed init_template.yaml
-var InitTemplate []byte
 
 // Init writes the documented gaal.yaml skeleton to dest.
 // When force is false and dest already exists, an error is returned so the
@@ -27,11 +24,16 @@ func Init(dest string, force bool) error {
 		return err
 	}
 
+	tmpl, err := configtemplate.Generate()
+	if err != nil {
+		return fmt.Errorf("generating template: %w", err)
+	}
+
 	if err := ensureParentDir(dest); err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(dest, InitTemplate, 0o644); err != nil {
+	if err := os.WriteFile(dest, tmpl, 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", dest, err)
 	}
 
@@ -40,7 +42,7 @@ func Init(dest string, force bool) error {
 }
 
 // InitFromPlan writes a gaal.yaml that reuses the documented comment headers
-// of the embedded template but replaces the empty skills: / mcps: blocks
+// of the generated template but replaces the empty skills: / mcps: blocks
 // with the entries carried by plan. repositories: remains empty.
 //
 // The force and dest-existence rules are identical to Init.
@@ -97,11 +99,15 @@ func checkDestination(dest string, force bool) error {
 	return nil
 }
 
-// renderPlanYAML keeps the three commented headers from init_template.yaml and
-// replaces the empty "repositories: {}", "skills: [...]", "mcps: [...]" blocks
-// with the plan content serialised via yaml.v3 for safety.
+// renderPlanYAML keeps the three commented headers from the generated template
+// and replaces the empty repositories: / skills: / mcps: blocks with the plan
+// content serialised via yaml.v3 for safety.
 func renderPlanYAML(plan Plan) ([]byte, error) {
-	headers, err := splitTemplateHeaders(InitTemplate)
+	tmpl, err := configtemplate.Generate()
+	if err != nil {
+		return nil, fmt.Errorf("generating template: %w", err)
+	}
+	headers, err := splitTemplateHeaders(tmpl)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +159,7 @@ func writeMCPsBlock(buf *bytes.Buffer, mcps []config.ConfigMcp) error {
 	return nil
 }
 
-// templateHeaders holds the comment blocks extracted from init_template.yaml.
+// templateHeaders holds the comment blocks extracted from the generated template.
 type templateHeaders struct {
 	intro        []byte // top-of-file comments before the first section
 	repositories []byte // "# ── repositories ──" block
@@ -161,7 +167,7 @@ type templateHeaders struct {
 	mcps         []byte // "# ── mcps ──" block
 }
 
-// splitTemplateHeaders parses init_template.yaml and returns its comment
+// splitTemplateHeaders parses the template bytes and returns its comment
 // blocks. The YAML keys themselves are excluded from each block so the
 // caller can re-emit them with real content.
 func splitTemplateHeaders(tmpl []byte) (templateHeaders, error) {

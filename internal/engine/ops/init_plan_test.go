@@ -97,3 +97,31 @@ func TestBuildPlan_SkillsSortedForStableOutput(t *testing.T) {
 		t.Errorf("expected claude-code first (sorted by agent), got %v", plan.Skills[0].Agents)
 	}
 }
+
+func TestBuildPlan_MCPUsesAgentAndGlobal(t *testing.T) {
+	inline := &config.ConfigMcpItem{Command: "uvx", Args: []string{"mcp-server-git"}}
+	cand := Candidate{
+		Kind:      CandidateMCP,
+		AgentName: "claude-code",
+		MCPName:   "git",
+		MCPTarget: "~/.config/claude/mcp.json", // kept for display, not written to plan
+		MCPInline: inline,
+	}
+	plan := BuildPlan([]Candidate{cand}, ScopeGlobal)
+	if len(plan.MCPs) != 1 {
+		t.Fatalf("expected 1 mcp, got %d", len(plan.MCPs))
+	}
+	mcp := plan.MCPs[0]
+	if mcp.Name != "git" {
+		t.Errorf("name: got %q, want %q", mcp.Name, "git")
+	}
+	if mcp.Target != "" {
+		t.Errorf("Target should be empty in new plan format, got %q", mcp.Target)
+	}
+	if !reflect.DeepEqual(mcp.Agents, []string{"claude-code"}) {
+		t.Errorf("Agents: got %v, want [claude-code]", mcp.Agents)
+	}
+	if !mcp.Global {
+		t.Error("Global should be true")
+	}
+}
