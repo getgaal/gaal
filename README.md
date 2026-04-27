@@ -14,6 +14,13 @@
 
 ---
 
+> [!IMPORTANT]
+> ## 📚 Full documentation lives at [**docs.getgaal.com**](https://docs.getgaal.com)
+>
+> This README covers the essentials. For complete guides, configuration reference, agent integrations, and tutorials, head over to **[docs.getgaal.com](https://docs.getgaal.com)**.
+
+---
+
 ## What it does
 
 | Resource | Description |
