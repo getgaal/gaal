@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -75,6 +76,12 @@ func TestInit_ForceOverwrites(t *testing.T) {
 }
 
 func TestInit_StatError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// On Windows, "/nonexistent-dir" maps to the current drive root and the
+		// runner process has write access there, so this path-based test cannot
+		// reliably trigger a write error.
+		t.Skip("unwritable-path semantics differ on Windows")
+	}
 	// Path inside a non-existent parent triggers os.WriteFile error.
 	err := newTestEngine(t).Init("/nonexistent-dir/gaal.yaml", false)
 	if err == nil {

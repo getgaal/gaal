@@ -150,7 +150,7 @@ func TestVcsSVN_HasChanges_FakeBin_Clean(t *testing.T) {
 }
 
 func TestVcsSVN_HasChanges_FakeBin_Dirty(t *testing.T) {
-	binDir := makeFakeBin(t, "svn", "printf 'M       file.go'")
+	binDir := makeFakeBin(t, "svn", "echo M")
 	t.Setenv("PATH", binDir)
 	s := &VcsSVN{}
 	dirty, err := s.HasChanges(context.Background(), t.TempDir())

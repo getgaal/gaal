@@ -26,7 +26,8 @@ func writeFile(t *testing.T, path, content string) os.FileInfo {
 // TestSnapshotPath verifies the path construction helper.
 func TestSnapshotPath(t *testing.T) {
 	got := SnapshotPath("/state", "skill-abc")
-	want := "/state/skill-abc.json"
+	// Use filepath.Join so the expected value matches the OS separator on Windows.
+	want := filepath.Join("/state", "skill-abc.json")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

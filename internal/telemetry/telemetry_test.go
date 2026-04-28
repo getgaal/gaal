@@ -226,9 +226,14 @@ func TestFlushConsent_WritesPendingConsent(t *testing.T) {
 	resetGlobals()
 	defer resetGlobals()
 
+	// Use a shared config base so all platforms resolve to the same directory.
+	// On Linux/macOS XDG_CONFIG_HOME is honoured; on Windows APPDATA is used
+	// by os.UserConfigDir(), so we redirect both to the same temp location.
 	home := t.TempDir()
+	configBase := filepath.Join(home, ".config")
 	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", home+"/.config")
+	t.Setenv("XDG_CONFIG_HOME", configBase)
+	t.Setenv("APPDATA", configBase)
 
 	// Use consent=false to avoid spawning a real HTTP goroutine.
 	promptFn := func() (bool, error) { return false, nil }
@@ -243,7 +248,7 @@ func TestFlushConsent_WritesPendingConsent(t *testing.T) {
 	}
 
 	// File must now exist with telemetry: false (the user declined).
-	cfgPath := home + "/.config/gaal/config.yaml"
+	cfgPath := filepath.Join(configBase, "gaal", "config.yaml")
 	data, readErr := os.ReadFile(cfgPath)
 	if readErr != nil {
 		t.Fatalf("expected config file after FlushConsent; got: %v", readErr)

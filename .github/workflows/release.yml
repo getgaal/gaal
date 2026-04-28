@@ -163,7 +163,7 @@ jobs:
           - { name: linux,       runner: ubuntu-latest    }
           - { name: linux-arm64, runner: ubuntu-24.04-arm }
           - { name: macOS,       runner: macos-latest     }
-          - { name: macOS-amd64, runner: macos-13         }
+          #- { name: macOS-amd64, runner: macos-13         }
           - { name: windows,     runner: windows-latest   }
     steps:
       - uses: actions/checkout@v6

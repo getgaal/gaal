@@ -149,6 +149,8 @@ func TestInit_NonInteractive_GlobalImportAll(t *testing.T) {
 	home := t.TempDir()
 	workDir := t.TempDir()
 	t.Setenv("HOME", home)
+	// On Windows os.UserHomeDir() reads USERPROFILE (not HOME).
+	t.Setenv("USERPROFILE", home)
 
 	// Drop a global-level claude-code skill.
 	writeSkillMD(t, filepath.Join(home, ".claude", "skills"), "global-skill")
