@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -402,6 +403,9 @@ func TestDoctorMCPTargetNotExistYet(t *testing.T) {
 }
 
 func TestDoctorMCPTarget_Unreadable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-based permission enforcement is not supported on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses permissions — skipping")
 	}

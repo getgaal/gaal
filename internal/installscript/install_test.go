@@ -235,6 +235,9 @@ func TestInstallAlreadyInstalled(t *testing.T) {
 }
 
 func TestInstallUnsupportedArch(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh is a POSIX shell script; not supported on Windows")
+	}
 	// Use a real httptest server so we reach the script; the script should
 	// fail inside detect_arch (which runs before any network calls) without
 	// ever hitting the server.

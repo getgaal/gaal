@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"path/filepath"
 	"testing"
 )
@@ -388,6 +389,9 @@ func TestExtractZip_CorruptedData(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestVcsArchive_Clone_MkdirAllFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-based permission enforcement is not supported on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses permissions — skipping")
 	}
@@ -417,6 +421,9 @@ func TestVcsArchive_Clone_MkdirAllFailure(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWriteFile_MkdirAllFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-based permission enforcement is not supported on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses permissions — skipping")
 	}

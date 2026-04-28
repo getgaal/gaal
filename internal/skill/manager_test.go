@@ -1,6 +1,7 @@
 package skill
 
 import (
+	"runtime"
 	"context"
 	"os"
 	"path/filepath"
@@ -622,6 +623,9 @@ func TestManager_Status_CleanSkill(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestInstallSkill_MkdirAllFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-based permission enforcement is not supported on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses permissions — skipping")
 	}
@@ -652,6 +656,9 @@ func TestCopyFile_SourceNotFound(t *testing.T) {
 }
 
 func TestCopyFile_WriteError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-based permission enforcement is not supported on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses permissions — skipping")
 	}

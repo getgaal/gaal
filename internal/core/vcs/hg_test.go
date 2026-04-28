@@ -160,7 +160,7 @@ func TestVcsMercurial_HasChanges_FakeBin_Clean(t *testing.T) {
 }
 
 func TestVcsMercurial_HasChanges_FakeBin_Dirty(t *testing.T) {
-	binDir := makeFakeBin(t, "hg", "printf 'M file.go'")
+	binDir := makeFakeBin(t, "hg", "echo M")
 	t.Setenv("PATH", binDir)
 	m := &VcsMercurial{}
 	dirty, err := m.HasChanges(context.Background(), t.TempDir())

@@ -62,9 +62,13 @@ func displayTarget(path string, softLimit int) string {
 // truncatePath keeps the last n path segments and prepends "…/" to indicate
 // elision. If the path already has fewer than n segments, it is returned
 // unchanged.
+// Segments are counted after normalising to forward slashes via
+// filepath.ToSlash so that Unix-style paths in tests (e.g. "/a/b/c") are
+// split correctly on Windows where os.PathSeparator is "\\.".
 func truncatePath(p string, n int) string {
-	sep := string(os.PathSeparator)
-	parts := strings.Split(p, sep)
+	// Normalise to forward slashes for portable segment counting.
+	slashed := filepath.ToSlash(p)
+	parts := strings.Split(slashed, "/")
 	// Drop leading empty parts produced by a leading separator.
 	for len(parts) > 0 && parts[0] == "" {
 		parts = parts[1:]
@@ -72,5 +76,6 @@ func truncatePath(p string, n int) string {
 	if len(parts) <= n {
 		return p
 	}
+	sep := string(os.PathSeparator)
 	return "…" + sep + strings.Join(parts[len(parts)-n:], sep)
 }

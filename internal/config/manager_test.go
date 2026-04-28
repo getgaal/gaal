@@ -426,9 +426,12 @@ repositories:
 func TestLoadChain_AllMissing(t *testing.T) {
 	// Isolate from the host's real global/user configs so this test passes on
 	// dev machines that happen to have a ~/.config/gaal/config.yaml.
+	// On Windows %APPDATA% drives os.UserConfigDir(), so redirect it too.
 	empty := t.TempDir()
 	t.Setenv("HOME", empty)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(empty, "xdg"))
+	t.Setenv("APPDATA", filepath.Join(empty, "AppData", "Roaming"))
+	t.Setenv("PROGRAMDATA", filepath.Join(empty, "ProgramData"))
 
 	_, err := LoadChain(filepath.Join(empty, "no-such-workspace.yaml"))
 	if err == nil {
@@ -963,9 +966,12 @@ func TestMergeFrom_SkillLevelToolsCarriedThrough(t *testing.T) {
 
 func TestLoadChain_PopulatesLevels(t *testing.T) {
 	// Isolate from the host's real global/user configs.
+	// On Windows %APPDATA% drives os.UserConfigDir(), so redirect it too.
 	empty := t.TempDir()
 	t.Setenv("HOME", empty)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(empty, "xdg"))
+	t.Setenv("APPDATA", filepath.Join(empty, "AppData", "Roaming"))
+	t.Setenv("PROGRAMDATA", filepath.Join(empty, "ProgramData"))
 
 	p := writeYAML(t, "skills:\n  - source: owner/workspace-repo\n")
 	cfg, err := LoadChain(p)
@@ -1007,9 +1013,12 @@ func TestLoad_SetsSourcePath(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestResolvedConfig_SourcePaths_OnlyWorkspace(t *testing.T) {
+	// On Windows %APPDATA% drives os.UserConfigDir(), so redirect it too.
 	empty := t.TempDir()
 	t.Setenv("HOME", empty)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(empty, "xdg"))
+	t.Setenv("APPDATA", filepath.Join(empty, "AppData", "Roaming"))
+	t.Setenv("PROGRAMDATA", filepath.Join(empty, "ProgramData"))
 
 	p := writeYAML(t, "skills:\n  - source: owner/repo\n")
 	rcfg, err := LoadChain(p)

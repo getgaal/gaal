@@ -162,7 +162,7 @@ func TestVcsBazaar_HasChanges_FakeBin_Clean(t *testing.T) {
 
 func TestVcsBazaar_HasChanges_FakeBin_Dirty(t *testing.T) {
 	// Non-empty output from bzr status → has changes.
-	binDir := makeFakeBin(t, "bzr", "printf 'M  file.go'")
+	binDir := makeFakeBin(t, "bzr", "echo M")
 	t.Setenv("PATH", binDir)
 	b := &VcsBazaar{}
 	dirty, err := b.HasChanges(context.Background(), t.TempDir())
