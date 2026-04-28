@@ -314,3 +314,22 @@ func TestPatchYAMLNodeKeyErrorOnNonMapping(t *testing.T) {
 		t.Error("expected error for non-mapping root, got nil")
 	}
 }
+
+func TestPersistConsentIOErrorReturnsError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("cannot test permission errors as root")
+	}
+	dir := t.TempDir()
+	// Create a file and make the parent directory unreadable/unwritable so
+	// that os.ReadFile will fail with a permission error (not ErrNotExist).
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("schema: 1\n"), 0o000); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(cfgPath, 0o644) })
+
+	err := persistConsent(cfgPath, true)
+	if err == nil {
+		t.Fatal("expected error for unreadable file, got nil")
+	}
+}

@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -126,7 +127,7 @@ func persistConsent(cfgPath string, enabled bool) error {
 				Content: []*yaml.Node{{Kind: yaml.MappingNode, Tag: "!!map"}},
 			}
 		}
-	} else {
+	} else if errors.Is(err, os.ErrNotExist) {
 		// File absent — generate the full documented template and parse it.
 		slog.Debug("creating new config from template", "path", cfgPath)
 		tmplBytes, genErr := configtemplate.Generate(config.ScopeUser)
@@ -136,6 +137,8 @@ func persistConsent(cfgPath string, enabled bool) error {
 		if parseErr := yaml.Unmarshal(tmplBytes, &root); parseErr != nil {
 			return fmt.Errorf("parsing generated template: %w", parseErr)
 		}
+	} else {
+		return fmt.Errorf("reading config file: %w", err)
 	}
 
 	if err := patchYAMLNodeKey(&root, "telemetry", enabled); err != nil {
