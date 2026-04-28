@@ -103,7 +103,7 @@ func patchYAMLNodeKey(root *yaml.Node, key string, value any) error {
 //
 // When the file already exists it is parsed as a yaml.Node so that all
 // existing comments and key ordering are preserved; only the "telemetry" key
-// is touched. When the file is absent a minimal document node is created.
+// is touched. When the file is absent the full documented template is generated
 func persistConsent(cfgPath string, enabled bool) error {
 	slog.Debug("persisting telemetry consent", "path", cfgPath, "enabled", enabled)
 
