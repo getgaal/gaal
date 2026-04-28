@@ -133,9 +133,9 @@ mcps:
       - github-copilot
     global: true
 
-  # Backward-compat: explicit target still works (deprecated, prefer agents+global).
   - name: sequential-thinking
-    target: ~/.vscode/settings.json
+    agents: ["github-copilot"]
+    global: true
     inline:
       command: npx
       args:

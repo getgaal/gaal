@@ -3,7 +3,10 @@ package telemetry
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -112,9 +115,14 @@ func TestPersistConsent(t *testing.T) {
 		t.Fatalf("reading config: %v", err)
 	}
 
+	// When the file is absent, persistConsent now writes the full documented
+	// template (from configtemplate.Generate) with telemetry patched in.
 	got := string(data)
-	if got != "telemetry: true\n" {
-		t.Errorf("expected %q, got %q", "telemetry: true\n", got)
+	if !strings.Contains(got, "telemetry: true") {
+		t.Errorf("expected telemetry: true in output, got %q", got)
+	}
+	if !strings.Contains(got, "schema: 1") {
+		t.Errorf("expected full template (schema: 1) in new file, got %q", got)
 	}
 }
 
@@ -188,4 +196,140 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestPersistConsentPreservesComments(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	existing := []byte("# my important comment\nsome_key: some_value\n")
+	if err := os.WriteFile(cfgPath, existing, 0o644); err != nil {
+		t.Fatalf("writing existing config: %v", err)
+	}
+
+	if err := persistConsent(cfgPath, false); err != nil {
+		t.Fatalf("persistConsent failed: %v", err)
+	}
+
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("reading config: %v", err)
+	}
+
+	got := string(data)
+	if !contains(got, "# my important comment") {
+		t.Errorf("comment was lost after patching, got %q", got)
+	}
+	if !contains(got, "telemetry: false") {
+		t.Errorf("expected telemetry: false in output, got %q", got)
+	}
+}
+
+func TestPersistConsentUpdatesExistingTelemetryKey(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	existing := []byte("schema: 1\ntelemetry: false\n")
+	if err := os.WriteFile(cfgPath, existing, 0o644); err != nil {
+		t.Fatalf("writing existing config: %v", err)
+	}
+
+	if err := persistConsent(cfgPath, true); err != nil {
+		t.Fatalf("persistConsent failed: %v", err)
+	}
+
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("reading config: %v", err)
+	}
+
+	got := string(data)
+	if !contains(got, "telemetry: true") {
+		t.Errorf("expected telemetry: true, got %q", got)
+	}
+	if contains(got, "telemetry: false") {
+		t.Errorf("old telemetry: false should have been replaced, got %q", got)
+	}
+	if !contains(got, "schema: 1") {
+		t.Errorf("schema key was lost, got %q", got)
+	}
+}
+
+func TestPatchYAMLNodeKeyAppends(t *testing.T) {
+	root := yaml.Node{
+		Kind: yaml.DocumentNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.MappingNode, Tag: "!!map"},
+		},
+	}
+	if err := patchYAMLNodeKey(&root, "telemetry", true); err != nil {
+		t.Fatalf("patchYAMLNodeKey: %v", err)
+	}
+	mapping := root.Content[0]
+	if len(mapping.Content) != 2 {
+		t.Fatalf("expected 2 content nodes (key+value), got %d", len(mapping.Content))
+	}
+	if mapping.Content[0].Value != "telemetry" {
+		t.Errorf("expected key 'telemetry', got %q", mapping.Content[0].Value)
+	}
+	if mapping.Content[1].Value != "true" {
+		t.Errorf("expected value 'true', got %q", mapping.Content[1].Value)
+	}
+}
+
+func TestPatchYAMLNodeKeyUpdates(t *testing.T) {
+	// Start with telemetry: false, update to true.
+	raw := []byte("key: val\ntelemetry: false\n")
+	var root yaml.Node
+	if err := yaml.Unmarshal(raw, &root); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if err := patchYAMLNodeKey(&root, "telemetry", true); err != nil {
+		t.Fatalf("patchYAMLNodeKey: %v", err)
+	}
+	out, err := yaml.Marshal(&root)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(out)
+	if !contains(got, "telemetry: true") {
+		t.Errorf("expected telemetry: true, got %q", got)
+	}
+	if contains(got, "telemetry: false") {
+		t.Errorf("old value should be gone, got %q", got)
+	}
+	if !contains(got, "key: val") {
+		t.Errorf("other key was lost, got %q", got)
+	}
+}
+
+func TestPatchYAMLNodeKeyErrorOnNonMapping(t *testing.T) {
+	root := yaml.Node{
+		Kind: yaml.DocumentNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.SequenceNode},
+		},
+	}
+	if err := patchYAMLNodeKey(&root, "k", "v"); err == nil {
+		t.Error("expected error for non-mapping root, got nil")
+	}
+}
+
+func TestPersistConsentIOErrorReturnsError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("cannot test permission errors as root")
+	}
+	dir := t.TempDir()
+	// Create a file and make the parent directory unreadable/unwritable so
+	// that os.ReadFile will fail with a permission error (not ErrNotExist).
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte("schema: 1\n"), 0o000); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(cfgPath, 0o644) })
+
+	err := persistConsent(cfgPath, true)
+	if err == nil {
+		t.Fatal("expected error for unreadable file, got nil")
+	}
 }

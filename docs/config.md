@@ -19,6 +19,7 @@ separate and independently swappable:
 | **Schema** | Generates a JSON Schema always 1-to-1 with the runtime structs; used by IDEs for live YAML validation | `internal/config/schema` |
 | **Validation** | Bridges memory ↔ files; guarantees perfectly consistent data at every load/merge boundary | `internal/config/schema` |
 | **Platform** | Resolves OS-specific config file paths; isolated from build constraints | `internal/config/platform` |
+| **Template** | Generates the documented YAML skeleton written by `gaal init`; auto-synced with struct tags (field names, descriptions, enums, required/optional) | `internal/config/template` |
 
 The schema generator and validator are both **swappable abstractions** — the
 active implementation can be replaced at program start-up without touching any
@@ -85,10 +86,13 @@ internal/config/
 │   ├── darwin.go       — GlobalConfigFilePath(), userConfigDir()  (XDG override)
 │   └── windows.go      — GlobalConfigFilePath(), userConfigDir()
 └── schema/
-    ├── generator.go           — Generator interface, Default, Set(), Generate()
-    ├── generator_invopop.go   — GeneratorInvopop  (invopop/jsonschema)
-    ├── validator.go           — Validator interface, DefaultValidator, SetValidator(), Validate()
-    └── validator_playground.go — PlaygroundValidator  (go-playground/validator/v10)
+│   ├── generator.go           — Generator interface, Default, Set(), Generate()
+│   ├── generator_invopop.go   — GeneratorInvopop  (invopop/jsonschema)
+│   ├── validator.go           — Validator interface, DefaultValidator, SetValidator(), Validate()
+│   └── validator_playground.go — PlaygroundValidator  (go-playground/validator/v10)
+└── template/
+    ├── reflector.go    — Reflect(t) → []FieldSpec  (struct tag introspection)
+    └── manager.go      — Generate() → documented YAML skeleton
 ```
 
 ### Type relationships
@@ -281,7 +285,7 @@ Key validation rules applied to `Config` structs:
 | `ConfigRepo.URL` | `required` |
 | `ConfigSkill.Source` | `required` |
 | `ConfigMcp.Name` | `required` |
-| `ConfigMcp.Target` | `required` |
+| `ConfigMcp.Target` | _(deprecated)_ explicit path; prefer `agents` + `global` |
 | `ConfigMcp.Source` | `required_without=Inline` |
 | `ConfigMcpItem.Command` | `required` |
 

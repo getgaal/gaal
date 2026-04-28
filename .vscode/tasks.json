@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ensure sandbox dirs",
+      "type": "shell",
+      "command": "mkdir -p ${workspaceFolder}/.sandbox/workspace",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "close": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -74,13 +74,15 @@ skills:
 # Existing entries are preserved; only the named key is updated.
 mcps:
   - name: filesystem
-    target: ~/.config/claude/claude_desktop_config.json
+    agents: ["claude-code"]
+    global: true
     inline:
       command: uvx
       args: [mcp-server-filesystem, /home/user/projects]
 
   - name: filesystem
-    target: ~/.vscode/settings.json    # VS Code / GitHub Copilot
+    agents: ["github-copilot"]         # VS Code / GitHub Copilot
+    global: true
     inline:
       command: uvx
       args: [mcp-server-filesystem, /home/user/projects]
@@ -101,7 +103,9 @@ Quick reference:
 | `skills` | `agents` | Agent names or `["*"]` to auto-detect |
 | `skills` | `global` | `true` = user-wide, `false` = project-local (default) |
 | `skills` | `select` | Specific skill names to install (empty = all) |
-| `mcps` | `target` | Absolute path to the agent JSON config file |
+| `mcps` | `agents` | Agent names or `["*"]` to target all agents with a non-empty MCP config |
+| `mcps` | `global` | `true` = user-wide agent config, `false` = project-scoped (default) |
+| `mcps` | `target` | _(deprecated)_ Explicit path to the agent JSON config file; prefer `agents` + `global` |
 | `mcps` | `inline` | Inline server definition (mutually exclusive with `source`) |
 | `mcps` | `source` | URL to a remote JSON file containing an `mcpServers` block |
 | `mcps` | `merge` | `true` (default) = upsert; `false` = overwrite |
