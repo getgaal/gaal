@@ -151,3 +151,35 @@ func TestGenerate_ScopeLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerate_NonWorkspaceScopesOmitSections(t *testing.T) {
+	for _, scope := range []config.ConfigScope{config.ScopeUser, config.ScopeGlobal} {
+		out, err := Generate(scope)
+		if err != nil {
+			t.Fatalf("Generate(%v): %v", scope, err)
+		}
+		s := string(out)
+		for _, section := range []string{"repositories:", "skills:", "mcps:"} {
+			if strings.Contains(s, section) {
+				t.Errorf("scope %v: section %q should be absent, but was found", scope, section)
+			}
+		}
+		// schema key must still be present
+		if !strings.Contains(s, "schema: 1") {
+			t.Errorf("scope %v: missing schema: 1", scope)
+		}
+	}
+}
+
+func TestGenerate_WorkspaceScopeIncludesSections(t *testing.T) {
+	out, err := Generate(config.ScopeWorkspace)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	s := string(out)
+	for _, section := range []string{"repositories:", "skills:", "mcps:"} {
+		if !strings.Contains(s, section) {
+			t.Errorf("scope Workspace: section %q should be present, but was absent", section)
+		}
+	}
+}
