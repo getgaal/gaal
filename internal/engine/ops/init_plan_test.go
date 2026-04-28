@@ -125,3 +125,31 @@ func TestBuildPlan_MCPUsesAgentAndGlobal(t *testing.T) {
 		t.Error("Global should be true")
 	}
 }
+
+func TestBuildPlan_MCPGlobalFollowsScope(t *testing.T) {
+	inline := &config.ConfigMcpItem{Command: "uvx", Args: []string{"mcp-server-git"}}
+	cand := Candidate{
+		Kind:      CandidateMCP,
+		AgentName: "claude-code",
+		MCPName:   "git",
+		MCPInline: inline,
+	}
+
+	tests := []struct {
+		scope      Scope
+		wantGlobal bool
+	}{
+		{ScopeGlobal, true},
+		{ScopeProject, false},
+	}
+
+	for _, tc := range tests {
+		plan := BuildPlan([]Candidate{cand}, tc.scope)
+		if len(plan.MCPs) != 1 {
+			t.Fatalf("scope %v: expected 1 mcp, got %d", tc.scope, len(plan.MCPs))
+		}
+		if plan.MCPs[0].Global != tc.wantGlobal {
+			t.Errorf("scope %v: Global = %v, want %v", tc.scope, plan.MCPs[0].Global, tc.wantGlobal)
+		}
+	}
+}

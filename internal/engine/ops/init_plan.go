@@ -98,7 +98,7 @@ func BuildPlan(selected []Candidate, scope Scope) Plan {
 			entry := config.ConfigMcp{
 				Name:   c.MCPName,
 				Agents: []string{c.AgentName},
-				Global: true,
+				Global: global,
 			}
 			if c.MCPInline != nil {
 				inline := *c.MCPInline
