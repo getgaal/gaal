@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"gaal/internal/config"
 )
 
@@ -118,11 +120,15 @@ func TestGenerate_IsValidYAML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	// The generated template must be loadable by the config package.
-	// We do a simple check: it must not contain any tab characters (YAML rule).
-	s := string(out)
-	if strings.Contains(s, "\t") {
-		t.Error("generated template contains tab characters, invalid YAML")
+	// Must parse as a valid YAML document.
+	var node yaml.Node
+	if err := yaml.Unmarshal(out, &node); err != nil {
+		t.Fatalf("generated template is not valid YAML: %v", err)
+	}
+	// Must unmarshal into a config.Config without error.
+	var cfg config.Config
+	if err := yaml.Unmarshal(out, &cfg); err != nil {
+		t.Fatalf("generated template does not unmarshal into config.Config: %v", err)
 	}
 }
 
