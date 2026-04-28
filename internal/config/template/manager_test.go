@@ -183,3 +183,26 @@ func TestGenerate_WorkspaceScopeIncludesSections(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerate_UserScopeHasDocumentedTelemetryField(t *testing.T) {
+	out, err := Generate(config.ScopeUser)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	s := string(out)
+	// The telemetry field must appear as a real YAML key (not just a comment).
+	if !strings.Contains(s, "telemetry:") {
+		t.Error("User scope template missing telemetry key")
+	}
+	// A descriptive comment line must precede it.
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, "telemetry:") && i > 0 {
+			if !strings.HasPrefix(lines[i-1], "#") {
+				t.Errorf("telemetry key has no preceding comment, line before: %q", lines[i-1])
+			}
+			return
+		}
+	}
+	t.Error("telemetry: key not found in User scope template")
+}

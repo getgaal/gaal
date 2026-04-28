@@ -138,6 +138,11 @@ var sections = []sectionDef{
 // struct tags — adding or renaming a field on Config* updates the template
 // without any manual change here.
 // The scope is annotated in the file header (e.g. "# Scope level: User").
+//
+// For Workspace scope all three resource sections (repositories, skills, mcps)
+// are emitted. For User and Global scopes only the top-level gaal behaviour
+// fields (those tagged gaal:"maxscope=user" or gaal:"maxscope=global") are
+// written as documented YAML keys with their default values.
 func Generate(scope config.ConfigScope) ([]byte, error) {
 	slog.Debug("generating config yaml template", "scope", scope)
 	var buf bytes.Buffer
@@ -146,8 +151,28 @@ func Generate(scope config.ConfigScope) ([]byte, error) {
 		for _, sec := range sections {
 			writeSection(&buf, sec)
 		}
+	} else {
+		writeBehaviourFields(&buf)
 	}
 	return buf.Bytes(), nil
+}
+
+// writeBehaviourFields emits the top-level Config fields that carry a
+// gaal:"maxscope=..." tag as commented YAML keys with their zero/default value.
+// These are the only gaal-behaviour settings relevant in User/Global configs.
+// New fields added to Config with a maxscope tag are picked up automatically.
+func writeBehaviourFields(buf *bytes.Buffer) {
+	slog.Debug("writing behaviour fields for non-workspace template")
+	fields := Reflect(reflect.TypeOf(config.Config{}))
+	for _, f := range fields {
+		if f.MaxScope == "" || f.Deprecated {
+			continue
+		}
+		// Emit a descriptive comment then the key with its zero value.
+		buf.WriteString("# " + f.Description + "\n")
+		buf.WriteString(f.YAMLKey + ": false\n")
+		buf.WriteString("\n")
+	}
 }
 
 // writeSection emits one complete config section (separator + header + Fields:
