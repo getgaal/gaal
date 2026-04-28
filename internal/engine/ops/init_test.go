@@ -13,8 +13,13 @@ import (
 // TestInit_TemplateHasAllSections verifies the embedded template contains
 // all required top-level YAML keys.
 func TestInit_TemplateHasAllSections(t *testing.T) {
+	b, err := configtemplate.Generate(config.ScopeWorkspace)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	tmpl := string(b)
 	for _, section := range []string{"repositories:", "skills:", "mcps:"} {
-		if !strings.Contains(func() string { b, _ := configtemplate.Generate(config.ScopeWorkspace); return string(b) }(), section) {
+		if !strings.Contains(tmpl, section) {
 			t.Errorf("InitTemplate missing section %q", section)
 		}
 	}
@@ -140,7 +145,11 @@ func TestInitFromPlan_OverwritesWithForce(t *testing.T) {
 }
 
 func TestInit_TemplateHasSchemaField(t *testing.T) {
-	if !strings.Contains(func() string { b, _ := configtemplate.Generate(config.ScopeWorkspace); return string(b) }(), "schema: 1") {
+	b, err := configtemplate.Generate(config.ScopeWorkspace)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !strings.Contains(string(b), "schema: 1") {
 		t.Error("InitTemplate missing 'schema: 1'")
 	}
 }
