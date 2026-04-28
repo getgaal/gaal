@@ -14,7 +14,7 @@ import (
 // all required top-level YAML keys.
 func TestInit_TemplateHasAllSections(t *testing.T) {
 	for _, section := range []string{"repositories:", "skills:", "mcps:"} {
-		if !strings.Contains(func() string { b, _ := configtemplate.Generate(); return string(b) }(), section) {
+		if !strings.Contains(func() string { b, _ := configtemplate.Generate(config.ScopeWorkspace); return string(b) }(), section) {
 			t.Errorf("InitTemplate missing section %q", section)
 		}
 	}
@@ -140,7 +140,7 @@ func TestInitFromPlan_OverwritesWithForce(t *testing.T) {
 }
 
 func TestInit_TemplateHasSchemaField(t *testing.T) {
-	if !strings.Contains(func() string { b, _ := configtemplate.Generate(); return string(b) }(), "schema: 1") {
+	if !strings.Contains(func() string { b, _ := configtemplate.Generate(config.ScopeWorkspace); return string(b) }(), "schema: 1") {
 		t.Error("InitTemplate missing 'schema: 1'")
 	}
 }
