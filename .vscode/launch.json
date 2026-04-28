@@ -40,6 +40,7 @@
       "type": "go",
       "request": "launch",
       "mode": "auto",
+      "preLaunchTask": "ensure sandbox dirs",
       "program": "${workspaceFolder}",
       "args": [
         "--sandbox", "${workspaceFolder}/.sandbox",
@@ -56,6 +57,7 @@
       "type": "go",
       "request": "launch",
       "mode": "auto",
+      "preLaunchTask": "ensure sandbox dirs",
       "program": "${workspaceFolder}",
       "args": [
         "--sandbox", "${workspaceFolder}/.sandbox",
