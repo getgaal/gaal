@@ -1,9 +1,9 @@
 package engine
 
 import (
-	"runtime"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 

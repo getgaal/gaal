@@ -1,10 +1,10 @@
 package skill
 
 import (
-	"runtime"
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"gaal/internal/config"
