@@ -2,9 +2,11 @@ package skill
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"gaal/internal/config"
@@ -747,5 +749,76 @@ func TestPrune_NoOpWhenAllManaged(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(claudeSkillsDir, "my-skill")); err != nil {
 		t.Errorf("expected my-skill to remain: %v", err)
+	}
+}
+
+// ── claude-desktop warning ──────────────────────────────────────────────────
+
+// captureSlog redirects slog output to a buffer for the duration of fn.
+func captureSlog(t *testing.T, fn func()) string {
+	t.Helper()
+	var buf strings.Builder
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	fn()
+	return buf.String()
+}
+
+func TestWarnSkillsTargetingClaudeDesktop_FiresForExplicitTarget(t *testing.T) {
+	skills := []config.ConfigSkill{
+		{Source: "owner/repo", Agents: []string{"claude-desktop"}, Global: true},
+	}
+	out := captureSlog(t, func() {
+		m := NewManager(skills, t.TempDir(), "/home/u", t.TempDir(), t.TempDir(), false)
+		m.warnSkillsTargetingClaudeDesktop()
+	})
+	if !strings.Contains(out, "claude-desktop has no on-disk SKILL.md feature") {
+		t.Errorf("expected claude-desktop skills warning, got: %s", out)
+	}
+}
+
+func TestWarnSkillsTargetingClaudeDesktop_FiresForWildcardAgents(t *testing.T) {
+	skills := []config.ConfigSkill{
+		{Source: "owner/repo", Agents: []string{"*"}, Global: true},
+	}
+	out := captureSlog(t, func() {
+		m := NewManager(skills, t.TempDir(), "/home/u", t.TempDir(), t.TempDir(), false)
+		m.warnSkillsTargetingClaudeDesktop()
+	})
+	if !strings.Contains(out, "claude-desktop") {
+		t.Errorf("expected warning for wildcard agents, got: %s", out)
+	}
+}
+
+func TestWarnSkillsTargetingClaudeDesktop_SilentForOtherAgents(t *testing.T) {
+	skills := []config.ConfigSkill{
+		{Source: "owner/repo", Agents: []string{"claude-code", "codex"}, Global: true},
+		{Source: "owner/other", Agents: []string{"cursor"}, Global: false},
+	}
+	out := captureSlog(t, func() {
+		m := NewManager(skills, t.TempDir(), "/home/u", t.TempDir(), t.TempDir(), false)
+		m.warnSkillsTargetingClaudeDesktop()
+	})
+	if strings.Contains(out, "claude-desktop") {
+		t.Errorf("expected no warning for non-claude-desktop agents, got: %s", out)
+	}
+}
+
+func TestEmitConfigWarnings_FiresOncePerManager(t *testing.T) {
+	skills := []config.ConfigSkill{
+		{Source: "owner/repo", Agents: []string{"claude-desktop"}, Global: true},
+	}
+	out := captureSlog(t, func() {
+		m := NewManager(skills, t.TempDir(), "/home/u", t.TempDir(), t.TempDir(), false)
+		// Both Sync and Status invoke emitConfigWarnings; the warning must
+		// surface exactly once across however many calls.
+		m.emitConfigWarnings()
+		m.emitConfigWarnings()
+		m.emitConfigWarnings()
+	})
+	count := strings.Count(out, "claude-desktop has no on-disk SKILL.md feature")
+	if count != 1 {
+		t.Errorf("expected warning to fire exactly once, fired %d times", count)
 	}
 }
