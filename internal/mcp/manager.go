@@ -103,12 +103,30 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 
 // Sync applies every MCP configuration entry.
 func (m *Manager) Sync(ctx context.Context) error {
+	m.warnLegacyCodexJSON()
 	for _, mc := range m.resolvedMCPs() {
 		if err := m.syncOne(ctx, mc); err != nil {
 			return fmt.Errorf("mcp %q: %w", mc.Name, err)
 		}
 	}
 	return nil
+}
+
+// warnLegacyCodexJSON surfaces a one-shot notice when a stale ~/.codex/mcp.json
+// file exists. Earlier gaal releases wrote MCP entries there, but the official
+// Codex CLI only reads ~/.codex/config.toml — the JSON file was a silent
+// no-op. Users who upgraded carry both files; the JSON one can be deleted.
+func (m *Manager) warnLegacyCodexJSON() {
+	if m.home == "" {
+		return
+	}
+	legacy := filepath.Join(m.home, ".codex", "mcp.json")
+	if _, err := os.Stat(legacy); err != nil {
+		return
+	}
+	slog.Warn("mcp: stale ~/.codex/mcp.json detected — codex CLI ignores it; safe to delete",
+		"path", legacy,
+		"hint", "MCP entries are now written to ~/.codex/config.toml")
 }
 
 func (m *Manager) syncOne(ctx context.Context, mc config.ConfigMcp) error {
@@ -204,11 +222,12 @@ func fetchRemoteEntry(ctx context.Context, rawURL, name string) (serverEntry, er
 	return serverEntry{}, fmt.Errorf("no server entry found in %s", rawURL)
 }
 
-// mergeIntoTarget reads the target JSON file, upserts the named entry, and
-// writes it back. If the target's parent directory does not already exist
-// the entry is silently skipped: sync never creates agent-owned directories
-// as a side effect. A parent that exists but is not a directory is reported
-// as an error (user misconfiguration).
+// mergeIntoTarget reads the target config file (JSON or TOML, picked by
+// extension), upserts the named entry, and writes it back. If the target's
+// parent directory does not already exist the entry is silently skipped:
+// sync never creates agent-owned directories as a side effect. A parent
+// that exists but is not a directory is reported as an error (user
+// misconfiguration).
 func mergeIntoTarget(target, name string, entry serverEntry) error {
 	slog.Debug("merging mcp entry into target", "name", name, "target", target)
 
@@ -226,36 +245,17 @@ func mergeIntoTarget(target, name string, entry serverEntry) error {
 		return fmt.Errorf("%s is not a directory", parent)
 	}
 
-	// Load existing document (or start fresh).
-	raw := map[string]json.RawMessage{}
-	if data, err := os.ReadFile(target); err == nil {
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return fmt.Errorf("parsing existing config %s: %w", target, err)
-		}
+	codec := codecFor(target)
+	servers, err := codec.ReadServers(target)
+	if err != nil {
+		return err
 	}
-
-	// Get or initialise the mcpServers key.
-	servers := map[string]serverEntry{}
-	if existing, ok := raw["mcpServers"]; ok {
-		if err := json.Unmarshal(existing, &servers); err != nil {
-			return fmt.Errorf("parsing mcpServers: %w", err)
-		}
+	if servers == nil {
+		servers = map[string]serverEntry{}
 	}
-
 	servers[name] = entry
 
-	updated, err := json.Marshal(servers)
-	if err != nil {
-		return err
-	}
-	raw["mcpServers"] = updated
-
-	out, err := json.MarshalIndent(raw, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(target, out, 0o644); err != nil { //nolint:gosec
+	if err := codec.WriteServers(target, servers); err != nil {
 		return fmt.Errorf("writing config %s: %w", target, err)
 	}
 
@@ -280,28 +280,13 @@ func (m *Manager) Prune(ctx context.Context) error {
 	}
 
 	for target, keep := range keepPerTarget {
-		data, err := os.ReadFile(target)
+		codec := codecFor(target)
+		servers, err := codec.ReadServers(target)
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
 			slog.Warn("mcp prune: cannot read target", "target", target, "err", err)
 			continue
 		}
-
-		raw := map[string]json.RawMessage{}
-		if err := json.Unmarshal(data, &raw); err != nil {
-			slog.Warn("mcp prune: cannot parse target", "target", target, "err", err)
-			continue
-		}
-
-		serversRaw, ok := raw["mcpServers"]
-		if !ok {
-			continue
-		}
-		servers := map[string]json.RawMessage{}
-		if err := json.Unmarshal(serversRaw, &servers); err != nil {
-			slog.Warn("mcp prune: cannot parse mcpServers", "target", target, "err", err)
+		if len(servers) == 0 {
 			continue
 		}
 
@@ -317,26 +302,8 @@ func (m *Manager) Prune(ctx context.Context) error {
 			continue
 		}
 
-		updated, err := json.Marshal(servers)
-		if err != nil {
-			slog.Warn("mcp prune: marshal error", "target", target, "err", err)
-			continue
-		}
-		raw["mcpServers"] = updated
-
-		out, err := json.MarshalIndent(raw, "", "  ")
-		if err != nil {
-			slog.Warn("mcp prune: indent error", "target", target, "err", err)
-			continue
-		}
-
-		tmp := target + ".tmp"
-		if err := os.WriteFile(tmp, out, 0o600); err != nil {
+		if err := codec.WriteServers(target, servers); err != nil {
 			slog.Warn("mcp prune: write error", "target", target, "err", err)
-			continue
-		}
-		if err := os.Rename(tmp, target); err != nil {
-			slog.Warn("mcp prune: rename error", "target", target, "err", err)
 			continue
 		}
 		// Refresh snapshot so next status check reflects the pruned state.
@@ -355,38 +322,22 @@ func (m *Manager) Status(_ context.Context) []Status {
 	for _, mc := range resolved {
 		st := Status{Name: mc.Name, Target: mc.Target}
 
-		data, err := os.ReadFile(mc.Target)
+		servers, err := codecFor(mc.Target).ReadServers(mc.Target)
 		if err != nil {
-			if os.IsNotExist(err) {
-				statuses = append(statuses, st) // not present
-				continue
-			}
 			st.Err = err
 			statuses = append(statuses, st)
 			continue
 		}
-
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			st.Err = fmt.Errorf("parsing %s: %w", mc.Target, err)
-			statuses = append(statuses, st)
-			continue
-		}
-
-		if serversRaw, ok := raw["mcpServers"]; ok {
-			var servers map[string]serverEntry
-			if err := json.Unmarshal(serversRaw, &servers); err == nil {
-				stored, found := servers[mc.Name]
-				st.Present = found
-				// For inline configs we can detect divergence without I/O.
-				if found && mc.Inline != nil {
-					want := serverEntry{
-						Command: mc.Inline.Command,
-						Args:    mc.Inline.Args,
-						Env:     mc.Inline.Env,
-					}
-					st.Dirty = !serverEntryEqual(stored, want)
+		if stored, found := servers[mc.Name]; found {
+			st.Present = true
+			// For inline configs we can detect divergence without I/O.
+			if mc.Inline != nil {
+				want := serverEntry{
+					Command: mc.Inline.Command,
+					Args:    mc.Inline.Args,
+					Env:     mc.Inline.Env,
 				}
+				st.Dirty = !serverEntryEqual(stored, want)
 			}
 		}
 
@@ -422,33 +373,18 @@ func serverEntryEqual(a, b serverEntry) bool {
 }
 
 // LoadServers reads the given MCP config file and returns the full inline
-// definition of every server found in the "mcpServers" object, keyed by name.
-// Returns nil, nil when the file does not exist or has no "mcpServers" entry.
+// definition of every server, keyed by name. JSON and TOML config files are
+// both supported (extension-based dispatch). Returns nil, nil when the file
+// does not exist or has no servers entry.
 func LoadServers(configFile string) (map[string]config.ConfigMcpItem, error) {
 	slog.Debug("loading mcp servers", "file", configFile)
-	data, err := os.ReadFile(configFile)
+	servers, err := codecFor(configFile).ReadServers(configFile)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("reading %s: %w", configFile, err)
+		return nil, err
 	}
-
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", configFile, err)
-	}
-
-	serversRaw, ok := raw["mcpServers"]
-	if !ok {
+	if len(servers) == 0 {
 		return nil, nil
 	}
-
-	var servers map[string]serverEntry
-	if err := json.Unmarshal(serversRaw, &servers); err != nil {
-		return nil, fmt.Errorf("parsing mcpServers in %s: %w", configFile, err)
-	}
-
 	out := make(map[string]config.ConfigMcpItem, len(servers))
 	for name, s := range servers {
 		out[name] = config.ConfigMcpItem{
@@ -461,33 +397,17 @@ func LoadServers(configFile string) (map[string]config.ConfigMcpItem, error) {
 }
 
 // ListServers reads the given MCP config file and returns a sorted list of
-// server names found in the "mcpServers" object. Returns nil, nil when the
-// file does not exist (the agent is simply not installed on this machine).
+// server names. Returns nil, nil when the file does not exist (the agent is
+// simply not installed on this machine).
 func ListServers(configFile string) ([]string, error) {
 	slog.Debug("listing mcp servers", "file", configFile)
-	data, err := os.ReadFile(configFile)
+	servers, err := codecFor(configFile).ReadServers(configFile)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("reading %s: %w", configFile, err)
+		return nil, err
 	}
-
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", configFile, err)
-	}
-
-	serversRaw, ok := raw["mcpServers"]
-	if !ok {
+	if len(servers) == 0 {
 		return nil, nil
 	}
-
-	var servers map[string]json.RawMessage
-	if err := json.Unmarshal(serversRaw, &servers); err != nil {
-		return nil, fmt.Errorf("parsing mcpServers in %s: %w", configFile, err)
-	}
-
 	names := make([]string, 0, len(servers))
 	for name := range servers {
 		names = append(names, name)
