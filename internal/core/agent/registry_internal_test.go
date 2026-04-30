@@ -149,7 +149,31 @@ func TestValidateEntry_MCPConfigWithoutTilde_Rejected(t *testing.T) {
 		ProjectMCPConfigFile: "/absolute/mcp.json",
 	}
 	if err := validateEntry("foo", e); err == nil {
-		t.Error("expected error for project_mcp_config_file without ~/")
+		t.Error("expected error for absolute project_mcp_config_file")
+	}
+}
+
+func TestValidateEntry_RelativeProjectMCPConfig_Accepted(t *testing.T) {
+	// Workspace-relative project MCP path (e.g. claude-code's .mcp.json) is
+	// allowed and resolved against cwd by callers.
+	e := agentEntry{
+		ProjectSkillsDir:     ".foo/skills",
+		GlobalSkillsDir:      "~/.foo/skills",
+		ProjectMCPConfigFile: ".mcp.json",
+	}
+	if err := validateEntry("foo", e); err != nil {
+		t.Errorf("relative project_mcp_config_file should be accepted, got %v", err)
+	}
+}
+
+func TestValidateEntry_DotDotInProjectMCPConfig_Rejected(t *testing.T) {
+	e := agentEntry{
+		ProjectSkillsDir:     ".foo/skills",
+		GlobalSkillsDir:      "~/.foo/skills",
+		ProjectMCPConfigFile: "../escape/mcp.json",
+	}
+	if err := validateEntry("foo", e); err == nil {
+		t.Error("expected error for '..' in project_mcp_config_file")
 	}
 }
 

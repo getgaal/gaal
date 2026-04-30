@@ -3,10 +3,13 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"gaal/internal/config"
@@ -816,7 +819,27 @@ func TestResolvedMCPs_AgentWithGlobalTrue_ResolvesTarget(t *testing.T) {
 }
 
 func TestResolvedMCPs_AgentWithGlobalFalse_SkipsWhenNoProjectMCP(t *testing.T) {
-	// claude-code has an empty project_mcp_config_file → should be skipped.
+	// codex has an empty project_mcp_config_file → should be skipped.
+	home := "/home/testuser"
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "srv",
+			Global: false,
+			Agents: []string{"codex"},
+			Inline: &config.ConfigMcpItem{Command: "node"},
+		},
+	}
+	m := NewManager(mcps, home, "")
+	resolved := m.resolvedMCPs()
+	if len(resolved) != 0 {
+		t.Errorf("expected 0 resolved entries for codex project scope (empty), got %d", len(resolved))
+	}
+}
+
+func TestResolvedMCPs_ClaudeCodeProjectScope_ResolvesToMcpJSON(t *testing.T) {
+	// claude-code's project scope writes to .mcp.json at the workspace root
+	// (the file Claude Code itself reads). Path is workspace-relative; the
+	// caller is expected to resolve it against cwd.
 	home := "/home/testuser"
 	mcps := []config.ConfigMcp{
 		{
@@ -828,8 +851,59 @@ func TestResolvedMCPs_AgentWithGlobalFalse_SkipsWhenNoProjectMCP(t *testing.T) {
 	}
 	m := NewManager(mcps, home, "")
 	resolved := m.resolvedMCPs()
-	if len(resolved) != 0 {
-		t.Errorf("expected 0 resolved entries for claude-code project scope (empty), got %d", len(resolved))
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 resolved entry for claude-code project scope, got %d", len(resolved))
+	}
+	if resolved[0].Target != ".mcp.json" {
+		t.Errorf("expected target=.mcp.json, got %q", resolved[0].Target)
+	}
+}
+
+func TestResolvedMCPs_ClaudeCodeGlobalScope_ResolvesToClaudeJSON(t *testing.T) {
+	// claude-code's user-global MCPs live in ~/.claude.json, NOT in the
+	// (legacy/incorrect) ~/.config/claude/claude_desktop_config.json path
+	// gaal used to write before #92.
+	home := "/home/testuser"
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "srv",
+			Global: true,
+			Agents: []string{"claude-code"},
+			Inline: &config.ConfigMcpItem{Command: "node"},
+		},
+	}
+	m := NewManager(mcps, home, "")
+	resolved := m.resolvedMCPs()
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 resolved entry for claude-code global scope, got %d", len(resolved))
+	}
+	want := filepath.Join(home, ".claude.json")
+	if resolved[0].Target != want {
+		t.Errorf("expected target=%q, got %q", want, resolved[0].Target)
+	}
+}
+
+func TestResolvedMCPs_ClaudeDesktopGlobalScope_ResolvesToMacOSPath(t *testing.T) {
+	// claude-desktop's MCP config sits under macOS-style Library path. Path
+	// is expanded against the supplied home regardless of runtime.GOOS;
+	// non-mac users see a no-op write (or a sync-time warning on Linux).
+	home := "/home/testuser"
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "srv",
+			Global: true,
+			Agents: []string{"claude-desktop"},
+			Inline: &config.ConfigMcpItem{Command: "node"},
+		},
+	}
+	m := NewManager(mcps, home, "")
+	resolved := m.resolvedMCPs()
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 resolved entry for claude-desktop global scope, got %d", len(resolved))
+	}
+	want := filepath.Join(home, "Library/Application Support/Claude/claude_desktop_config.json")
+	if resolved[0].Target != want {
+		t.Errorf("expected target=%q, got %q", want, resolved[0].Target)
 	}
 }
 
@@ -874,5 +948,120 @@ func TestResolvedMCPs_MultipleAgents_FansOut(t *testing.T) {
 	}
 	if len(targets) != 2 {
 		t.Errorf("expected 2 distinct targets, got %d: %v", len(targets), targets)
+	}
+}
+
+// ── warning helpers ────────────────────────────────────────────────────────
+
+// captureSlog redirects slog output to a buffer for the duration of fn and
+// returns the captured text. Restores the previous default logger after.
+func captureSlog(t *testing.T, fn func()) string {
+	t.Helper()
+	var buf strings.Builder
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	fn()
+	return buf.String()
+}
+
+func TestWarnLegacyClaudeDesktopJSON_DetectsStaleFile(t *testing.T) {
+	home := t.TempDir()
+	stale := filepath.Join(home, ".config", "claude", "claude_desktop_config.json")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(stale, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	out := captureSlog(t, func() {
+		m := NewManager(nil, home, "")
+		m.warnLegacyClaudeDesktopJSON()
+	})
+	if !strings.Contains(out, "stale ~/.config/claude/claude_desktop_config.json") {
+		t.Errorf("expected legacy warning, got: %s", out)
+	}
+}
+
+func TestWarnLegacyClaudeDesktopJSON_SilentWhenAbsent(t *testing.T) {
+	home := t.TempDir() // no legacy file present
+	out := captureSlog(t, func() {
+		m := NewManager(nil, home, "")
+		m.warnLegacyClaudeDesktopJSON()
+	})
+	if strings.Contains(out, "stale") {
+		t.Errorf("expected no warning when legacy file is absent, got: %s", out)
+	}
+}
+
+func TestWarnClaudeDesktopOnLinux_FiresForExplicitTarget(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-only assertion; behavior intentionally differs on macOS/Windows")
+	}
+	mcps := []config.ConfigMcp{
+		{Name: "x", Agents: []string{"claude-desktop"}, Global: true,
+			Inline: &config.ConfigMcpItem{Command: "node"}},
+	}
+	out := captureSlog(t, func() {
+		m := NewManager(mcps, "/home/u", "")
+		m.warnClaudeDesktopOnLinux()
+	})
+	if !strings.Contains(out, "claude-desktop is officially macOS- and Windows-only") {
+		t.Errorf("expected linux unsupported warning, got: %s", out)
+	}
+}
+
+func TestWarnClaudeDesktopOnLinux_FiresForWildcardAgents(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-only assertion")
+	}
+	mcps := []config.ConfigMcp{
+		{Name: "x", Agents: []string{"*"}, Global: true,
+			Inline: &config.ConfigMcpItem{Command: "node"}},
+	}
+	out := captureSlog(t, func() {
+		m := NewManager(mcps, "/home/u", "")
+		m.warnClaudeDesktopOnLinux()
+	})
+	if !strings.Contains(out, "claude-desktop") {
+		t.Errorf("expected warning for wildcard agents on Linux, got: %s", out)
+	}
+}
+
+func TestWarnClaudeDesktopOnLinux_SilentForOtherAgents(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-only assertion")
+	}
+	mcps := []config.ConfigMcp{
+		{Name: "x", Agents: []string{"claude-code", "codex"}, Global: true,
+			Inline: &config.ConfigMcpItem{Command: "node"}},
+	}
+	out := captureSlog(t, func() {
+		m := NewManager(mcps, "/home/u", "")
+		m.warnClaudeDesktopOnLinux()
+	})
+	if strings.Contains(out, "claude-desktop") {
+		t.Errorf("expected no warning for non-claude-desktop agents, got: %s", out)
+	}
+}
+
+func TestEmitConfigWarnings_FiresOncePerManager(t *testing.T) {
+	home := t.TempDir()
+	stale := filepath.Join(home, ".config", "claude", "claude_desktop_config.json")
+	os.MkdirAll(filepath.Dir(stale), 0o755)
+	os.WriteFile(stale, []byte("{}"), 0o644)
+
+	out := captureSlog(t, func() {
+		m := NewManager(nil, home, "")
+		// Multiple resolvedMCPs calls (Sync, Status, Prune all use it) must
+		// not duplicate the warning.
+		_ = m.resolvedMCPs()
+		_ = m.resolvedMCPs()
+		_ = m.resolvedMCPs()
+	})
+	count := strings.Count(out, "stale ~/.config/claude/claude_desktop_config.json")
+	if count != 1 {
+		t.Errorf("expected legacy warning to fire exactly once, fired %d times", count)
 	}
 }
