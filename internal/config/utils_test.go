@@ -167,6 +167,34 @@ mcps:
 	}
 }
 
+// TestExpandPaths_MCPEmptyTargetUnchanged guards against a regression where
+// the optional Target field, left empty in the new agents+global flow, was
+// being rewritten to the config file's parent directory by filepath.Join.
+func TestExpandPaths_MCPEmptyTargetUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "gaal.yaml")
+	os.WriteFile(p, []byte(`
+mcps:
+  - name: context7
+    agents: ["claude-code", "codex"]
+    global: true
+    inline:
+      command: npx
+      args: ['-y', '@upstash/context7-mcp@latest']
+`), 0o644)
+
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.MCPs) == 0 {
+		t.Fatal("expected one MCP entry")
+	}
+	if cfg.MCPs[0].Target != "" {
+		t.Errorf("empty Target should remain empty, got %q", cfg.MCPs[0].Target)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // isRemoteURL / isGitHubShorthand (unit tests on the helpers directly)
 // ---------------------------------------------------------------------------
