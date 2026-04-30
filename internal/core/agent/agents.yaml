@@ -113,7 +113,7 @@ agents:
     supports_generic_project: true
     project_skills_dir: ""
     global_skills_dir: ~/.codex/skills
-    global_mcp_config_file: ~/.codex/mcp.json
+    global_mcp_config_file: ~/.codex/config.toml
     project_mcp_config_file: ""
     project_skills_search: *cps
     global_skills_search:
