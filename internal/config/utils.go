@@ -88,6 +88,9 @@ func (c *Config) expandPaths(baseDir string) {
 	}
 
 	for i := range c.MCPs {
+		if c.MCPs[i].Target == "" {
+			continue
+		}
 		c.MCPs[i].Target = expandPath(c.MCPs[i].Target)
 	}
 }
