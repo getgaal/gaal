@@ -136,13 +136,9 @@ func TestBuildImportCandidates_MCPsFromAgentConfig(t *testing.T) {
 	workDir := t.TempDir()
 	cacheRoot := t.TempDir()
 
-	// claude-code's ProjectMCPConfigFile is ~/.config/claude/claude_desktop_config.json.
-	cfgDir := filepath.Join(home, ".config", "claude")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	// claude-code reads its user-global MCP servers from ~/.claude.json.
 	content := `{"mcpServers":{"filesystem":{"command":"uvx","args":["mcp-server-filesystem","/tmp"]}}}`
-	cfgFile := filepath.Join(cfgDir, "claude_desktop_config.json")
+	cfgFile := filepath.Join(home, ".claude.json")
 	if err := os.WriteFile(cfgFile, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
