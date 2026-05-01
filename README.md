@@ -1,6 +1,6 @@
 # gaal
 
-> **G**it **A**gent **A**utomation **L**ayer — a single CLI to keep your local repositories, AI agent skills, and MCP server configurations in sync.
+> **G**overned **A**gent **A**ccess **L**ayer — a single CLI to keep your local repositories, AI agent skills, and MCP server configurations in sync.
 
 ```
   ██████╗  █████╗  █████╗ ██╗
