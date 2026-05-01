@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gaal/internal/discover"
 	"gaal/internal/engine/render"
@@ -42,7 +43,7 @@ func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mc
 	// Reconcile: mark config-declared resources as managed and merge
 	// FS-discovered unmanaged resources into the report.
 	repoEntries := reconcileRepos(configRepos, discovered)
-	skillEntries := reconcileSkills(configSkills, discovered, home, workDir)
+	skillEntries := reconcileSkills(configSkills, discovered, home, workDir, skills.SourcePaths())
 	mcpEntries := reconcileMCPs(configMCPs, discovered)
 
 	return &render.StatusReport{
@@ -97,9 +98,12 @@ func reconcileRepos(config []render.RepoEntry, resources []discover.Resource) []
 
 // reconcileSkills merges config-driven skill entries with FS-discovered skills.
 // FS-discovered skills are suppressed when their parent directory is already
-// covered by a config-driven entry (same agent + same managed skills dir).
-// Remaining FS-discovered entries are appended as unmanaged.
-func reconcileSkills(config []render.SkillEntry, resources []discover.Resource, home, workDir string) []render.SkillEntry {
+// covered by a config-driven entry (same agent + same managed skills dir),
+// or when the skill itself lives inside a configured skill source path —
+// otherwise running gaal from inside a source repo would surface the source
+// SKILL.md files as duplicate installed skills (#88). Remaining FS-discovered
+// entries are appended as unmanaged.
+func reconcileSkills(config []render.SkillEntry, resources []discover.Resource, home, workDir string, sourcePaths []string) []render.SkillEntry {
 	// Build the set of managed skill directories from config entries.
 	// Key: absolute skills directory that gaal writes to for this entry.
 	managedDirs := make(map[string]struct{}, len(config))
@@ -115,6 +119,14 @@ func reconcileSkills(config []render.SkillEntry, resources []discover.Resource, 
 	}
 	slog.Debug("reconcileSkills managed dirs", "count", len(managedDirs))
 
+	cleanedSources := make([]string, 0, len(sourcePaths))
+	for _, p := range sourcePaths {
+		if p == "" {
+			continue
+		}
+		cleanedSources = append(cleanedSources, filepath.Clean(p))
+	}
+
 	out := append([]render.SkillEntry(nil), config...)
 	for _, r := range resources {
 		if r.Type != discover.ResourceSkill {
@@ -125,6 +137,11 @@ func reconcileSkills(config []render.SkillEntry, resources []discover.Resource, 
 		// showing the same skill twice (once managed, once unmanaged).
 		parent := filepath.Clean(filepath.Dir(r.Path))
 		if _, covered := managedDirs[parent]; covered {
+			continue
+		}
+		// Skills found inside a configured source are source content, not
+		// installed copies — skip so they do not appear as duplicate rows.
+		if isUnderAny(r.Path, cleanedSources) {
 			continue
 		}
 		agent := r.Meta["agent"]
@@ -139,6 +156,32 @@ func reconcileSkills(config []render.SkillEntry, resources []discover.Resource, 
 		})
 	}
 	return out
+}
+
+// isUnderAny reports whether path is at or below any of roots. Comparisons use
+// filepath.Clean / filepath.Rel so trailing separators and relative-style
+// inputs (".") are handled correctly.
+func isUnderAny(path string, roots []string) bool {
+	if len(roots) == 0 {
+		return false
+	}
+	cleaned := filepath.Clean(path)
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		rel, err := filepath.Rel(root, cleaned)
+		if err != nil {
+			continue
+		}
+		if rel == "." {
+			return true
+		}
+		if !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) {
+			return true
+		}
+	}
+	return false
 }
 
 // reconcileMCPs merges config-driven MCP entries with FS-discovered MCP configs.

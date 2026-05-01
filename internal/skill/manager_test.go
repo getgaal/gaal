@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"gaal/internal/config"
@@ -235,6 +236,50 @@ func TestIsLocalPath(t *testing.T) {
 		got := isLocalPath(tc.input)
 		if got != tc.want {
 			t.Errorf("isLocalPath(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Manager.SourcePaths
+// ---------------------------------------------------------------------------
+
+func TestManager_SourcePaths_ExpandsHomeAndKeepsAbsolute(t *testing.T) {
+	skills := []config.ConfigSkill{
+		{Source: "~/skills/personal"},
+		{Source: "/abs/skills"},
+	}
+	m := NewManager(skills, "/cache", "/home/u", "/work", "", false)
+
+	got := m.SourcePaths()
+	want := []string{"/home/u/skills/personal", "/abs/skills"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("SourcePaths[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestManager_SourcePaths_RemoteResolvesToCachePath(t *testing.T) {
+	skills := []config.ConfigSkill{
+		{Source: "owner/repo"},
+		{Source: "https://github.com/owner/repo2"},
+	}
+	m := NewManager(skills, "/cache", "/home/u", "/work", "", false)
+
+	got := m.SourcePaths()
+	if len(got) != 2 {
+		t.Fatalf("expected 2 paths, got %v", got)
+	}
+	for _, p := range got {
+		if !filepath.IsAbs(p) {
+			t.Errorf("expected absolute cache path, got %q", p)
+		}
+		if !strings.HasPrefix(p, "/cache") {
+			t.Errorf("expected path under /cache, got %q", p)
 		}
 	}
 }
