@@ -728,6 +728,55 @@ func TestPrune_RemovesOrphanSkill(t *testing.T) {
 	}
 }
 
+// TestPrune_RemovesOrphanSymlink covers the regression in #96: when an agent
+// skills dir contains symlinks placed by a sibling tool (e.g. pointing into a
+// shared `~/.agents/skills/` tree), Prune must clean those up alongside real
+// dirs. The previous implementation only considered IsDir entries, so stale
+// symlinks were never removed even when they were not in the configuration.
+func TestPrune_RemovesOrphanSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks require admin/Developer Mode on Windows; skip the regression test there")
+	}
+	sourceDir := t.TempDir()
+	keptDir := filepath.Join(sourceDir, "kept-skill")
+	os.MkdirAll(keptDir, 0o755)
+	os.WriteFile(filepath.Join(keptDir, "SKILL.md"), []byte("---\nname: kept-skill\n---\n"), 0o644)
+
+	home := t.TempDir()
+	claudeSkillsDir := filepath.Join(home, ".claude", "skills")
+	os.MkdirAll(claudeSkillsDir, 0o755)
+
+	// Real install of the configured skill — must survive.
+	os.MkdirAll(filepath.Join(claudeSkillsDir, "kept-skill"), 0o755)
+
+	// Stale symlink placed by another tool — must be pruned.
+	staleTarget := t.TempDir()
+	os.MkdirAll(filepath.Join(staleTarget, "stale-symlinked"), 0o755)
+	if err := os.Symlink(filepath.Join(staleTarget, "stale-symlinked"), filepath.Join(claudeSkillsDir, "stale-symlinked")); err != nil {
+		t.Fatalf("os.Symlink: %v", err)
+	}
+
+	cfg := []config.ConfigSkill{
+		{Source: sourceDir, Select: []string{"kept-skill"}, Agents: []string{"claude-code"}, Global: true},
+	}
+	m := NewManager(cfg, t.TempDir(), home, t.TempDir(), "", false)
+	if err := m.Prune(context.Background()); err != nil {
+		t.Fatalf("Prune returned error: %v", err)
+	}
+
+	if _, err := os.Lstat(filepath.Join(claudeSkillsDir, "stale-symlinked")); !os.IsNotExist(err) {
+		t.Errorf("expected stale-symlinked to be removed, got err=%v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(claudeSkillsDir, "kept-skill")); err != nil {
+		t.Errorf("expected kept-skill to remain, got err=%v", err)
+	}
+	// The symlink target must NOT have been removed — Prune deletes the
+	// link, not the underlying directory.
+	if _, err := os.Stat(filepath.Join(staleTarget, "stale-symlinked")); err != nil {
+		t.Errorf("expected symlink target to remain on disk, got err=%v", err)
+	}
+}
+
 func TestPrune_NoOpWhenAllManaged(t *testing.T) {
 	sourceDir := t.TempDir()
 	skillDir := filepath.Join(sourceDir, "my-skill")

@@ -85,7 +85,15 @@ func buildRepoSyncRows(plan *PlanReport, status *StatusReport) []syncRow {
 		actions[r.Path] = r.Action
 		errs[r.Path] = r.Error
 	}
-	entries := append([]RepoEntry(nil), status.Repositories...)
+	entries := make([]RepoEntry, 0, len(status.Repositories))
+	for _, e := range status.Repositories {
+		// Sync only manages config-declared resources. FS-discovered
+		// unmanaged entries belong in `gaal status`, not the sync summary.
+		if e.Status == StatusUnmanaged {
+			continue
+		}
+		entries = append(entries, e)
+	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 
 	rows := make([]syncRow, 0, len(entries))
@@ -106,7 +114,16 @@ func buildRepoSyncRows(plan *PlanReport, status *StatusReport) []syncRow {
 
 func buildSkillSyncRows(plan *PlanReport, status *StatusReport) []syncRow {
 	skillActions := skillActionIndex(plan.Skills)
-	aggregated := aggregateSkillsByName(status.Skills)
+	// Drop unmanaged entries before aggregating so the per-skill agent list
+	// reflects what gaal actually synced rather than what the FS scan found.
+	managed := make([]SkillEntry, 0, len(status.Skills))
+	for _, e := range status.Skills {
+		if e.Status == StatusUnmanaged {
+			continue
+		}
+		managed = append(managed, e)
+	}
+	aggregated := aggregateSkillsByName(managed)
 	rows := make([]syncRow, 0, len(aggregated))
 	for _, s := range aggregated {
 		action := skillActions[s.Name]
@@ -130,7 +147,13 @@ func buildMCPSyncRows(plan *PlanReport, status *StatusReport) []syncRow {
 		actions[m.Name] = m.Action
 		errs[m.Name] = m.Error
 	}
-	entries := append([]MCPEntry(nil), status.MCPs...)
+	entries := make([]MCPEntry, 0, len(status.MCPs))
+	for _, e := range status.MCPs {
+		if e.Status == StatusUnmanaged {
+			continue
+		}
+		entries = append(entries, e)
+	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 
 	rows := make([]syncRow, 0, len(entries))

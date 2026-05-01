@@ -170,6 +170,58 @@ func TestRenderSyncSummary_NoOpsSinkToBottomOfTheirGroup(t *testing.T) {
 	}
 }
 
+// TestRenderSyncSummary_HidesUnmanagedEntries is the regression test for #96:
+// FS-discovered resources outside the user's config (e.g. skills installed by
+// a sibling tool, MCP entries registered manually) must not appear in the
+// sync summary. They belong to `gaal status`/`gaal audit`, which still surface
+// them — sync only reports what it actually managed.
+func TestRenderSyncSummary_HidesUnmanagedEntries(t *testing.T) {
+	plan := &PlanReport{
+		Skills: []PlanSkillEntry{
+			{Source: "owner/repo", Agent: "claude-code", Action: PlanCreate, Install: []string{"managed-skill"}},
+		},
+	}
+	status := &StatusReport{
+		Repositories: []RepoEntry{
+			{Path: "/configured/repo", Status: StatusOK},
+			{Path: "/elsewhere/unrelated", Status: StatusUnmanaged},
+		},
+		Skills: []SkillEntry{
+			{Source: "owner/repo", Agent: "claude-code", Status: StatusOK, Installed: []string{"managed-skill"}},
+			{Source: "owner/repo", Agent: "cursor", Status: StatusUnmanaged, Installed: []string{"managed-skill"}, Global: true},
+			{Source: "/somewhere/else", Agent: "github-copilot", Status: StatusUnmanaged, Installed: []string{"stray-skill"}},
+		},
+		MCPs: []MCPEntry{
+			{Name: "configured", Target: "/x/managed.json", Status: StatusPresent},
+			{Name: "stray", Target: "/y/stray.json", Status: StatusUnmanaged},
+		},
+	}
+	var buf bytes.Buffer
+	if err := RenderSyncSummary(&buf, plan, status, 0); err != nil {
+		t.Fatalf("RenderSyncSummary: %v", err)
+	}
+	out := buf.String()
+
+	// Managed entries appear.
+	for _, want := range []string{"/configured/repo", "managed-skill", "configured"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected managed entry %q in output:\n%s", want, out)
+		}
+	}
+	// Unmanaged entries are filtered out.
+	for _, unwanted := range []string{"/elsewhere/unrelated", "stray-skill", "stray"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("expected unmanaged entry %q to be hidden, got:\n%s", unwanted, out)
+		}
+	}
+	// And the agent list for managed-skill must not include cursor (it
+	// only appeared as an unmanaged entry), even though aggregation by name
+	// would otherwise have merged them.
+	if strings.Contains(out, "cursor") {
+		t.Errorf("expected cursor to be filtered from agent list, got:\n%s", out)
+	}
+}
+
 func TestRenderSyncSummary_EmptySummaryPrintsCompleteLine(t *testing.T) {
 	var buf bytes.Buffer
 	if err := RenderSyncSummary(&buf, &PlanReport{}, &StatusReport{}, 100*time.Millisecond); err != nil {

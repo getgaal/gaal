@@ -565,29 +565,43 @@ func (m *Manager) Prune(ctx context.Context) error {
 	}
 
 	// Walk each managed skills directory and remove entries absent from expected.
+	// Real directories AND symlinks are candidates: agents like the user's
+	// shared `~/.agents/skills/` setup install via symlinks under each
+	// agent's skills dir, and a stale symlink is just as orphaned as a
+	// stale dir (#96).
 	for skillsDir, keep := range expected {
 		entries, err := os.ReadDir(skillsDir)
 		if err != nil {
 			continue // directory may not exist
 		}
 		for _, entry := range entries {
-			if !entry.IsDir() {
+			if !isSkillEntry(entry) {
 				continue
 			}
 			if _, ok := keep[entry.Name()]; ok {
 				continue
 			}
 			target := filepath.Join(skillsDir, entry.Name())
-			slog.Info("pruning orphan skill", "path", target)
 			if err := os.RemoveAll(target); err != nil {
 				slog.Warn("failed to prune skill", "path", target, "err", err)
 				continue
 			}
+			slog.Info("pruned orphan skill", "path", target)
 			m.pruneSkillSnapshot(target)
 		}
 	}
 
 	return nil
+}
+
+// isSkillEntry reports whether a ReadDir entry is a candidate for pruning.
+// Real directories, and symlinks (which a sibling tool may have created to
+// point at a shared skills tree), both count. Plain files are skipped.
+func isSkillEntry(e fs.DirEntry) bool {
+	if e.IsDir() {
+		return true
+	}
+	return e.Type()&fs.ModeSymlink != 0
 }
 
 // pruneSkillSnapshot removes the snapshot file for a skill directory that has
