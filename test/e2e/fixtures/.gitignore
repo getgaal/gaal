@@ -1,0 +1,2 @@
+# Compiled gaal binary copied in by `make test-e2e` before the docker build.
+gaal

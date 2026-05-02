@@ -1,0 +1,4 @@
+# Skill fixtures are bind-mounted at runtime and do not need to be baked
+# into the image. Keeping them out keeps the image small and the build cache
+# stable when only fixtures change.
+skills/

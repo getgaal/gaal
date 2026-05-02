@@ -14,7 +14,7 @@ GOOS      ?= $(shell go env GOOS)
 GOARCH    ?= $(shell go env GOARCH)
 BIN_CROSS ?= $(DIST_DIR)/gaal-$(GOOS)-$(GOARCH)
 
-.PHONY: all build build-cross run run-service test test-race test-ci coverage coverage-ci lint hooks clean tidy sandbox sandbox-service sandbox-status
+.PHONY: all build build-cross run run-service test test-race test-ci test-e2e test-e2e-cli coverage coverage-ci lint hooks clean tidy sandbox sandbox-service sandbox-status
 
 all: build
 
@@ -68,6 +68,24 @@ test-race:
 test-ci:
 	@mkdir -p report
 	$(GOBIN)/gotestsum --junitfile report/tests.xml --format github-actions -- -race -count=1 -timeout 5m ./...
+
+## test-e2e: end-to-end Docker suite (Layer 1 — filesystem assertions only)
+##   Builds gaal for linux/amd64, builds the test image, runs the suite.
+##   Requires Docker on the host. Set GAAL_E2E_REBUILD=1 to force a rebuild.
+test-e2e:
+	@mkdir -p test/e2e/fixtures
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+		go build -trimpath -o test/e2e/fixtures/gaal .
+	go test -tags e2e -count=1 -timeout 15m ./test/e2e/...
+
+## test-e2e-cli: full e2e suite including the heavy CLI verification layer
+##   Installs claude-code + codex into the image and exercises them
+##   against the configs gaal wrote. Slower; meant for nightly / release CI.
+test-e2e-cli:
+	@mkdir -p test/e2e/fixtures
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+		go build -trimpath -o test/e2e/fixtures/gaal .
+	GAAL_E2E_CLI=1 go test -tags e2e -count=1 -timeout 30m ./test/e2e/...
 
 ## coverage: run tests with coverage — generates all reports in report/
 ##   report/coverage.html          — standard go tool cover (default)
