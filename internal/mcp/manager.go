@@ -103,7 +103,6 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 
 // Sync applies every MCP configuration entry.
 func (m *Manager) Sync(ctx context.Context) error {
-	m.warnLegacyCodexJSON()
 	for _, mc := range m.resolvedMCPs() {
 		if err := m.syncOne(ctx, mc); err != nil {
 			return fmt.Errorf("mcp %q: %w", mc.Name, err)
@@ -112,22 +111,6 @@ func (m *Manager) Sync(ctx context.Context) error {
 	return nil
 }
 
-// warnLegacyCodexJSON surfaces a one-shot notice when a stale ~/.codex/mcp.json
-// file exists. Earlier gaal releases wrote MCP entries there, but the official
-// Codex CLI only reads ~/.codex/config.toml — the JSON file was a silent
-// no-op. Users who upgraded carry both files; the JSON one can be deleted.
-func (m *Manager) warnLegacyCodexJSON() {
-	if m.home == "" {
-		return
-	}
-	legacy := filepath.Join(m.home, ".codex", "mcp.json")
-	if _, err := os.Stat(legacy); err != nil {
-		return
-	}
-	slog.Warn("mcp: stale ~/.codex/mcp.json detected — codex CLI ignores it; safe to delete",
-		"path", legacy,
-		"hint", "MCP entries are now written to ~/.codex/config.toml")
-}
 
 func (m *Manager) syncOne(ctx context.Context, mc config.ConfigMcp) error {
 	slog.DebugContext(ctx, "syncing mcp entry", "name", mc.Name, "target", mc.Target)
