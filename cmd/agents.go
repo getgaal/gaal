@@ -89,6 +89,46 @@ func runAgentList(eng *engine.Engine, w io.Writer, format engine.OutputFormat) e
 	}
 }
 
+func renderAgentsSummary(w io.Writer, entries []render.AgentEntry) error {
+	var installed, available []string
+	for _, e := range entries {
+		if e.Installed {
+			installed = append(installed, e.Name)
+		} else {
+			available = append(available, e.Name)
+		}
+	}
+	sort.Strings(installed)
+	sort.Strings(available)
+	if len(installed) > 0 {
+		fmt.Fprintf(w, "Installed: %s\n", strings.Join(installed, ", "))
+	}
+	if len(available) > 0 {
+		fmt.Fprintf(w, "Available: %s\n", strings.Join(available, ", "))
+	}
+	return nil
+}
+
+func renderAgentDetailSummary(w io.Writer, d *render.AgentDetail) error {
+	status := "installed"
+	if !d.Installed {
+		status = "not installed"
+	}
+	fmt.Fprintf(w, "%s (%s)\n", d.Name, status)
+
+	skillCount := 0
+	for _, p := range d.Paths {
+		skillCount += p.SkillCount
+	}
+	if d.MCPExists {
+		fmt.Fprintf(w, "  Skills: %d\n", skillCount)
+		fmt.Fprintf(w, "  MCP:    %s\n", d.MCPConfig)
+	} else {
+		fmt.Fprintf(w, "  Skills: %d\n", skillCount)
+	}
+	return nil
+}
+
 // renderAgentsText prints the agent list as space-aligned columns matching
 // the sample in docs/content/cli/agents.mdx.
 func renderAgentsText(w io.Writer, entries []render.AgentEntry) error {
