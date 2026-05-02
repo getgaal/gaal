@@ -183,10 +183,18 @@ func validateEntry(name string, e agentEntry) error {
 		!strings.HasPrefix(e.GlobalMCPConfigFile, `~\`) {
 		return fmt.Errorf("agent %q: global_mcp_config_file must be empty or start with '~/', got %q", name, e.GlobalMCPConfigFile)
 	}
+	// project_mcp_config_file: may be workspace-relative (e.g. ".mcp.json"
+	// for claude-code) or home-relative (~/-prefixed). Absolute paths and
+	// ".." segments are rejected — same rule as project_skills_dir.
 	if e.ProjectMCPConfigFile != "" &&
 		!strings.HasPrefix(e.ProjectMCPConfigFile, "~/") &&
-		!strings.HasPrefix(e.ProjectMCPConfigFile, `~\\`) {
-		return fmt.Errorf("agent %q: project_mcp_config_file must be empty or start with '~/', got %q", name, e.ProjectMCPConfigFile)
+		!strings.HasPrefix(e.ProjectMCPConfigFile, `~\`) {
+		if isAbsPath(e.ProjectMCPConfigFile) {
+			return fmt.Errorf("agent %q: project_mcp_config_file must be relative or ~/-prefixed, got %q", name, e.ProjectMCPConfigFile)
+		}
+		if containsDotDot(e.ProjectMCPConfigFile) {
+			return fmt.Errorf("agent %q: project_mcp_config_file must not contain '..', got %q", name, e.ProjectMCPConfigFile)
+		}
 	}
 	for _, d := range e.ProjectSkillsSearch {
 		if isAbsPath(d) {

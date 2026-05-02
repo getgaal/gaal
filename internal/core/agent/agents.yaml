@@ -85,8 +85,10 @@ agents:
   claude-code:
     project_skills_dir: .claude/skills
     global_skills_dir: ~/.claude/skills
-    global_mcp_config_file: ~/.config/claude/claude_desktop_config.json
-    project_mcp_config_file: ""
+    # ~/.claude.json carries OAuth tokens, per-project state, caches; the
+    # mcpServers key is upserted in place and unrelated keys are preserved.
+    global_mcp_config_file: ~/.claude.json
+    project_mcp_config_file: .mcp.json
     project_skills_search:
       - .claude/skills
       - .agents/skills
@@ -97,6 +99,22 @@ agents:
       - ~/.copilot/skills
     pm_skills_search:
       - ~/.claude/plugins/cache
+
+  # claude-desktop is the GUI app, distinct from claude-code (the CLI).
+  # Path below is the macOS canonical location; Claude Desktop is officially
+  # macOS- and Windows-only. Linux users get a sync-time warning.
+  # Windows users can override this path via ~/.config/gaal/agents.yaml
+  # to point at ~/AppData/Roaming/Claude/claude_desktop_config.json.
+  claude-desktop:
+    supports_generic_project: true
+    supports_generic_global: true
+    project_skills_dir: ""
+    global_skills_dir: ""
+    global_mcp_config_file: ~/Library/Application Support/Claude/claude_desktop_config.json
+    project_mcp_config_file: ""
+    project_skills_search: []
+    global_skills_search: []
+    pm_skills_search: []
 
   cline:
     supports_generic_project: true

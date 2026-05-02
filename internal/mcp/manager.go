@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"sync"
 
 	"gaal/internal/config"
 	"gaal/internal/core/agent"
@@ -44,6 +46,7 @@ type Manager struct {
 	mcps     []config.ConfigMcp
 	home     string // user home directory for ~/ expansion and agent path resolution
 	stateDir string // gaal state root for snapshot writing
+	warnOnce sync.Once
 }
 
 // NewManager creates a new MCP Manager.
@@ -58,6 +61,7 @@ func NewManager(mcps []config.ConfigMcp, home, stateDir string) *Manager {
 // Agents + Global fields to fan out one entry per agent.
 func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 	slog.Debug("resolving mcp targets", "count", len(m.mcps))
+	m.warnOnce.Do(m.emitConfigWarnings)
 	var out []config.ConfigMcp
 	for _, mc := range m.mcps {
 		if mc.Target != "" {
@@ -99,6 +103,52 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 		}
 	}
 	return out
+}
+
+// emitConfigWarnings surfaces issues that depend on the user's MCP config
+// or local environment but aren't tied to a single sync entry. Runs at most
+// once per Manager (gated by warnOnce) so the messages don't repeat across
+// resolvedMCPs calls from Sync, Status, and Prune.
+func (m *Manager) emitConfigWarnings() {
+	m.warnClaudeDesktopOnLinux()
+	m.warnLegacyClaudeDesktopJSON()
+}
+
+// warnClaudeDesktopOnLinux flags MCP entries that target the claude-desktop
+// agent on Linux. Claude Desktop is officially macOS- and Windows-only; gaal
+// would write to ~/Library/Application Support/Claude/ which the (community)
+// Linux builds, if any, do not consume.
+func (m *Manager) warnClaudeDesktopOnLinux() {
+	if runtime.GOOS != "linux" {
+		return
+	}
+	for _, mc := range m.mcps {
+		for _, a := range mc.Agents {
+			if a == "claude-desktop" || a == "*" {
+				slog.Warn("mcp: claude-desktop is officially macOS- and Windows-only — sync targets ~/Library/Application Support/Claude/ which has no effect on Linux",
+					"hint", "remove claude-desktop from agents:, or list agents explicitly without it")
+				return
+			}
+		}
+	}
+}
+
+// warnLegacyClaudeDesktopJSON detects the file gaal used to write under the
+// (incorrect) claude-code path: ~/.config/claude/claude_desktop_config.json.
+// Neither Claude Code (~/.claude.json) nor Claude Desktop (macOS:
+// ~/Library/Application Support/Claude/, Windows: %APPDATA%\Claude\) reads
+// it, so users carrying it from older gaal versions can safely delete it.
+func (m *Manager) warnLegacyClaudeDesktopJSON() {
+	if m.home == "" {
+		return
+	}
+	legacy := filepath.Join(m.home, ".config", "claude", "claude_desktop_config.json")
+	if _, err := os.Stat(legacy); err != nil {
+		return
+	}
+	slog.Warn("mcp: stale ~/.config/claude/claude_desktop_config.json detected — neither Claude Code nor Claude Desktop reads this path; safe to delete",
+		"path", legacy,
+		"hint", "Claude Code now writes ~/.claude.json; Claude Desktop uses ~/Library/Application Support/Claude/")
 }
 
 // Sync applies every MCP configuration entry.
