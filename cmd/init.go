@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -112,7 +113,9 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	pterm.DefaultBox.WithTitle("Preview").Println(previewText(dest, plan))
+	if verbose {
+		pterm.DefaultBox.WithTitle("Preview").Println(previewText(dest, plan))
+	}
 
 	if isTTY && !initImportAll {
 		confirmed, err := pterm.DefaultInteractiveConfirm.
@@ -131,11 +134,33 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if err := eng.InitFromPlan(dest, plan, forceInit); err != nil {
 		return err
 	}
-	pterm.Success.Printfln("Created %s", dest)
-	if len(plan.Skills) > 0 {
-		pterm.Info.Println(`Tip: each skill entry targets a single agent. To sync a skill to every installed agent, edit its "agents:" field to ["*"].`)
+	if verbose {
+		pterm.Success.Printfln("Created %s", dest)
+		if len(plan.Skills) > 0 {
+			pterm.Info.Println(`Tip: each skill entry targets a single agent. To sync a skill to every installed agent, edit its "agents:" field to ["*"].`)
+		}
+		printNextSteps(dest)
+	} else {
+		agentSet := map[string]struct{}{}
+		for _, s := range plan.Skills {
+			for _, a := range s.Agents {
+				agentSet[a] = struct{}{}
+			}
+		}
+		agentNames := make([]string, 0, len(agentSet))
+		for a := range agentSet {
+			agentNames = append(agentNames, a)
+		}
+		sort.Strings(agentNames)
+		if len(agentNames) > 0 {
+			fmt.Printf("Detected: %s\n", strings.Join(agentNames, ", "))
+		}
+		fmt.Printf("Found %d %s.\n", len(plan.Skills), pluralize(len(plan.Skills), "skill entry", "skill entries"))
+		fmt.Printf("Found %d %s.\n", len(plan.MCPs), pluralize(len(plan.MCPs), "MCP server", "MCP servers"))
+		fmt.Printf("Generated %s.\n", dest)
+		fmt.Println()
+		fmt.Println("Next: gaal sync")
 	}
-	printNextSteps(dest)
 	return nil
 }
 

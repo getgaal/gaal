@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/pterm/pterm"
@@ -81,7 +82,10 @@ func runAgentList(eng *engine.Engine, w io.Writer, format engine.OutputFormat) e
 	case engine.FormatTable:
 		return renderAgentsTable(w, entries)
 	default:
-		return renderAgentsText(w, entries)
+		if verbose {
+			return renderAgentsText(w, entries)
+		}
+		return renderAgentsSummary(w, entries)
 	}
 }
 
@@ -200,7 +204,10 @@ func runAgentDetail(eng *engine.Engine, w io.Writer, name string, format engine.
 	case engine.FormatTable:
 		return renderAgentDetailCard(w, detail)
 	default:
-		return renderAgentDetailText(w, detail)
+		if verbose {
+			return renderAgentDetailText(w, detail)
+		}
+		return renderAgentDetailSummary(w, detail)
 	}
 }
 
