@@ -56,6 +56,37 @@ func TestApplyOptions_SandboxRedirectsUserDirs(t *testing.T) {
 	}
 }
 
+func TestVerboseEffectiveOutputFormat(t *testing.T) {
+	tests := []struct {
+		name         string
+		verbose      bool
+		outputFormat string
+		want         string
+	}{
+		{name: "verbose+text returns verbose", verbose: true, outputFormat: "text", want: "verbose"},
+		{name: "verbose+empty returns verbose", verbose: true, outputFormat: "", want: "verbose"},
+		{name: "verbose+json unchanged", verbose: true, outputFormat: "json", want: "json"},
+		{name: "verbose+table unchanged", verbose: true, outputFormat: "table", want: "table"},
+		{name: "non-verbose+text unchanged", verbose: false, outputFormat: "text", want: "text"},
+		{name: "non-verbose+json unchanged", verbose: false, outputFormat: "json", want: "json"},
+	}
+	origVerbose := verbose
+	origFormat := outputFormat
+	t.Cleanup(func() {
+		verbose = origVerbose
+		outputFormat = origFormat
+	})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			verbose = tc.verbose
+			outputFormat = tc.outputFormat
+			if got := effectiveOutputFormat(); got != tc.want {
+				t.Errorf("effectiveOutputFormat() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSkipTelemetry(t *testing.T) {
 	completionParent := &cobra.Command{Use: "completion"}
 

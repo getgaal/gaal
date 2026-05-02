@@ -62,6 +62,10 @@ type Options struct {
 	// that skills are installed into every registered agent regardless of
 	// whether the agent's config directory is already present on the machine.
 	Force bool
+	// Verbose enables detailed output in renderers that support it.
+	// When true, full per-resource detail is shown instead of the compact
+	// summary that is the default for text output.
+	Verbose bool
 }
 
 // Engine orchestrates repository, skill and MCP synchronisation.

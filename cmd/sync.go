@@ -69,7 +69,7 @@ func runSync(_ *cobra.Command, _ []string) error {
 
 	if dryRun {
 		slog.Info("dry-run mode", "config", cfgFile)
-		format := engine.OutputFormat(outputFormat)
+		format := engine.OutputFormat(effectiveOutputFormat())
 		plan, err := eng.DryRun(ctx, format)
 		if err != nil {
 			telemetry.TrackError("sync", err)
@@ -115,8 +115,16 @@ func runSync(_ *cobra.Command, _ []string) error {
 	status, err := eng.Collect(ctx)
 	if err != nil {
 		slog.Debug("post-sync status collection failed; skipping summary", "err", err)
-	} else if rerr := render.RenderSyncSummary(os.Stdout, plan, status, duration); rerr != nil {
-		slog.Debug("rendering sync summary failed", "err", rerr)
+	} else {
+		var rerr error
+		if effectiveOutputFormat() == "verbose" {
+			rerr = render.RenderSyncSummary(os.Stdout, plan, status, duration)
+		} else {
+			rerr = render.RenderSyncBrief(os.Stdout, plan, status, duration)
+		}
+		if rerr != nil {
+			slog.Debug("rendering sync summary failed", "err", rerr)
+		}
 	}
 
 	telemetry.Track("sync")

@@ -66,7 +66,11 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	case "table":
 		renderDoctorTable(report)
 	default:
-		renderDoctorText(report)
+		if verbose {
+			renderDoctorText(report)
+		} else {
+			renderDoctorSummary(report)
+		}
 	}
 	if !doctorNoUpsell {
 		renderCommunityBlock()
@@ -76,6 +80,120 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 		os.Exit(report.ExitCode)
 	}
 	return nil
+}
+
+// renderDoctorSummary emits a compact one-line-per-section summary suitable for
+// non-verbose output. Each line is prefixed with ✓, !, or ✗ depending on the
+// worst finding severity for that section.
+func renderDoctorSummary(report *ops.DoctorReport) {
+	type sectionSpec struct {
+		id    string
+		label string
+	}
+	sections := []sectionSpec{
+		{"config", "Config valid"},
+		{"telemetry", "Telemetry configured"},
+		{"skills", "sources reachable"},
+		{"mcps", "MCP targets valid"},
+		{"tools", "tools configured"},
+	}
+
+	for _, s := range sections {
+		var findings []ops.Finding
+		for _, f := range report.Findings {
+			if f.Section == s.id {
+				findings = append(findings, f)
+			}
+		}
+		if len(findings) == 0 {
+			continue
+		}
+
+		errs, warns, infos := 0, 0, 0
+		for _, f := range findings {
+			switch f.Severity {
+			case ops.SeverityError:
+				errs++
+			case ops.SeverityWarning:
+				warns++
+			default:
+				infos++
+			}
+		}
+
+		total := errs + warns + infos
+		var icon, line string
+		switch {
+		case errs > 0:
+			icon = "✗"
+			if s.id == "skills" {
+				ok := total - errs
+				line = fmt.Sprintf("%s %d/%d %s (%d unreachable)", icon, ok, total, s.label, errs)
+			} else {
+				line = fmt.Sprintf("%s %s", icon, s.label)
+			}
+		case warns > 0:
+			icon = "!"
+			if s.id == "skills" {
+				ok := total - warns
+				line = fmt.Sprintf("%s %d/%d %s (%d unreachable)", icon, ok, total, s.label, warns)
+			} else {
+				line = fmt.Sprintf("%s %s", icon, s.label)
+			}
+		default:
+			icon = "✓"
+			if s.id == "skills" {
+				line = fmt.Sprintf("%s %d %s", icon, total, s.label)
+			} else if s.id == "mcps" {
+				line = fmt.Sprintf("%s %d %s", icon, total, s.label)
+			} else {
+				line = fmt.Sprintf("%s %s", icon, s.label)
+			}
+		}
+		fmt.Println(line)
+	}
+
+	// Agents summary line.
+	installed, misconfigured := 0, 0
+	for _, f := range report.Findings {
+		if f.Section != "agents" {
+			continue
+		}
+		switch f.Severity {
+		case ops.SeverityInfo:
+			var n int
+			if _, err := fmt.Sscanf(f.Message, "%d ", &n); err == nil {
+				installed = n
+			}
+		case ops.SeverityError:
+			misconfigured++
+		}
+	}
+	// Only show agents line if there are agent findings.
+	hasAgentFindings := false
+	for _, f := range report.Findings {
+		if f.Section == "agents" {
+			hasAgentFindings = true
+			break
+		}
+	}
+	if hasAgentFindings {
+		agentIcon := "✓"
+		if misconfigured > 0 {
+			agentIcon = "!"
+		}
+		fmt.Printf("%s %d agents installed, %d misconfigured\n", agentIcon, installed, misconfigured)
+	}
+
+	fmt.Println()
+	switch report.ExitCode {
+	case 0:
+		fmt.Println("All checks passed.")
+	case 1:
+		fmt.Println("Checks passed with warnings. Use --verbose for details.")
+	default:
+		fmt.Println("Checks failed. Use --verbose for details.")
+	}
 }
 
 // renderDoctorText emits the section-per-line layout shown in docs/content/cli/doctor.mdx.

@@ -126,3 +126,4 @@ dist/
 report/
 tmp/
 docs/superpowers/
+.worktrees/

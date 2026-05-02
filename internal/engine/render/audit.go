@@ -23,8 +23,10 @@ func NewAuditRenderer(format OutputFormat) AuditRenderer {
 		return &auditJSONRenderer{}
 	case FormatTable:
 		return &auditTableRenderer{}
-	default:
+	case FormatVerbose:
 		return &auditTextRenderer{}
+	default:
+		return &summaryAuditRenderer{}
 	}
 }
 
