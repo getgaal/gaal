@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"context"
+	"os"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"gaal/internal/config"
 	"gaal/internal/engine"
+	"gaal/internal/engine/render"
 	"gaal/internal/telemetry"
 )
 
@@ -33,6 +36,13 @@ func init() {
 func runAudit(_ *cobra.Command, _ []string) error {
 	telemetry.Track("audit")
 	// Audit does not require a gaal.yaml — pass an empty config.
-	return engine.NewWithOptions(&config.Config{}, engineOpts).
-		Audit(context.Background(), engine.OutputFormat(effectiveOutputFormat()))
+	format := effectiveOutputFormat()
+	if err := engine.NewWithOptions(&config.Config{}, engineOpts).
+		Audit(context.Background(), engine.OutputFormat(format)); err != nil {
+		return err
+	}
+	if format == string(render.FormatText) || format == "" {
+		render.WriteTip(os.Stdout, term.IsTerminal(int(os.Stdout.Fd())))
+	}
+	return nil
 }
