@@ -51,13 +51,16 @@ func (r *summaryAuditRenderer) Render(w io.Writer, report *AuditReport) error {
 	}
 	sort.Strings(agents)
 
+	// "Found 3 skills across 2 agents." / "Found 1 skill across 1 agent."
 	fmt.Fprintf(w, "Found %s across %s.\n",
 		pluralise(len(skillNames), "skill", "skills"),
 		pluralise(len(agents), "agent", "agents"),
 	)
+	// "Found 3 MCP servers." / "Found 1 MCP server."
 	fmt.Fprintf(w, "Found %s.\n", pluralise(len(mcpNames), "MCP server", "MCP servers"))
+	// "2 agents scanned: claude-code, cursor"
 	fmt.Fprintf(w, "%s scanned: %s\n",
-		strings.Title(pluralise(len(agents), "agent", "agents")), //nolint:staticcheck
+		pluralise(len(agents), "agent", "agents"),
 		strings.Join(agents, ", "),
 	)
 
