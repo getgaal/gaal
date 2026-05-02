@@ -157,6 +157,26 @@ func TestSummaryRenderer_WithErrors(t *testing.T) {
 	}
 }
 
+func TestNewRenderer_TextReturnsSummary(t *testing.T) {
+	r, err := NewRenderer(FormatText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.(*summaryRenderer); !ok {
+		t.Errorf("got %T", r)
+	}
+}
+
+func TestNewRenderer_VerboseReturnsDetailed(t *testing.T) {
+	r, err := NewRenderer(FormatVerbose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.(*textRenderer); !ok {
+		t.Errorf("got %T", r)
+	}
+}
+
 func TestSummaryRenderer_Empty(t *testing.T) {
 	r := &StatusReport{}
 
