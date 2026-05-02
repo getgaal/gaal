@@ -184,6 +184,86 @@ func TestInstallSkill_CreatesNestedDirs(t *testing.T) {
 	}
 }
 
+// TestInstallSkill_SkipsVCSMetadata exercises the fix for issue #86: when a
+// skill source is a VCS clone, copying the .git/ tree to the destination
+// burdens it with read-only pack files (mode 0o444) that the next sync cannot
+// overwrite. installSkill must skip the VCS metadata directories entirely.
+func TestInstallSkill_SkipsVCSMetadata(t *testing.T) {
+	src := t.TempDir()
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("# skill"), 0o644)
+	for _, meta := range []string{".git", ".hg", ".svn", ".bzr"} {
+		dir := filepath.Join(src, meta, "objects", "pack")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Mode 0o444 mimics go-git's read-only pack files. If installSkill
+		// walked into the metadata dir the second sync would fail.
+		if err := os.WriteFile(filepath.Join(dir, "pack-x.idx"), []byte("x"), 0o444); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	dst := filepath.Join(t.TempDir(), "installed")
+	if err := installSkill(src, dst); err != nil {
+		t.Fatalf("installSkill: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dst, "SKILL.md")); err != nil {
+		t.Errorf("expected SKILL.md in dst: %v", err)
+	}
+	for _, meta := range []string{".git", ".hg", ".svn", ".bzr"} {
+		if _, err := os.Stat(filepath.Join(dst, meta)); !os.IsNotExist(err) {
+			t.Errorf("expected %s/ to be skipped, got err=%v", meta, err)
+		}
+	}
+}
+
+// TestInstallSkill_IsIdempotent ensures a second install over an existing
+// destination does not fail. This guards the regression in issue #86: the
+// previous implementation copied read-only pack files from .git/ on the
+// first run, which the second run could not overwrite.
+func TestInstallSkill_IsIdempotent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("read-only enforcement on Windows differs from POSIX")
+	}
+	src := t.TempDir()
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("# skill"), 0o644)
+	gitPack := filepath.Join(src, ".git", "objects", "pack")
+	if err := os.MkdirAll(gitPack, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gitPack, "pack-1.idx"), []byte("idx"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+
+	dst := filepath.Join(t.TempDir(), "installed")
+	if err := installSkill(src, dst); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+	if err := installSkill(src, dst); err != nil {
+		t.Fatalf("second install: %v", err)
+	}
+}
+
+// TestInstallSkill_PreservesNestedNonVCSDotDirs ensures only the well-known
+// VCS metadata dirs are skipped. A skill that ships its own dotdir (e.g. a
+// `.config/` directory of templates) must still be copied through.
+func TestInstallSkill_PreservesNestedNonVCSDotDirs(t *testing.T) {
+	src := t.TempDir()
+	os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("# skill"), 0o644)
+	cfgDir := filepath.Join(src, ".config")
+	os.MkdirAll(cfgDir, 0o755)
+	os.WriteFile(filepath.Join(cfgDir, "template.yml"), []byte("a: 1"), 0o644)
+
+	dst := filepath.Join(t.TempDir(), "installed")
+	if err := installSkill(src, dst); err != nil {
+		t.Fatalf("installSkill: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, ".config", "template.yml")); err != nil {
+		t.Errorf("expected .config/template.yml to be copied, got err=%v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Manager.detectInstalledAgents (project scope)
 // ---------------------------------------------------------------------------

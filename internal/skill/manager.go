@@ -399,7 +399,23 @@ func filterSkills(all []SkillMeta, selectNames []string) []SkillMeta {
 	return out
 }
 
+// vcsMetaDirs lists the on-disk metadata directories that gaal must never
+// copy when installing a skill. They belong to the source's VCS bookkeeping,
+// not the skill itself, and re-syncing them surfaces two problems:
+//   - they bloat the install with megabytes of pack files;
+//   - go-git creates pack files with mode 0o444, which prevents the next
+//     sync from overwriting them (the second os.WriteFile cannot truncate
+//     a read-only file). See issue #86.
+var vcsMetaDirs = map[string]struct{}{
+	".git": {},
+	".hg":  {},
+	".svn": {},
+	".bzr": {},
+}
+
 // installSkill copies the skill directory content from src to dst.
+// VCS metadata directories at the top level of src are skipped — see
+// [vcsMetaDirs] for the rationale.
 func installSkill(src, dst string) error {
 	slog.Debug("installing skill", "src", src, "dst", dst)
 	if err := os.MkdirAll(dst, 0o755); err != nil {
@@ -409,6 +425,11 @@ func installSkill(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if d.IsDir() {
+			if _, skip := vcsMetaDirs[d.Name()]; skip && path != src {
+				return filepath.SkipDir
+			}
 		}
 		rel, _ := filepath.Rel(src, path)
 		target := filepath.Join(dst, rel)
