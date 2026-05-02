@@ -34,5 +34,5 @@ func runAudit(_ *cobra.Command, _ []string) error {
 	telemetry.Track("audit")
 	// Audit does not require a gaal.yaml — pass an empty config.
 	return engine.NewWithOptions(&config.Config{}, engineOpts).
-		Audit(context.Background(), engine.OutputFormat(outputFormat))
+		Audit(context.Background(), engine.OutputFormat(effectiveOutputFormat()))
 }
