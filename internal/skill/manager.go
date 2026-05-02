@@ -104,6 +104,24 @@ func NewManager(skills []config.ConfigSkill, cacheDir, home, workDir, stateDir s
 	}
 }
 
+// SourcePaths returns the absolute, home-expanded local paths of every
+// configured skill source. Remote sources (URLs and GitHub shorthands) are
+// reported by their on-disk cache path. The result lets callers identify
+// directories that hold *source* skill content rather than installed copies,
+// e.g. so the FS scan does not surface them as unmanaged installs (#88).
+func (m *Manager) SourcePaths() []string {
+	out := make([]string, 0, len(m.skills))
+	for _, sc := range m.skills {
+		if isLocalPath(sc.Source) {
+			out = append(out, expandHome(sc.Source, m.home))
+			continue
+		}
+		cloneURL := toCloneURL(sc.Source)
+		out = append(out, filepath.Join(m.cacheDir, urlToCacheKey(cloneURL)))
+	}
+	return out
+}
+
 // Sync installs or updates every skill in the configuration.
 func (m *Manager) Sync(ctx context.Context) error {
 	m.emitConfigWarnings()
