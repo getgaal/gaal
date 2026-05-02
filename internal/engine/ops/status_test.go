@@ -69,12 +69,12 @@ func TestIsUnderAny(t *testing.T) {
 		path string
 		want bool
 	}{
-		{"/home/u/src/personal-skills", true},               // root itself
-		{"/home/u/src/personal-skills/crm-update", true},    // direct child
+		{"/home/u/src/personal-skills", true},                // root itself
+		{"/home/u/src/personal-skills/crm-update", true},     // direct child
 		{"/home/u/src/personal-skills/a/b/c/SKILL.md", true}, // deeper descendant
-		{"/home/u/src/personal-skills-other", false},        // sibling with shared prefix
-		{"/home/u/other", false},                            // unrelated
-		{"/home/u/src", false},                              // ancestor of root
+		{"/home/u/src/personal-skills-other", false},         // sibling with shared prefix
+		{"/home/u/other", false},                             // unrelated
+		{"/home/u/src", false},                               // ancestor of root
 	}
 	for _, tc := range tests {
 		if got := isUnderAny(tc.path, roots); got != tc.want {
