@@ -52,6 +52,20 @@ func TestPlanRepos_Error(t *testing.T) {
 	}
 }
 
+func TestPlanRepos_UnmanagedSkipped(t *testing.T) {
+	entries := []render.RepoEntry{
+		{Path: "/repos/foo", Type: "git", Status: render.StatusOK, Current: "main", Want: "main"},
+		{Path: "/elsewhere/unrelated", Type: "git", Status: render.StatusUnmanaged},
+	}
+	result := planRepos(entries)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry (unmanaged dropped), got %d: %+v", len(result), result)
+	}
+	if result[0].Path != "/repos/foo" {
+		t.Errorf("expected only the config-declared repo to remain, got %q", result[0].Path)
+	}
+}
+
 func TestPlanSkills_Partial(t *testing.T) {
 	entries := []render.SkillEntry{
 		{Source: "owner/repo", Agent: "claude-code", Status: render.StatusPartial, Missing: []string{"skill-a"}},
@@ -85,6 +99,20 @@ func TestPlanSkills_OK(t *testing.T) {
 	}
 }
 
+func TestPlanSkills_UnmanagedSkipped(t *testing.T) {
+	entries := []render.SkillEntry{
+		{Source: "owner/repo", Agent: "claude-code", Status: render.StatusOK, Installed: []string{"skill-a"}},
+		{Source: "/elsewhere/skills", Agent: "claude-code", Status: render.StatusUnmanaged, Installed: []string{"skill-x"}},
+	}
+	result := planSkills(entries)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry (unmanaged dropped), got %d: %+v", len(result), result)
+	}
+	if result[0].Source != "owner/repo" {
+		t.Errorf("expected only the config-declared skill to remain, got %q", result[0].Source)
+	}
+}
+
 func TestPlanMCPs_Absent(t *testing.T) {
 	entries := []render.MCPEntry{
 		{Name: "test-mcp", Target: "/path/to/config.json", Status: render.StatusAbsent},
@@ -112,5 +140,19 @@ func TestPlanMCPs_Present(t *testing.T) {
 	result := planMCPs(entries)
 	if result[0].Action != render.PlanNoOp {
 		t.Errorf("expected action %q, got %q", render.PlanNoOp, result[0].Action)
+	}
+}
+
+func TestPlanMCPs_UnmanagedSkipped(t *testing.T) {
+	entries := []render.MCPEntry{
+		{Name: "test-mcp", Target: "/path/to/config.json", Status: render.StatusPresent},
+		{Name: "stray-mcp", Target: "/elsewhere/mcp.json", Status: render.StatusUnmanaged},
+	}
+	result := planMCPs(entries)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry (unmanaged dropped), got %d: %+v", len(result), result)
+	}
+	if result[0].Name != "test-mcp" {
+		t.Errorf("expected only the config-declared MCP to remain, got %q", result[0].Name)
 	}
 }

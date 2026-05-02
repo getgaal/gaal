@@ -79,6 +79,11 @@ func RenderPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager,
 func planRepos(entries []render.RepoEntry) []render.PlanRepoEntry {
 	out := make([]render.PlanRepoEntry, 0, len(entries))
 	for _, e := range entries {
+		// Skip FS-discovered resources outside the config: sync only acts on
+		// declared resources, so the plan must not list them.
+		if e.Status == render.StatusUnmanaged {
+			continue
+		}
 		p := render.PlanRepoEntry{
 			Path:    e.Path,
 			Type:    e.Type,
@@ -105,6 +110,9 @@ func planRepos(entries []render.RepoEntry) []render.PlanRepoEntry {
 func planSkills(entries []render.SkillEntry) []render.PlanSkillEntry {
 	out := make([]render.PlanSkillEntry, 0, len(entries))
 	for _, e := range entries {
+		if e.Status == render.StatusUnmanaged {
+			continue
+		}
 		p := render.PlanSkillEntry{
 			Source: e.Source,
 			Agent:  e.Agent,
@@ -134,6 +142,9 @@ func planSkills(entries []render.SkillEntry) []render.PlanSkillEntry {
 func planMCPs(entries []render.MCPEntry) []render.PlanMCPEntry {
 	out := make([]render.PlanMCPEntry, 0, len(entries))
 	for _, e := range entries {
+		if e.Status == render.StatusUnmanaged {
+			continue
+		}
 		p := render.PlanMCPEntry{
 			Name:   e.Name,
 			Target: e.Target,
