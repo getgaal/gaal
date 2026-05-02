@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"gaal/internal/config"
 	"gaal/internal/core/vcs"
@@ -84,6 +85,7 @@ type Manager struct {
 	workDir  string // project working directory (for project-scoped installs)
 	stateDir string // gaal state root (~/.cache/gaal/state) for snapshot writing
 	force    bool   // when true, wildcard agent lists target all known agents
+	warnOnce sync.Once
 }
 
 // NewManager creates a new skill Manager.
@@ -104,12 +106,38 @@ func NewManager(skills []config.ConfigSkill, cacheDir, home, workDir, stateDir s
 
 // Sync installs or updates every skill in the configuration.
 func (m *Manager) Sync(ctx context.Context) error {
+	m.emitConfigWarnings()
 	for _, sc := range m.skills {
 		if err := m.syncOne(ctx, sc); err != nil {
 			return fmt.Errorf("skill %q: %w", sc.Source, err)
 		}
 	}
 	return nil
+}
+
+// emitConfigWarnings surfaces issues that depend on the user's skill config
+// but aren't tied to a single source. Runs at most once per Manager (gated
+// by warnOnce) so the messages don't repeat across Sync and Status.
+func (m *Manager) emitConfigWarnings() {
+	m.warnOnce.Do(m.warnSkillsTargetingClaudeDesktop)
+}
+
+// warnSkillsTargetingClaudeDesktop fires when any skill entry targets the
+// claude-desktop agent (explicitly or via the "*" wildcard). Claude Desktop
+// has no on-disk SKILL.md feature — that's a Claude Code CLI–only capability
+// — so the install would land in ~/.agents/skills/ (the generic convention)
+// where Claude Desktop never reads. Better to tell the user upfront than to
+// report a green ✓ for a no-op.
+func (m *Manager) warnSkillsTargetingClaudeDesktop() {
+	for _, sc := range m.skills {
+		for _, a := range sc.Agents {
+			if a == "claude-desktop" || a == "*" {
+				slog.Warn("skill: claude-desktop has no on-disk SKILL.md feature — entries targeting it will install under ~/.agents/skills (or .agents/skills) which Claude Desktop does not read",
+					"hint", "skills are a Claude Code CLI feature; remove claude-desktop from agents:, or list agents explicitly without it")
+				return
+			}
+		}
+	}
 }
 
 func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
@@ -271,6 +299,7 @@ func (m *Manager) detectInstalledAgents(global bool) []string {
 
 // Status returns the installation status for every skill config.
 func (m *Manager) Status(ctx context.Context) []Status {
+	m.emitConfigWarnings()
 	statuses := make([]Status, 0, len(m.skills))
 
 	for _, sc := range m.skills {
