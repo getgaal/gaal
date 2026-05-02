@@ -117,9 +117,9 @@ func collectChangeLines(plan *PlanReport) []string {
 
 // agentRollupEntry holds the per-agent counts for the rollup display.
 type agentRollupEntry struct {
-	name      string
+	name       string
 	skillCount int
-	mcpCount  int
+	mcpCount   int
 }
 
 // buildAgentRollup produces one "→ agent: N skills, M MCP servers" line per
@@ -149,9 +149,9 @@ func buildAgentRollup(status *StatusReport) []string {
 			continue
 		}
 		entries = append(entries, agentRollupEntry{
-			name:      a.Name,
+			name:       a.Name,
 			skillCount: skillsByAgent[a.Name],
-			mcpCount:  mcpCount,
+			mcpCount:   mcpCount,
 		})
 	}
 

@@ -161,7 +161,6 @@ func (m *Manager) Sync(ctx context.Context) error {
 	return nil
 }
 
-
 func (m *Manager) syncOne(ctx context.Context, mc config.ConfigMcp) error {
 	slog.DebugContext(ctx, "syncing mcp entry", "name", mc.Name, "target", mc.Target)
 	var entry serverEntry
