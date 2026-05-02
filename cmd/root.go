@@ -71,6 +71,7 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 			return err
 		}
 		engineOpts = opts
+		engineOpts.Verbose = verbose
 
 		// Load config once and cache it for all sub-commands and telemetry.
 		// Always capture the error so sub-commands can surface the real cause.
@@ -215,6 +216,17 @@ func loadMergedTelemetryConfig() *bool {
 		return uc.Telemetry
 	}
 	return nil
+}
+
+// effectiveOutputFormat returns the output format to use for the current
+// invocation. When --verbose is set and the format is "text" (or the empty
+// default), it returns "verbose" so that renderers can switch to a detailed
+// view. In all other cases it returns outputFormat unchanged.
+func effectiveOutputFormat() string {
+	if verbose && (outputFormat == "" || outputFormat == "text") {
+		return "verbose"
+	}
+	return outputFormat
 }
 
 // showConsentPrompt displays the opt-in telemetry prompt.
