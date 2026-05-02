@@ -10,9 +10,10 @@ import (
 type OutputFormat string
 
 const (
-	FormatText  OutputFormat = "text"
-	FormatTable OutputFormat = "table"
-	FormatJSON  OutputFormat = "json"
+	FormatText    OutputFormat = "text"
+	FormatVerbose OutputFormat = "verbose"
+	FormatTable   OutputFormat = "table"
+	FormatJSON    OutputFormat = "json"
 )
 
 // Renderer formats a StatusReport and writes it to an io.Writer.
@@ -25,13 +26,15 @@ func NewRenderer(f OutputFormat) (Renderer, error) {
 	slog.Debug("creating renderer", "format", f)
 	switch f {
 	case FormatText, "":
+		return &summaryRenderer{}, nil
+	case FormatVerbose:
 		return &textRenderer{}, nil
 	case FormatTable:
 		return &tableRenderer{}, nil
 	case FormatJSON:
 		return &jsonRenderer{}, nil
 	default:
-		return nil, fmt.Errorf("unknown output format %q (want: text, table, json)", f)
+		return nil, fmt.Errorf("unknown output format %q (want: text, verbose, table, json)", f)
 	}
 }
 
@@ -45,12 +48,14 @@ func NewPlanRenderer(f OutputFormat) (PlanRenderer, error) {
 	slog.Debug("creating plan renderer", "format", f)
 	switch f {
 	case FormatText, "":
+		return &summaryPlanRenderer{}, nil
+	case FormatVerbose:
 		return &planTextRenderer{}, nil
 	case FormatTable:
 		return &planTableRenderer{}, nil
 	case FormatJSON:
 		return &planJSONRenderer{}, nil
 	default:
-		return nil, fmt.Errorf("unknown output format %q (want: text, table, json)", f)
+		return nil, fmt.Errorf("unknown output format %q (want: text, verbose, table, json)", f)
 	}
 }
