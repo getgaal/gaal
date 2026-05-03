@@ -474,6 +474,12 @@ var vcsMetaDirs = map[string]struct{}{
 // installSkill copies the skill directory content from src to dst.
 // VCS metadata directories at the top level of src are skipped — see
 // [vcsMetaDirs] for the rationale.
+//
+// Symlinks (and other non-regular entries: devices, FIFOs, sockets) are
+// explicitly skipped instead of being dereferenced. Without this guard, a
+// malicious skill source containing e.g. `secret.md -> /etc/passwd` would
+// have copyFile read /etc/passwd and write its contents into the agent
+// skill directory under the gaal-managed name. See #113.
 func installSkill(src, dst string) error {
 	slog.Debug("installing skill", "src", src, "dst", dst)
 	if err := os.MkdirAll(dst, 0o755); err != nil {
@@ -496,11 +502,26 @@ func installSkill(src, dst string) error {
 			return os.MkdirAll(target, 0o755)
 		}
 
+		// Skip symlinks (and other non-regular entries) — see func docstring.
+		if d.Type()&fs.ModeSymlink != 0 {
+			slog.Warn("skill: skipping symlink in source",
+				"path", path, "rel", rel,
+				"reason", "symlinks are not dereferenced — would leak the link target's content into the install dir")
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			slog.Warn("skill: skipping non-regular file in source",
+				"path", path, "rel", rel, "mode", d.Type().String())
+			return nil
+		}
+
 		return copyFile(path, target)
 	})
 }
 
-// copyFile copies a single file from src to dst.
+// copyFile copies a single file from src to dst. Callers must have already
+// filtered out symlinks (see installSkill) — copyFile uses os.ReadFile which
+// follows them.
 func copyFile(src, dst string) error {
 	data, err := os.ReadFile(src)
 	if err != nil {
@@ -525,6 +546,11 @@ func skillDirModified(src, dst string) bool {
 	slog.Debug("comparing skill directories", "src", src, "dst", dst)
 	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
+			return nil
+		}
+		// Symlinks are not installed (see installSkill), so skip them here too
+		// — otherwise we'd dereference into the link target via os.ReadFile.
+		if d.Type()&fs.ModeSymlink != 0 || !d.Type().IsRegular() {
 			return nil
 		}
 		rel, _ := filepath.Rel(src, path)
