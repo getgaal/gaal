@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"gaal/internal/runner"
+	"gaal/internal/urlx"
 )
 
 // VcsBazaar implements VCS for Bazaar repositories.
@@ -22,7 +23,7 @@ func (b *VcsBazaar) Clone(ctx context.Context, url, path, version string) error 
 		return fmt.Errorf("creating parent directory: %w", err)
 	}
 
-	slog.DebugContext(ctx, "branching", "url", url, "path", shortPath(path), "version", version)
+	slog.DebugContext(ctx, "branching", "url", urlx.Redact(url), "path", shortPath(path), "version", version)
 
 	args := []string{"branch"}
 	if version != "" {

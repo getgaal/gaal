@@ -8,6 +8,7 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/core/vcs"
+	"gaal/internal/urlx"
 )
 
 // Status holds the sync state of a single repository.
@@ -74,7 +75,7 @@ func (m *Manager) syncOne(ctx context.Context, path string, cfg config.ConfigRep
 	}
 
 	if !backend.IsCloned(path) {
-		slog.Debug("cloning repository", "path", path, "url", cfg.URL, "version", cfg.Version)
+		slog.Debug("cloning repository", "path", path, "url", urlx.Redact(cfg.URL), "version", cfg.Version)
 		return backend.Clone(ctx, cfg.URL, path, cfg.Version)
 	}
 

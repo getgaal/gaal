@@ -15,6 +15,7 @@ import (
 	"gaal/internal/config"
 	"gaal/internal/core/agent"
 	"gaal/internal/discover"
+	"gaal/internal/urlx"
 )
 
 // serverEntry mirrors the MCP server JSON structure used by Claude Desktop,
@@ -175,7 +176,7 @@ func (m *Manager) syncOne(ctx context.Context, mc config.ConfigMcp) error {
 		}
 
 	case mc.Source != "":
-		slog.DebugContext(ctx, "mcp remote source", "name", mc.Name, "url", mc.Source)
+		slog.DebugContext(ctx, "mcp remote source", "name", mc.Name, "url", urlx.Redact(mc.Source))
 		var err error
 		entry, err = fetchRemoteEntry(ctx, mc.Source, mc.Name)
 		if err != nil {
@@ -216,7 +217,8 @@ func (m *Manager) writeMCPSnapshot(target string) {
 // If the remote file is a full mcpServers document the matching key is extracted;
 // otherwise the whole document is treated as a single server entry.
 func fetchRemoteEntry(ctx context.Context, rawURL, name string) (serverEntry, error) {
-	slog.DebugContext(ctx, "fetching remote mcp config", "url", rawURL, "name", name)
+	safeURL := urlx.Redact(rawURL)
+	slog.DebugContext(ctx, "fetching remote mcp config", "url", safeURL, "name", name)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return serverEntry{}, fmt.Errorf("building request: %w", err)
@@ -224,12 +226,12 @@ func fetchRemoteEntry(ctx context.Context, rawURL, name string) (serverEntry, er
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return serverEntry{}, fmt.Errorf("fetching %s: %w", rawURL, err)
+		return serverEntry{}, fmt.Errorf("fetching %s: %w", safeURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return serverEntry{}, fmt.Errorf("fetching %s: HTTP %d", rawURL, resp.StatusCode)
+		return serverEntry{}, fmt.Errorf("fetching %s: HTTP %d", safeURL, resp.StatusCode)
 	}
 
 	// Try to decode as a full mcpServers document first.
@@ -251,7 +253,7 @@ func fetchRemoteEntry(ctx context.Context, rawURL, name string) (serverEntry, er
 		}
 	}
 
-	return serverEntry{}, fmt.Errorf("no server entry found in %s", rawURL)
+	return serverEntry{}, fmt.Errorf("no server entry found in %s", safeURL)
 }
 
 // mergeIntoTarget reads the target config file (JSON or TOML, picked by

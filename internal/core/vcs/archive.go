@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gaal/internal/urlx"
 )
 
 // VcsArchive implements VCS for tar and zip archives fetched over HTTP(S).
@@ -72,12 +74,13 @@ func fetchURL(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	}
 
 	resp, err := http.DefaultClient.Do(req)
+	safeURL := urlx.Redact(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("fetching %s: %w", rawURL, err)
+		return nil, fmt.Errorf("fetching %s: %w", safeURL, err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, fmt.Errorf("fetching %s: HTTP %d", rawURL, resp.StatusCode)
+		return nil, fmt.Errorf("fetching %s: HTTP %d", safeURL, resp.StatusCode)
 	}
 
 	return resp.Body, nil

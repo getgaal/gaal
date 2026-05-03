@@ -10,6 +10,8 @@ import (
 
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+
+	"gaal/internal/urlx"
 )
 
 // VcsGit implements the VCS interface for Git repositories using go-git
@@ -35,7 +37,8 @@ func (g *VcsGit) Clone(ctx context.Context, url, path, version string) error {
 		return fmt.Errorf("creating parent directory: %w", err)
 	}
 
-	slog.DebugContext(ctx, "cloning", "url", url, "path", shortPath(path), "version", version)
+	safeURL := urlx.Redact(url)
+	slog.DebugContext(ctx, "cloning", "url", safeURL, "path", shortPath(path), "version", version)
 
 	r, err := gogit.PlainCloneContext(ctx, path, false, &gogit.CloneOptions{
 		URL:               url,
@@ -44,7 +47,7 @@ func (g *VcsGit) Clone(ctx context.Context, url, path, version string) error {
 		Depth:             g.depth(),
 	})
 	if err != nil {
-		return fmt.Errorf("cloning %s: %w", url, err)
+		return fmt.Errorf("cloning %s: %w", safeURL, err)
 	}
 
 	if version != "" {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"gaal/internal/runner"
+	"gaal/internal/urlx"
 )
 
 // VcsSVN implements VCS for Subversion repositories.
@@ -22,7 +23,7 @@ func (s *VcsSVN) Clone(ctx context.Context, url, path, version string) error {
 		return fmt.Errorf("creating parent directory: %w", err)
 	}
 
-	slog.DebugContext(ctx, "checkout", "url", url, "path", shortPath(path), "version", version)
+	slog.DebugContext(ctx, "checkout", "url", urlx.Redact(url), "path", shortPath(path), "version", version)
 
 	args := []string{"checkout"}
 	if version != "" {
