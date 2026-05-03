@@ -19,6 +19,12 @@ func (m *VcsMercurial) Clone(ctx context.Context, url, path, version string) err
 	if err := requireBinary("hg"); err != nil {
 		return err
 	}
+	if err := validateVCSOperand("url", url); err != nil {
+		return err
+	}
+	if err := validateVCSOperand("version", version); err != nil {
+		return err
+	}
 	if err := urlx.ValidateRepoURL(url); err != nil {
 		return err
 	}
@@ -32,13 +38,16 @@ func (m *VcsMercurial) Clone(ctx context.Context, url, path, version string) err
 	if version != "" {
 		args = append(args, "-r", version)
 	}
-	args = append(args, url, path)
+	args = append(args, "--", url, path)
 
 	return runner.Run(ctx, "cloning "+shortPath(path), "", "hg", args...)
 }
 
 func (m *VcsMercurial) Update(ctx context.Context, path, version string) error {
 	if err := requireBinary("hg"); err != nil {
+		return err
+	}
+	if err := validateVCSOperand("version", version); err != nil {
 		return err
 	}
 	slog.DebugContext(ctx, "pulling", "path", shortPath(path))

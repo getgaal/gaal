@@ -2,8 +2,41 @@ package vcs
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
+
+func TestValidateVCSOperand(t *testing.T) {
+	tests := []struct {
+		name    string
+		kind    string
+		value   string
+		wantErr bool
+	}{
+		{"empty allowed", "version", "", false},
+		{"normal tag", "version", "v1.2.3", false},
+		{"branch with slash", "version", "release/2026", false},
+		{"https url", "url", "https://github.com/owner/repo", false},
+		{"ssh url", "url", "ssh://git@host:22/repo", false},
+		{"flag injection version", "version", "--config=hooks.preupdate=touch /tmp/x", true},
+		{"single dash flag", "version", "-r", true},
+		{"flag injection url", "url", "--config-dir=/tmp/evil", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateVCSOperand(tt.kind, tt.value)
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantErr && !strings.Contains(err.Error(), tt.kind) {
+				t.Errorf("error %q should mention kind %q", err.Error(), tt.kind)
+			}
+		})
+	}
+}
 
 func TestRequireBinary_Found(t *testing.T) {
 	if err := requireBinary("go"); err != nil {
