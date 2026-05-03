@@ -1,0 +1,62 @@
+name: Publish E2E fixture image
+
+# Publishes the test/e2e/fixtures `base` stage to ghcr.io so that:
+#   1. CI's e2e job can pull `base-cache` as a long-lived registry cache,
+#      surviving GitHub Actions cache evictions.
+#   2. Local devs can `docker pull ghcr.io/getgaal/gaal-e2e:base-latest`
+#      to skip the slow apk + npm install on first `make test-e2e`.
+#
+# Triggered on:
+#   - push to main when test/e2e/fixtures/Dockerfile changes
+#   - manual dispatch (release manager / dockerfile-pin bumps)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'test/e2e/fixtures/Dockerfile'
+      - '.github/workflows/publish-e2e-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build & push base image to ghcr.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push base image (multi-arch)
+        uses: docker/build-push-action@v6
+        with:
+          context: test/e2e/fixtures
+          file: test/e2e/fixtures/Dockerfile
+          target: base
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/getgaal/gaal-e2e:base-latest
+            ghcr.io/getgaal/gaal-e2e:base-${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/getgaal/gaal-e2e:base-cache
+          cache-to: type=registry,ref=ghcr.io/getgaal/gaal-e2e:base-cache,mode=max
+          # Don't bake the Layer-2 agent CLIs into the published base —
+          # they change often and would invalidate the cache for every PR.
+          # Layer 2 builds them on top via INSTALL_AGENT_CLIS=1 build arg.
+          build-args: |
+            INSTALL_AGENT_CLIS=0

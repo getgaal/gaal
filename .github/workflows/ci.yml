@@ -253,13 +253,41 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # buildx with GHA cache so apk + npm layers survive across CI runs.
+      # Pulling from ghcr too (when published from main) gives us a warm
+      # cache even after a GHA cache eviction.
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build gaal binary for fixture
+        run: |
+          mkdir -p test/e2e/fixtures
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -o test/e2e/fixtures/gaal .
+
+      - name: Pre-build fixture image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: test/e2e/fixtures
+          file: test/e2e/fixtures/Dockerfile
+          target: final
+          tags: gaal-e2e:dev
+          load: true
+          platforms: linux/amd64
+          cache-from: |
+            type=gha,scope=e2e-base
+            type=registry,ref=ghcr.io/getgaal/gaal-e2e:base-cache
+          cache-to: type=gha,mode=max,scope=e2e-base
+
+
       # gotestsum drives the e2e run when available, producing
       # report/e2e-tests.xml that the upload step ships as an artifact.
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@latest
 
       # ubuntu-latest ships with the Docker daemon and BuildKit enabled by
-      # default — no extra setup step needed before `make test-e2e`.
+      # default — no extra setup step needed before `make test-e2e`. The
+      # harness's own `docker build` is now a near-no-op cache hit because
+      # the pre-build step loaded the image into the local daemon.
       - name: Run e2e suite
         run: make test-e2e
 
