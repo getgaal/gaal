@@ -500,11 +500,29 @@ var vcsMetaDirs = map[string]struct{}{
 // skill directory under the gaal-managed name. See #113.
 func installSkill(src, dst string) error {
 	slog.Debug("installing skill", "src", src, "dst", dst)
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return fmt.Errorf("creating skill directory: %w", err)
-	}
 
-	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+	// Stage in a sibling temp dir then atomically swap. A crash mid-copy
+	// leaves the previous dst untouched (or the new content fully
+	// installed) instead of a half-written skill that the next sync would
+	// treat as up-to-date. Stale files (helpers removed upstream) are
+	// gone after the swap because dst is replaced wholesale, not
+	// overlay-merged. #121.
+	parent := filepath.Dir(dst)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return fmt.Errorf("creating skill parent dir: %w", err)
+	}
+	staging, err := os.MkdirTemp(parent, ".gaal-skill-tmp-*")
+	if err != nil {
+		return fmt.Errorf("creating skill staging dir: %w", err)
+	}
+	cleanupStage := true
+	defer func() {
+		if cleanupStage {
+			_ = os.RemoveAll(staging)
+		}
+	}()
+
+	walkErr := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -514,7 +532,7 @@ func installSkill(src, dst string) error {
 			}
 		}
 		rel, _ := filepath.Rel(src, path)
-		target := filepath.Join(dst, rel)
+		target := filepath.Join(staging, rel)
 
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
@@ -535,6 +553,23 @@ func installSkill(src, dst string) error {
 
 		return copyFile(path, target)
 	})
+	if walkErr != nil {
+		return walkErr
+	}
+
+	// Replace dst atomically. RemoveAll + Rename — Go's os.Rename onto an
+	// existing directory fails on POSIX (EEXIST), so we have to remove
+	// first. The window is brief; with secfile/atomic semantics on
+	// individual config files and the staging-then-rename here, a sync
+	// in flight is still safer than the previous overlay copy.
+	if err := os.RemoveAll(dst); err != nil {
+		return fmt.Errorf("removing previous skill dir: %w", err)
+	}
+	if err := os.Rename(staging, dst); err != nil {
+		return fmt.Errorf("renaming staging skill dir: %w", err)
+	}
+	cleanupStage = false
+	return nil
 }
 
 // copyFile copies a single file from src to dst. Callers must have already
