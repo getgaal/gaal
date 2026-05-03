@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -206,16 +207,19 @@ func TestVcsArchive_Clone_WithStripPrefix(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestArchiveEntryPath_PathTraversal(t *testing.T) {
-	// A path starting with ".." should return "".
-	result := archiveEntryPath("../evil/path", "/dest", "")
-	if result != "" {
-		t.Errorf("expected empty result for traversal, got %q", result)
+	// A path starting with ".." is now rejected outright (was: silent skip).
+	_, err := archiveEntryPath("../evil/path", "/dest", "")
+	if err == nil {
+		t.Error("expected error for traversal entry, got nil")
 	}
 }
 
 func TestArchiveEntryPath_RootEntry(t *testing.T) {
 	// Single component (no slash) with no stripPrefix -> skip (returns "").
-	result := archiveEntryPath("single", "/dest", "")
+	result, err := archiveEntryPath("single", "/dest", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result != "" {
 		t.Errorf("expected empty for single component, got %q", result)
 	}
@@ -223,14 +227,20 @@ func TestArchiveEntryPath_RootEntry(t *testing.T) {
 
 func TestArchiveEntryPath_WithStripPrefix_DotEntry(t *testing.T) {
 	// When stripPrefix is the same as name, rel=="." -> return "".
-	result := archiveEntryPath("prefix", "/dest", "prefix")
+	result, err := archiveEntryPath("prefix", "/dest", "prefix")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result != "" {
 		t.Errorf("expected empty for dot entry, got %q", result)
 	}
 }
 
 func TestArchiveEntryPath_ValidTwoComponent(t *testing.T) {
-	result := archiveEntryPath("prefix/file.txt", "/dest", "")
+	result, err := archiveEntryPath("prefix/file.txt", "/dest", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result == "" {
 		t.Error("expected non-empty result for two-component path")
 	}
@@ -436,5 +446,160 @@ func TestWriteFile_MkdirAllFailure(t *testing.T) {
 	err := writeFile(bytes.NewReader([]byte("data")), filepath.Join(parent, "sub", "file.txt"), 0o644)
 	if err == nil {
 		t.Fatal("expected error when parent directory is not writable")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Adversarial archive entries (#112)
+// ---------------------------------------------------------------------------
+
+// buildTarRaw lets a test hand-craft tar headers (any Typeflag, any Name).
+func buildTarRaw(t *testing.T, headers []*tar.Header, contents map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for _, hdr := range headers {
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatalf("WriteHeader: %v", err)
+		}
+		if c, ok := contents[hdr.Name]; ok {
+			tw.Write([]byte(c)) //nolint:errcheck
+		}
+	}
+	tw.Close()
+	return buf.Bytes()
+}
+
+func TestExtractTar_RejectsAbsolutePathEntry(t *testing.T) {
+	data := buildTarRaw(t, []*tar.Header{
+		{Name: "/etc/pwned", Typeflag: tar.TypeReg, Size: 4, Mode: 0o644},
+	}, map[string]string{"/etc/pwned": "evil"})
+
+	dest := t.TempDir()
+	err := extractTar(bytes.NewReader(data), dest, "")
+	if err == nil {
+		t.Fatal("expected error for absolute-path entry, got nil")
+	}
+	if _, statErr := os.Stat("/etc/pwned"); statErr == nil {
+		t.Errorf("absolute-path entry was written to /etc/pwned")
+	}
+}
+
+func TestExtractTar_RejectsParentTraversalEntry(t *testing.T) {
+	data := buildTarRaw(t, []*tar.Header{
+		{Name: "pfx/", Typeflag: tar.TypeDir, Mode: 0o755},
+		{Name: "pfx/../../../tmp/gaal-pwned", Typeflag: tar.TypeReg, Size: 4, Mode: 0o644},
+	}, map[string]string{"pfx/../../../tmp/gaal-pwned": "evil"})
+
+	dest := t.TempDir()
+	err := extractTar(bytes.NewReader(data), dest, "")
+	if err == nil {
+		t.Fatal("expected error for traversal entry, got nil")
+	}
+	if _, statErr := os.Stat("/tmp/gaal-pwned"); statErr == nil {
+		os.Remove("/tmp/gaal-pwned")
+		t.Errorf("traversal entry escaped to /tmp/gaal-pwned")
+	}
+}
+
+func TestExtractTar_SkipsSymlinkEntry(t *testing.T) {
+	// Symlinks are silently skipped (with a warn log) so a malicious archive
+	// cannot redirect a subsequent regular-file write to a sensitive path.
+	data := buildTarRaw(t, []*tar.Header{
+		{Name: "pfx/", Typeflag: tar.TypeDir, Mode: 0o755},
+		{Name: "pfx/link", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd", Mode: 0o777},
+	}, nil)
+
+	dest := t.TempDir()
+	if err := extractTar(bytes.NewReader(data), dest, ""); err != nil {
+		t.Fatalf("extractTar: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(dest, "link")); err == nil {
+		t.Errorf("symlink entry must not have been created in dest")
+	}
+}
+
+func TestExtractTar_PerEntrySizeCap(t *testing.T) {
+	// Build a tar where one entry's declared body exceeds MaxFileBytes.
+	huge := MaxFileBytes + 1
+	hdr := &tar.Header{Name: "pfx/", Typeflag: tar.TypeDir, Mode: 0o755}
+	hdr2 := &tar.Header{Name: "pfx/big", Typeflag: tar.TypeReg, Mode: 0o644, Size: huge}
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(hdr2); err != nil {
+		t.Fatal(err)
+	}
+	// Stream zero bytes up to the declared size — actual disk impact is
+	// bounded by writeFileLimited copying maxBytes+1 then bailing.
+	zeros := make([]byte, 1<<20) // 1 MiB
+	written := int64(0)
+	for written < huge {
+		n := int64(len(zeros))
+		if rem := huge - written; rem < n {
+			n = rem
+		}
+		if _, err := tw.Write(zeros[:n]); err != nil {
+			t.Fatal(err)
+		}
+		written += n
+	}
+	tw.Close()
+
+	dest := t.TempDir()
+	err := extractTar(bytes.NewReader(buf.Bytes()), dest, "")
+	if err == nil {
+		t.Fatal("expected per-entry size cap error, got nil")
+	}
+}
+
+func TestExtractTar_GzipDetection_NonDestructive(t *testing.T) {
+	// Plain (non-gzip) tar must still extract correctly — the new gzip-magic
+	// peek must not consume the first two bytes of the tar stream.
+	data := buildTar(t, map[string]string{
+		"pfx/hello.txt": "world",
+	}, []string{"pfx/"})
+
+	dest := t.TempDir()
+	if err := extractTar(bytes.NewReader(data), dest, ""); err != nil {
+		t.Fatalf("extractTar: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(dest, "hello.txt"))
+	if err != nil {
+		t.Fatalf("read extracted: %v", err)
+	}
+	if string(body) != "world" {
+		t.Errorf("got %q, want %q", body, "world")
+	}
+}
+
+func TestExtractTar_EntryCountCap(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipped in -short")
+	}
+	// Build a tar with > MaxEntryCount tiny entries.
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for i := 0; i <= MaxEntryCount; i++ {
+		hdr := &tar.Header{
+			Name:     fmt.Sprintf("pfx/file-%d.txt", i),
+			Typeflag: tar.TypeReg,
+			Mode:     0o644,
+			Size:     1,
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		tw.Write([]byte("x")) //nolint:errcheck
+	}
+	tw.Close()
+
+	dest := t.TempDir()
+	err := extractTar(bytes.NewReader(buf.Bytes()), dest, "")
+	if err == nil {
+		t.Fatal("expected entry-count cap error, got nil")
 	}
 }
