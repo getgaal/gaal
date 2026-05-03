@@ -406,6 +406,9 @@ func TestLoadChain_OnlyWorkspace(t *testing.T) {
 	empty := t.TempDir()
 	t.Setenv("HOME", empty)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(empty, "xdg"))
+	// Use absolute path; bypass containment so this exercise of LoadChain
+	// is independent of the new project-scope strict check.
+	t.Setenv("GAAL_ALLOW_ABSOLUTE_PATHS", "1")
 
 	repoPath := filepath.ToSlash(filepath.Join(t.TempDir(), "testrepo"))
 	p := writeYAML(t, fmt.Sprintf(`
@@ -420,6 +423,23 @@ repositories:
 	}
 	if _, ok := cfg.Repositories[repoPath]; !ok {
 		t.Errorf("expected %q in merged config, got: %v", repoPath, repoKeys(cfg.Config))
+	}
+}
+
+func TestLoadChain_WorkspaceRejectsAbsoluteRepoPath(t *testing.T) {
+	empty := t.TempDir()
+	t.Setenv("HOME", empty)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(empty, "xdg"))
+	t.Setenv("GAAL_ALLOW_ABSOLUTE_PATHS", "")
+
+	p := writeYAML(t, `
+repositories:
+  /home/victim/.ssh:
+    type: git
+    url: https://example.com/evil.git
+`)
+	if _, err := LoadChain(p); err == nil {
+		t.Fatal("expected LoadChain to reject absolute repo path in workspace config, got nil")
 	}
 }
 

@@ -242,3 +242,52 @@ func TestIsGitHubShorthand(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// validateRepositoryContainment / checkRepoPathContained
+// ---------------------------------------------------------------------------
+
+func TestCheckRepoPathContained(t *testing.T) {
+	tests := []struct {
+		name    string
+		key     string
+		wantErr bool
+	}{
+		{"plain relative", "src/myrepo", false},
+		{"dot relative", "./src/myrepo", false},
+		{"nested relative", "a/b/c", false},
+		{"absolute unix", "/home/victim/.ssh", true},
+		{"home tilde posix", "~/.ssh", true},
+		{"home tilde windows", `~\Users`, true},
+		{"parent traversal", "../../etc", true},
+		{"parent only", "..", true},
+		{"parent inside is fine", "src/../sibling", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkRepoPathContained(tt.key)
+			if tt.wantErr && err == nil {
+				t.Errorf("expected error for %q, got nil", tt.key)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error for %q: %v", tt.key, err)
+			}
+		})
+	}
+}
+
+func TestValidateRepositoryContainment_EnvBypass(t *testing.T) {
+	c := &Config{Repositories: map[string]ConfigRepo{"/abs/path": {Type: "git", URL: "https://x"}}}
+	t.Setenv("GAAL_ALLOW_ABSOLUTE_PATHS", "1")
+	if err := c.validateRepositoryContainment(); err != nil {
+		t.Errorf("expected bypass via env, got %v", err)
+	}
+}
+
+func TestValidateRepositoryContainment_RejectsByDefault(t *testing.T) {
+	c := &Config{Repositories: map[string]ConfigRepo{"/home/victim/.ssh": {Type: "git", URL: "https://x"}}}
+	t.Setenv("GAAL_ALLOW_ABSOLUTE_PATHS", "")
+	if err := c.validateRepositoryContainment(); err == nil {
+		t.Error("expected containment error, got nil")
+	}
+}
