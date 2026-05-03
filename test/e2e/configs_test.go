@@ -12,8 +12,16 @@ import (
 // exercises — repositories, skills, mcps. Callers add entries via the
 // chainable Add* methods and finalise with String().
 type configBuilder struct {
+	repos  []repoBlock
 	skills []skillBlock
 	mcps   []mcpBlock
+}
+
+type repoBlock struct {
+	path    string // workspace-relative checkout path (the YAML map key)
+	typ     string // "git", "hg", "tar", etc.
+	url     string // clone source — local path or URL
+	version string // optional tag / branch / commit
 }
 
 type skillBlock struct {
@@ -34,6 +42,15 @@ type mcpBlock struct {
 
 func newConfig() *configBuilder { return &configBuilder{} }
 
+// AddRepository registers a repository entry. path is the workspace-relative
+// checkout location (the YAML map key); typ is "git", "hg", "tar", etc.;
+// url is the clone source — a local filesystem path is acceptable for
+// hermetic test backends.
+func (b *configBuilder) AddRepository(path, typ, url, version string) *configBuilder {
+	b.repos = append(b.repos, repoBlock{path: path, typ: typ, url: url, version: version})
+	return b
+}
+
 func (b *configBuilder) AddSkill(source string, agents []string, global bool, selects ...string) *configBuilder {
 	b.skills = append(b.skills, skillBlock{source: source, agents: agents, global: global, selects: selects})
 	return b
@@ -50,6 +67,17 @@ func (b *configBuilder) AddMCP(name string, agents []string, global bool, comman
 func (b *configBuilder) String() string {
 	var sb strings.Builder
 	sb.WriteString("schema: 1\n")
+	if len(b.repos) > 0 {
+		sb.WriteString("repositories:\n")
+		for _, r := range b.repos {
+			fmt.Fprintf(&sb, "  %s:\n", r.path)
+			fmt.Fprintf(&sb, "    type: %s\n", r.typ)
+			fmt.Fprintf(&sb, "    url: %s\n", quoteIfNeeded(r.url))
+			if r.version != "" {
+				fmt.Fprintf(&sb, "    version: %s\n", quoteIfNeeded(r.version))
+			}
+		}
+	}
 	if len(b.skills) > 0 {
 		sb.WriteString("skills:\n")
 		for _, s := range b.skills {
