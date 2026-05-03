@@ -46,6 +46,7 @@ type AgentEntry struct {
 	ProjectSkillsDir        string `json:"project_skills_dir"`
 	GlobalSkillsDir         string `json:"global_skills_dir"`
 	ProjectMCPConfigFile    string `json:"project_mcp_config_file,omitempty"`
+	GlobalMCPConfigFile     string `json:"global_mcp_config_file,omitempty"`
 	ProjectSkillsViaGeneric bool   `json:"project_skills_via_generic,omitempty"`
 	GlobalSkillsViaGeneric  bool   `json:"global_skills_via_generic,omitempty"`
 }

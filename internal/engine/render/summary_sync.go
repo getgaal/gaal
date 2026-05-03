@@ -134,11 +134,24 @@ func buildAgentRollup(status *StatusReport) []string {
 		skillsByAgent[e.Agent] += len(e.Installed)
 	}
 
-	// Count managed MCPs (exclude unmanaged).
-	mcpCount := 0
+	// Count MCPs per agent by matching each entry's Target to the agent's
+	// known MCP config paths (project + global). Fix for #127 — the
+	// previous code reused one global mcpCount across every per-agent
+	// row so a single MCP entry showed up under three agents.
+	mcpsByAgent := map[string]int{}
 	for _, m := range status.MCPs {
-		if m.Status != StatusUnmanaged {
-			mcpCount++
+		if m.Status == StatusUnmanaged || m.Target == "" {
+			continue
+		}
+		for _, a := range status.Agents {
+			if !a.Installed {
+				continue
+			}
+			if (a.ProjectMCPConfigFile != "" && a.ProjectMCPConfigFile == m.Target) ||
+				(a.GlobalMCPConfigFile != "" && a.GlobalMCPConfigFile == m.Target) {
+				mcpsByAgent[a.Name]++
+				break
+			}
 		}
 	}
 
@@ -151,7 +164,7 @@ func buildAgentRollup(status *StatusReport) []string {
 		entries = append(entries, agentRollupEntry{
 			name:       a.Name,
 			skillCount: skillsByAgent[a.Name],
-			mcpCount:   mcpCount,
+			mcpCount:   mcpsByAgent[a.Name],
 		})
 	}
 
