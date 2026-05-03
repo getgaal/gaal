@@ -44,7 +44,18 @@ func isRemoteURL(s string) bool {
 }
 
 // isGitHubShorthand reports whether s is a GitHub owner/repo shorthand
-// (exactly one forward-slash, no scheme, not a local path).
+// (exactly one forward-slash, no scheme, not a local path, both segments
+// matching GitHub's identifier syntax).
+//
+// GitHub identifier rules: alphanumeric + dash/underscore/dot, 1–39 chars,
+// cannot start or end with a separator. Anything that doesn't match is
+// treated as a relative path so a config like
+//
+//	skills:
+//	  - source: docs/skill
+//
+// is correctly path-expanded instead of being shipped to GitHub as the
+// repo "docs/skill" (#138).
 func isGitHubShorthand(s string) bool {
 	if isRemoteURL(s) ||
 		strings.HasPrefix(s, "./") || strings.HasPrefix(s, `.\`) ||
@@ -53,7 +64,34 @@ func isGitHubShorthand(s string) bool {
 		strings.HasPrefix(s, "/") || filepath.IsAbs(s) {
 		return false
 	}
-	return len(strings.Split(s, "/")) == 2
+	parts := strings.Split(s, "/")
+	if len(parts) != 2 {
+		return false
+	}
+	return isGitHubIdent(parts[0]) && isGitHubIdent(parts[1])
+}
+
+// isGitHubIdent reports whether s is a valid GitHub user / org / repo name:
+// 1–39 chars, alphanumeric + dash/underscore/dot, not starting or ending
+// with a separator.
+func isGitHubIdent(s string) bool {
+	if s == "" || len(s) > 39 {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.':
+			if i == 0 || i == len(s)-1 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // validateRepositoryContainment rejects repository keys that escape the
