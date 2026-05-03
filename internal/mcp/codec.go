@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -75,24 +76,100 @@ func (jsonCodec) ReadServers(path string) (map[string]serverEntry, error) {
 }
 
 func (jsonCodec) WriteServers(path string, servers map[string]serverEntry) error {
-	raw := map[string]json.RawMessage{}
-	if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return fmt.Errorf("parsing existing config %s: %w", path, err)
-		}
+	// Decode the existing file preserving top-level key order so the
+	// rewrite doesn't churn the user's tracked dotfile (e.g. ~/.claude.json
+	// holds session state, MRU lists, projects alongside mcpServers; map
+	// iteration would scramble those keys on every sync). #122.
+	keys, raw, err := readOrderedJSON(path)
+	if err != nil {
+		return fmt.Errorf("parsing existing config %s: %w", path, err)
 	}
 
-	updated, err := json.Marshal(servers)
+	serversBytes, err := json.Marshal(servers)
 	if err != nil {
 		return err
 	}
-	raw["mcpServers"] = updated
+	if _, ok := raw["mcpServers"]; !ok {
+		keys = append(keys, "mcpServers")
+	}
+	raw["mcpServers"] = serversBytes
 
-	out, err := json.MarshalIndent(raw, "", "  ")
+	out, err := writeOrderedJSON(keys, raw, "  ")
 	if err != nil {
 		return err
 	}
 	return secfile.Write(path, out)
+}
+
+// readOrderedJSON parses a JSON object and returns its top-level keys in
+// document order plus a name → raw value map. A missing or empty file
+// yields an empty key list and empty map, not an error.
+func readOrderedJSON(path string) ([]string, map[string]json.RawMessage, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, map[string]json.RawMessage{}, nil
+		}
+		return nil, nil, err
+	}
+	if len(data) == 0 {
+		return nil, map[string]json.RawMessage{}, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, nil, err
+	}
+	if d, ok := tok.(json.Delim); !ok || d != '{' {
+		return nil, nil, fmt.Errorf("expected JSON object at root, got %v", tok)
+	}
+	keys := []string{}
+	values := map[string]json.RawMessage{}
+	for dec.More() {
+		kt, err := dec.Token()
+		if err != nil {
+			return nil, nil, err
+		}
+		key, ok := kt.(string)
+		if !ok {
+			return nil, nil, fmt.Errorf("expected string key, got %T", kt)
+		}
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return nil, nil, err
+		}
+		keys = append(keys, key)
+		values[key] = raw
+	}
+	return keys, values, nil
+}
+
+// writeOrderedJSON re-emits a JSON object in the supplied key order with
+// per-level indentation (typically two spaces). Each value is run through
+// json.Indent so nested objects/arrays land at the right depth.
+func writeOrderedJSON(keys []string, values map[string]json.RawMessage, indent string) ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteString("{\n")
+	for i, k := range keys {
+		kb, err := json.Marshal(k)
+		if err != nil {
+			return nil, err
+		}
+		buf.WriteString(indent)
+		buf.Write(kb)
+		buf.WriteString(": ")
+		var pretty bytes.Buffer
+		if err := json.Indent(&pretty, values[k], indent, indent); err != nil {
+			return nil, fmt.Errorf("re-indenting %s: %w", k, err)
+		}
+		buf.Write(pretty.Bytes())
+		if i < len(keys)-1 {
+			buf.WriteByte(',')
+		}
+		buf.WriteByte('\n')
+	}
+	buf.WriteString("}\n")
+	return buf.Bytes(), nil
 }
 
 // ── TOML ────────────────────────────────────────────────────────────────────
