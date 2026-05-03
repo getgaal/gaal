@@ -1,0 +1,49 @@
+name: Nightly E2E (Layer 2 — agent CLIs)
+
+# Layer 2 of the e2e suite installs the actual agent CLIs (claude-code,
+# codex) and verifies that the configs gaal writes are accepted by them.
+# That's the entire point of the tool, so it MUST run somewhere — but it
+# is too slow for every PR (heavy npm install). Schedule daily and expose
+# manual dispatch so a release manager can kick it off on demand.
+on:
+  schedule:
+    - cron: '17 4 * * *'  # 04:17 UTC daily — off-peak for both US/EU runners
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  layer2:
+    name: E2E Layer 2 (CLI verify)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Layer 2 e2e suite
+        run: make test-e2e-cli
+
+      - name: Capture e2e diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p e2e-diagnostics
+          for cid in $(docker ps -a --filter "ancestor=gaal-e2e:dev" --format '{{.ID}}'); do
+            echo "--- docker inspect $cid ---" > "e2e-diagnostics/$cid.inspect"
+            docker inspect "$cid" >> "e2e-diagnostics/$cid.inspect" 2>&1 || true
+            docker logs "$cid" > "e2e-diagnostics/$cid.log" 2>&1 || true
+          done
+          ls -la e2e-diagnostics/
+
+      - name: Upload e2e diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: layer2-diagnostics
+          path: e2e-diagnostics/
+          retention-days: 14
