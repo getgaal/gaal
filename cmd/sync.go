@@ -97,16 +97,25 @@ func runSync(_ *cobra.Command, _ []string) error {
 		telemetry.TrackError("sync", err)
 		return err
 	}
+	if err := checkInterrupted(ctx); err != nil {
+		return err
+	}
 
 	start := time.Now()
 	if err := eng.RunOnce(ctx); err != nil {
 		telemetry.TrackError("sync", err)
 		return err
 	}
+	if err := checkInterrupted(ctx); err != nil {
+		return err
+	}
 	if prune {
 		slog.Debug("pruning orphan resources")
 		if err := eng.Prune(ctx); err != nil {
 			telemetry.TrackError("sync-prune", err)
+			return err
+		}
+		if err := checkInterrupted(ctx); err != nil {
 			return err
 		}
 	}
@@ -130,6 +139,19 @@ func runSync(_ *cobra.Command, _ []string) error {
 	telemetry.Track("sync")
 	telemetry.TrackFirstSync(0)
 	return nil
+}
+
+// checkInterrupted reports a "sync interrupted" ExitCodeError when the
+// signal context has been cancelled (Ctrl-C / SIGTERM). Sync used to
+// either claim success after a partial run or surface a misleading
+// "context canceled" error from the next step; this short-circuits with
+// exit 130 (SIGINT convention) and a clear stderr message instead. #126.
+func checkInterrupted(ctx context.Context) error {
+	if ctx.Err() == nil {
+		return nil
+	}
+	fmt.Fprintln(os.Stderr, "⚠ sync interrupted — partial state may exist on disk")
+	return &ExitCodeError{Code: 130}
 }
 
 // warnMissingTools prints a compact stderr banner listing required tools that
