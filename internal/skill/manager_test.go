@@ -995,3 +995,52 @@ func TestEmitConfigWarnings_FiresOncePerManager(t *testing.T) {
 		t.Errorf("expected warning to fire exactly once, fired %d times", count)
 	}
 }
+
+// TestManager_Sync_AggregatesErrorsAcrossSources is a regression for #110:
+// before the fix, the first failing source aborted the loop; later sources
+// were silently skipped. Now, per-source failures are accumulated via
+// errors.Join and every source is attempted.
+//
+// Setup: workDir points at a regular file, so any MkdirAll for a
+// project-scope skills dir fails. Two sources each carry a valid skill that
+// targets the "claude-code" agent. Both should fail the same way; the
+// aggregated error must mention both source paths to prove the loop did not
+// bail after the first failure.
+func TestManager_Sync_AggregatesErrorsAcrossSources(t *testing.T) {
+	tmp := t.TempDir()
+	workDirAsFile := filepath.Join(tmp, "not-a-dir")
+	if err := os.WriteFile(workDirAsFile, []byte("file"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	mkSource := func(name string) string {
+		root := filepath.Join(tmp, name)
+		skillDir := filepath.Join(root, name)
+		os.MkdirAll(skillDir, 0o755)
+		os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
+			[]byte("---\nname: "+name+"\n---\n"), 0o644)
+		return root
+	}
+	sourceA := mkSource("source-a")
+	sourceB := mkSource("source-b")
+
+	// Force the project-scope MkdirAll path: agents:["claude-code"] with
+	// global=false uses workDir/<.claude/skills>. The "force" flag at the
+	// end bypasses the IsAgentInstalled gate.
+	skills := []config.ConfigSkill{
+		{Source: sourceA, Agents: []string{"claude-code"}},
+		{Source: sourceB, Agents: []string{"claude-code"}},
+	}
+	m := NewManager(skills, t.TempDir(), tmp, workDirAsFile, "", true)
+
+	err := m.Sync(context.Background())
+	if err == nil {
+		t.Fatal("expected aggregated error from MkdirAll failure on both sources, got nil")
+	}
+	if !strings.Contains(err.Error(), sourceA) {
+		t.Errorf("aggregated error must reference source A; got: %v", err)
+	}
+	if !strings.Contains(err.Error(), sourceB) {
+		t.Errorf("aggregated error must reference source B (proves loop continued past A); got: %v", err)
+	}
+}
