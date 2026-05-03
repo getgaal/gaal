@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -137,7 +138,11 @@ func collectAgentPaths(name, home, workDir string) []render.AgentPath {
 	}
 
 	for _, relDir := range agent.ExpandedProjectSkillsSearch(name) {
-		absDir := workDir + "/" + relDir
+		// Use filepath.Join, not string concat — AGENTS.md mandates this
+		// and on Windows the bare "/" produces mixed separators that
+		// some Win32 APIs accept but filepath.Clean does not normalise
+		// the way callers expect.
+		absDir := filepath.Join(workDir, relDir)
 		addPath("project", absDir)
 	}
 
