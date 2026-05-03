@@ -28,8 +28,11 @@ type TestContainer struct {
 // it to be running, and returns a handle. The container is started with
 // `--rm` so a dropped suite cleans up automatically.
 func startContainer() (*TestContainer, error) {
-	args := []string{
-		"run", "-d", "--rm",
+	args := []string{"run", "-d", "--rm"}
+	if p := dockerPlatform(); p != "" {
+		args = append(args, "--platform", p)
+	}
+	args = append(args,
 		// Bind-mount the fixtures dir read-only so tests can reference
 		// /fixtures/skills/<name> without docker cp gymnastics.
 		"--mount", fmt.Sprintf("type=bind,source=%s,target=%s,readonly", fixturesPath(), fixturesDir),
@@ -39,7 +42,7 @@ func startContainer() (*TestContainer, error) {
 		// Quiet pterm/term-detection.
 		"-e", "TERM=dumb",
 		imageName,
-	}
+	)
 	cmd := exec.Command("docker", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -137,13 +137,18 @@ func repoRoot() (string, error) {
 
 // ensureImage runs `docker build` with the fixtures directory as context.
 // The build args are derived from envCLI so layer 2 runs install the agent
-// CLIs while layer 1 runs stay slim.
+// CLIs while layer 1 runs stay slim. When GAAL_E2E_PLATFORM is set (e.g.
+// "linux/arm64" on Apple Silicon) it is forwarded to docker as --platform
+// so contributors don't get silently emulated images.
 func ensureImage() error {
 	args := []string{
 		"build",
 		"--quiet",
 		"--tag", imageName,
 		"--build-arg", fmt.Sprintf("INSTALL_AGENT_CLIS=%s", boolToZeroOne(envCLI)),
+	}
+	if p := dockerPlatform(); p != "" {
+		args = append(args, "--platform", p)
 	}
 	args = append(args, fixturesPath())
 
@@ -156,6 +161,16 @@ func ensureImage() error {
 		log.Printf("e2e: image built (%s)", trimmed)
 	}
 	return nil
+}
+
+// dockerPlatform returns the value to pass to docker --platform, or "" when
+// no override is requested. Honored by ensureImage and startContainer so that
+// builds and runs target the host arch by default (Apple Silicon contributors
+// don't get silently-emulated amd64 images, CI on x86_64 runners stays
+// unchanged). Set GAAL_E2E_PLATFORM=linux/<arch> to override; the Makefile
+// derives this from $(GOARCH).
+func dockerPlatform() string {
+	return os.Getenv("GAAL_E2E_PLATFORM")
 }
 
 func boolToZeroOne(b bool) string {
