@@ -4,9 +4,18 @@ package e2e
 
 import (
 	"path"
-	"strings"
+	"regexp"
 	"testing"
 )
+
+// claudeMCPListMentions reports whether `claude mcp list` output mentions
+// the named server as a whole word (anchored by a non-word boundary) so
+// "filesystem-extended" doesn't false-match "filesystem". Tightens the
+// substring match called out in #151.
+func claudeMCPListMentions(output, name string) bool {
+	pat := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
+	return pat.MatchString(output)
+}
 
 // requireCLILayer skips the test when the heavy CLI verification layer is
 // not enabled. The image build skips installing the agent CLIs unless
@@ -34,8 +43,8 @@ func TestCLI_ClaudeMCPListShowsSyncedServer(t *testing.T) {
 	env.mustGaal(t, cfgPath, "sync")
 
 	res := suite.MustExec(t, env.gaalEnv(), env.workdir, "claude", "mcp", "list")
-	if !strings.Contains(res.Stdout+res.Stderr, "filesystem") {
-		t.Fatalf("expected `claude mcp list` to mention the synced server\n%s",
+	if !claudeMCPListMentions(res.Stdout+res.Stderr, "filesystem") {
+		t.Fatalf("expected `claude mcp list` to mention the synced server as a whole word\n%s",
 			res.Combined())
 	}
 }
@@ -90,11 +99,11 @@ func TestCLI_PruneRemovesEntryFromCLIView(t *testing.T) {
 
 	res := suite.MustExec(t, env.gaalEnv(), env.workdir, "claude", "mcp", "list")
 	combined := res.Stdout + res.Stderr
-	if !strings.Contains(combined, "filesystem") {
-		t.Fatalf("expected `claude mcp list` to still mention filesystem\n%s",
+	if !claudeMCPListMentions(combined, "filesystem") {
+		t.Fatalf("expected `claude mcp list` to still mention filesystem as a whole word\n%s",
 			res.Combined())
 	}
-	if strings.Contains(combined, "git") {
+	if claudeMCPListMentions(combined, "git") {
 		t.Fatalf("expected `claude mcp list` to no longer mention git after prune\n%s",
 			res.Combined())
 	}

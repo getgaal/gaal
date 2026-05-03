@@ -3,10 +3,52 @@
 package e2e
 
 import (
+	"encoding/json"
 	"path"
-	"strings"
 	"testing"
 )
+
+// auditReportShape mirrors the JSON shape of `gaal audit -o json` for the
+// fields these tests assert on. Defined locally (rather than importing
+// internal/engine/render) so the test file is self-contained and a
+// breaking JSON-shape change surfaces here as a parse/lookup failure.
+type auditReportShape struct {
+	Skills []struct {
+		Name   string `json:"name"`
+		Agent  string `json:"agent"`
+		Source string `json:"source"`
+		Path   string `json:"path"`
+	} `json:"skills"`
+	MCPs []struct {
+		Agent      string   `json:"agent"`
+		ConfigFile string   `json:"config_file"`
+		Servers    []string `json:"servers"`
+	} `json:"mcps"`
+}
+
+// statusReportShape mirrors `gaal status -o json` for the shape these
+// tests assert on.
+type statusReportShape struct {
+	Repositories []json.RawMessage `json:"repositories"`
+	Skills       []struct {
+		Source    string   `json:"source"`
+		Agent     string   `json:"agent"`
+		Installed []string `json:"installed"`
+	} `json:"skills"`
+	MCPs   []json.RawMessage `json:"mcps"`
+	Agents []json.RawMessage `json:"agents"`
+}
+
+// containsToken reports whether token appears in any element of items
+// (exact match — used to assert presence in installed[]).
+func containsToken(items []string, token string) bool {
+	for _, it := range items {
+		if it == token {
+			return true
+		}
+	}
+	return false
+}
 
 // TestScope_Matrix runs the same minimal sync against the (skill, mcp) ×
 // (project, global) matrix to confirm the scope flag is plumbed correctly
@@ -113,6 +155,12 @@ func TestScope_DryRunReportsChanges(t *testing.T) {
 // TestScope_AuditDiscoversInstalledSkill installs a skill via gaal sync
 // then runs `gaal audit -o json` and asserts the discovered tree mentions
 // it. This is the regression target for the full sync → audit handoff.
+//
+// Asserts the parsed JSON shape (a Skills entry with Name == "stub-skill"
+// and Agent == "claude-code") rather than substring matching against the
+// raw bytes — the latter would pass on degraded output (e.g. an error
+// message that happens to mention "stub-skill") and rot silently as the
+// JSON layout evolves.
 func TestScope_AuditDiscoversInstalledSkill(t *testing.T) {
 	env := newTestEnv(t)
 
@@ -123,14 +171,30 @@ func TestScope_AuditDiscoversInstalledSkill(t *testing.T) {
 	env.mustGaal(t, cfgPath, "sync")
 
 	res := env.mustGaal(t, cfgPath, "-o", "json", "audit")
-	if !strings.Contains(res.Stdout, "stub-skill") {
-		t.Fatalf("expected audit JSON to surface stub-skill\n%s", res.Stdout)
+	var report auditReportShape
+	if err := json.Unmarshal([]byte(res.Stdout), &report); err != nil {
+		t.Fatalf("audit JSON parse: %v\n%s", err, res.Stdout)
+	}
+	found := false
+	for _, sk := range report.Skills {
+		if sk.Name == "stub-skill" && sk.Agent == "claude-code" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected audit Skills[] to contain {Name: stub-skill, Agent: claude-code}; got %+v",
+			report.Skills)
 	}
 }
 
 // TestScope_StatusJSONShape sanity-checks that the JSON status output is a
 // well-formed object with the four documented top-level arrays. This is
 // the structural contract Layer 2 (CLI verification) builds on.
+//
+// Asserts on the parsed shape (typed unmarshal + Skills entry that
+// references stub-skill), so a regression that breaks the JSON layout
+// surfaces cleanly instead of as a substring miss.
 func TestScope_StatusJSONShape(t *testing.T) {
 	env := newTestEnv(t)
 
@@ -141,22 +205,38 @@ func TestScope_StatusJSONShape(t *testing.T) {
 	env.mustGaal(t, cfgPath, "sync")
 
 	res := env.mustGaal(t, cfgPath, "-o", "json", "status")
-	for _, key := range []string{`"repositories"`, `"skills"`, `"mcps"`, `"agents"`} {
-		if !strings.Contains(res.Stdout, key) {
-			t.Fatalf("status JSON missing %s\n%s", key, res.Stdout)
+	var report statusReportShape
+	if err := json.Unmarshal([]byte(res.Stdout), &report); err != nil {
+		t.Fatalf("status JSON parse: %v\n%s", err, res.Stdout)
+	}
+	// All four documented arrays must be present (nil-vs-empty doesn't
+	// matter — what matters is the field exists in the JSON).
+	if report.Repositories == nil && report.Skills == nil && report.MCPs == nil && report.Agents == nil {
+		t.Fatalf("status JSON has no recognised top-level arrays\n%s", res.Stdout)
+	}
+	// Synced skill must surface in the Skills array.
+	found := false
+	for _, sk := range report.Skills {
+		if sk.Source != "" && (sk.Source == localSkillsRoot+"/stub-skill" ||
+			containsToken(sk.Installed, "stub-skill")) {
+			found = true
+			break
 		}
 	}
-
-	// And the synced skill must be in the status payload.
-	if !strings.Contains(res.Stdout, "stub-skill") {
-		t.Fatalf("status JSON missing stub-skill\n%s", res.Stdout)
+	if !found {
+		t.Fatalf("status JSON Skills[] missing stub-skill; got %+v", report.Skills)
 	}
 }
 
-// TestScope_NoSpuriousFiles guards against gaal writing anything under
-// HOME or workdir other than the explicitly configured agent paths. A
-// regression that, say, accidentally writes under ~/.gaal would show up
-// as an unexpected directory entry.
+// TestScope_NoSpuriousFiles guards against gaal writing under HOME or
+// workdir at paths it has no business touching.
+//
+// Uses a deny-list (specific paths gaal must never create) instead of an
+// allow-list. The allow-list version turned every legitimate new dir into
+// a test failure that contributors would whitelist on autopilot, which
+// inverts the value of the test. The deny-list catches the actual hazards
+// (.gaal/, .local/state/, /tmp side-effects) while leaving room for the
+// agent dirs (.claude, .codex, …) the suite is supposed to populate.
 func TestScope_NoSpuriousFiles(t *testing.T) {
 	env := newTestEnv(t)
 
@@ -167,15 +247,17 @@ func TestScope_NoSpuriousFiles(t *testing.T) {
 	env.mustGaal(t, cfgPath, "sync")
 
 	homeEntries := env.c.ListDir(t, env.home)
-	allowed := map[string]struct{}{
-		".cache":  {}, // gaal source/state caches
-		".claude": {}, // the synced skill's parent
-		".config": {}, // potential telemetry/user config
+	denied := map[string]string{
+		".gaal":        "gaal must not create a top-level ~/.gaal dir (state lives under ~/.cache/gaal)",
+		".local":       "gaal must not write under ~/.local/ (XDG state should land in ~/.cache/gaal/state)",
+		".gaal-state":  "legacy state location should not be re-introduced",
+		".gaal-cache":  "legacy cache location should not be re-introduced",
+		"gaal.yaml":    "gaal must not write a yaml at $HOME root (those go to ~/.config/gaal/)",
 	}
 	for _, e := range homeEntries {
-		if _, ok := allowed[e]; !ok {
-			t.Fatalf("unexpected entry under HOME after sync: %s\n  full listing: %v",
-				e, homeEntries)
+		if reason, bad := denied[e]; bad {
+			t.Fatalf("forbidden entry under HOME after sync: %s\n  reason: %s\n  full listing: %v",
+				e, reason, homeEntries)
 		}
 	}
 
