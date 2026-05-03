@@ -10,8 +10,12 @@ import (
 )
 
 // scanMCPs discovers MCP config files by reading each registered agent's
-// project_mcp_config_file path directly from the filesystem, independent of
-// any gaal.yaml.
+// project_mcp_config_file AND global_mcp_config_file paths directly from
+// the filesystem, independent of any gaal.yaml.
+//
+// Global-scope coverage was missing before #137: the audit / `init`
+// import wizard never saw entries living in global config files
+// (e.g. ~/.codex/config.toml's [mcp_servers.foo]).
 func scanMCPs(ctx context.Context, home, stateDir string) ([]Resource, error) {
 	slog.DebugContext(ctx, "scanning MCP config files", "home", home)
 
@@ -19,30 +23,38 @@ func scanMCPs(ctx context.Context, home, stateDir string) ([]Resource, error) {
 	var resources []Resource
 
 	for _, a := range agent.List() {
-		cfgFile, ok := agent.ProjectMCPConfigPath(a.Name, home)
-		if !ok {
-			continue
+		if cfgFile, ok := agent.ProjectMCPConfigPath(a.Name, home); ok {
+			resources = appendMCPResource(resources, seen, a.Name, cfgFile, ScopeWorkspace, stateDir)
 		}
-		if _, ok := seen[cfgFile]; ok {
-			continue
+		if cfgFile, ok := agent.GlobalMCPConfigPath(a.Name, home); ok {
+			resources = appendMCPResource(resources, seen, a.Name, cfgFile, ScopeGlobal, stateDir)
 		}
-		seen[cfgFile] = struct{}{}
-
-		if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
-			continue
-		}
-
-		resources = append(resources, Resource{
-			Type:  ResourceMCP,
-			Scope: ScopeGlobal,
-			Path:  cfgFile,
-			Name:  a.Name,
-			Drift: computeMCPDrift(cfgFile, stateDir),
-			Meta:  map[string]string{"config_file": cfgFile},
-		})
 	}
 
 	return resources, nil
+}
+
+// appendMCPResource stats cfgFile and, if it exists and hasn't been seen
+// before (some agents share project + global paths), appends a Resource
+// for it. Returns the updated slice.
+func appendMCPResource(resources []Resource, seen map[string]struct{},
+	agentName, cfgFile string, scope Scope, stateDir string,
+) []Resource {
+	if _, ok := seen[cfgFile]; ok {
+		return resources
+	}
+	seen[cfgFile] = struct{}{}
+	if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
+		return resources
+	}
+	return append(resources, Resource{
+		Type:  ResourceMCP,
+		Scope: scope,
+		Path:  cfgFile,
+		Name:  agentName,
+		Drift: computeMCPDrift(cfgFile, stateDir),
+		Meta:  map[string]string{"config_file": cfgFile, "scope": string(scope)},
+	})
 }
 
 // computeMCPDrift compares the SHA-256 hash of an MCP config file against
