@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -18,6 +19,11 @@ import (
 // Init writes the documented gaal.yaml skeleton to dest.
 // When force is false and dest already exists, an error is returned so the
 // caller can surface an actionable message without silently overwriting work.
+//
+// When force is true and dest already exists, the existing file is renamed
+// to <dest>.bak.<RFC3339> before the new content is written (#139). The
+// backup path is returned via the BackupPath log field so the user can
+// recover from an accidental overwrite.
 func Init(dest string, force bool) error {
 	slog.Debug("init", "dest", dest, "force", force)
 
@@ -31,6 +37,10 @@ func Init(dest string, force bool) error {
 	}
 
 	if err := ensureParentDir(dest); err != nil {
+		return err
+	}
+
+	if err := backupExisting(dest); err != nil {
 		return err
 	}
 
@@ -64,12 +74,35 @@ func InitFromPlan(dest string, plan Plan, force bool) error {
 		return err
 	}
 
+	if err := backupExisting(dest); err != nil {
+		return err
+	}
+
 	if err := secfile.Write(dest, content); err != nil {
 		return fmt.Errorf("writing %s: %w", dest, err)
 	}
 
 	slog.Info("config file created from audit plan", "path", dest,
 		"skills", len(plan.Skills), "mcps", len(plan.MCPs))
+	return nil
+}
+
+// backupExisting renames dest to dest.bak.<RFC3339> when dest exists.
+// No-op when dest is missing. Used by Init / InitFromPlan under --force
+// so a user who realises the overwrite was a mistake can recover the
+// previous file from the backup path.
+func backupExisting(dest string) error {
+	if _, err := os.Stat(dest); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("stat %s: %w", dest, err)
+	}
+	stamp := time.Now().UTC().Format("20060102T150405Z")
+	backup := dest + ".bak." + stamp
+	if err := os.Rename(dest, backup); err != nil {
+		return fmt.Errorf("backing up existing config to %s: %w", backup, err)
+	}
+	slog.Info("backed up existing config", "from", dest, "to", backup)
 	return nil
 }
 
