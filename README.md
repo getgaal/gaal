@@ -438,6 +438,16 @@ make test-e2e   # reuses the cached base layers; only the binary COPY re-runs
 CI uploads the JUnit report (`report/e2e-tests.xml`) plus
 `docker logs`/`docker inspect` diagnostics on failure as workflow artifacts.
 
+For interactive debugging — watching every `docker exec` invocation
+(banner) and gaal's stdout/stderr stream live to the terminal:
+
+```bash
+GAAL_E2E_VERBOSE=1 go test -v -tags e2e -run TestVCS_GitBackend_CloneAndCheckout ./test/e2e/...
+```
+
+Off by default so the per-PR run stays clean; the captured `ExecResult`
+fields are unchanged either way so existing assertions keep working.
+
 See [`docs/architecture.md`](docs/architecture.md) for a full description of the internals.
 
 ---

@@ -7,6 +7,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"path"
 	"sort"
@@ -15,6 +17,43 @@ import (
 	"testing"
 	"time"
 )
+
+// verboseExec reports whether GAAL_E2E_VERBOSE=1 is set. When true, every
+// Exec / ExecTTY / WriteFileBytes call prints a banner to stderr before
+// running and streams the in-container process's stdout + stderr live (via
+// io.MultiWriter) so a developer running `go test -v` can watch gaal's
+// behavior in real time. The captured ExecResult fields are unchanged so
+// existing assertions keep working. See issue #181.
+func verboseExec() bool {
+	return os.Getenv("GAAL_E2E_VERBOSE") == "1"
+}
+
+// vbanner prints "[gaal-e2e] docker <argv>" to stderr in verbose mode.
+// Kept short on purpose: the value is showing the exec line itself; long
+// prefixes get in the way of grep.
+func vbanner(args []string) {
+	if !verboseExec() {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "[gaal-e2e] docker "+strings.Join(args, " "))
+}
+
+// vstdout / vstderr return the writers Exec/ExecTTY use. In verbose mode
+// the captured buffer also tees to os.Stderr/os.Stdout so output streams
+// live; in normal mode the writers are the buffer alone (current behavior).
+func vstdout(buf io.Writer) io.Writer {
+	if verboseExec() {
+		return io.MultiWriter(buf, os.Stderr)
+	}
+	return buf
+}
+
+func vstderr(buf io.Writer) io.Writer {
+	if verboseExec() {
+		return io.MultiWriter(buf, os.Stderr)
+	}
+	return buf
+}
 
 // TestContainer wraps the long-lived Docker container shared across the
 // suite. All exec, file-IO and lifecycle operations route through it so
@@ -110,10 +149,11 @@ func (c *TestContainer) Exec(t *testing.T, env Env, workdir string, argv ...stri
 	full = append(full, c.id)
 	full = append(full, argv...)
 
+	vbanner(full)
 	cmd := exec.Command("docker", full...)
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	cmd.Stdout = vstdout(&stdout)
+	cmd.Stderr = vstderr(&stderr)
 	err := cmd.Run()
 	res := ExecResult{Stdout: stdout.String(), Stderr: stderr.String()}
 	if err != nil {
@@ -156,9 +196,13 @@ func (c *TestContainer) ExecTTY(t *testing.T, env Env, workdir string, argv ...s
 	full = append(full, c.id)
 	full = append(full, argv...)
 
+	vbanner(full)
 	cmd := exec.Command("docker", full...)
-	out, err := cmd.CombinedOutput()
-	res := ExecResult{Stdout: string(out)}
+	var combined bytes.Buffer
+	cmd.Stdout = vstdout(&combined)
+	cmd.Stderr = vstderr(&combined)
+	err := cmd.Run()
+	res := ExecResult{Stdout: combined.String()}
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			res.ExitCode = ee.ExitCode()
@@ -188,6 +232,9 @@ func (c *TestContainer) WriteFileBytes(t *testing.T, p string, content []byte) {
 		t.Fatalf("mkdir -p %s: %s", parent, mk.Combined())
 	}
 	args := []string{"exec", "-i", c.id, "sh", "-c", "cat > " + shellQuote(p)}
+	if verboseExec() {
+		fmt.Fprintf(os.Stderr, "[gaal-e2e] docker exec -i <cid> write %s (%d bytes)\n", p, len(content))
+	}
 	cmd := exec.Command("docker", args...)
 	cmd.Stdin = bytes.NewReader(content)
 	var stdout, stderr bytes.Buffer
