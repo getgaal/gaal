@@ -180,23 +180,108 @@ func TestVCS_ZipBackend_Clone(t *testing.T) {
 	}
 }
 
-// ── svn / bzr — security gate ──────────────────────────────────────────────
+// ── svn ─────────────────────────────────────────────────────────────────────
 
-// TestVCS_SvnBackend_Skipped documents why svn coverage is not in this PR.
-// svn checkout requires either a `file://` URL or a daemon protocol
-// (svn://, svn+ssh://, svn+http://). PR #117 deliberately removed
-// `file://` from urlx.ValidateRepoURL because a malicious workspace YAML
-// could otherwise exfiltrate arbitrary local paths via go-git's PlainClone
-// (and the same risk applies to svn). Daemon coverage requires svnserve in
-// the fixture image plus port wiring; tracked as a follow-up under #143.
-func TestVCS_SvnBackend_Skipped(t *testing.T) {
-	t.Skip("svn requires file:// or svnserve daemon — see PR #117 + #143 follow-up")
+var (
+	svnServerOnce  atomic.Bool
+	svnServerRoot  = "/tmp/gaal-e2e-svn-root"
+	svnServerPort  = "3690"
+	svnServerReady = make(chan struct{}, 1)
+)
+
+// ensureSvnServer starts an anonymous-read svnserve daemon in the suite
+// container the first time it is called and returns the base URL
+// (svn://127.0.0.1:3690). Idempotent across tests.
+func ensureSvnServer(t *testing.T) string {
+	t.Helper()
+	base := "svn://127.0.0.1:" + svnServerPort
+	if !svnServerOnce.CompareAndSwap(false, true) {
+		<-svnServerReady
+		svnServerReady <- struct{}{}
+		return base
+	}
+	suite.MustExec(t, nil, "", "mkdir", "-p", svnServerRoot)
+	// Start daemon. -r roots the URL space at svnServerRoot; --listen-port
+	// binds to 3690; nohup keeps it alive past this exec call.
+	suite.MustExec(t, nil, "", "sh", "-c",
+		"nohup svnserve -d -r "+svnServerRoot+" --listen-port "+svnServerPort+
+			" --foreground >/tmp/gaal-svn.log 2>&1 & echo $! >/tmp/gaal-svn.pid")
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		probe := suite.Exec(t, nil, "", "sh", "-c",
+			"svn info "+base+"/ >/dev/null 2>&1 || nc -z 127.0.0.1 "+svnServerPort)
+		if probe.ExitCode == 0 {
+			svnServerReady <- struct{}{}
+			return base
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	t.Fatalf("svnserve did not become ready on %s", base)
+	return ""
 }
 
-// TestVCS_BzrBackend_Skipped: same reason as svn, plus alpine 3.20 no
-// longer ships a Bazaar-compatible package by default. Tracked under #143.
+// initSvnRepo creates a bare svn repo under svnServerRoot/<name>, allows
+// anonymous reads via svnserve.conf, bootstraps it with one commit
+// (README.md) using a file:// URL on disk (gaal never sees the file:// URL
+// — only the test harness does, to bypass the daemon for the bootstrap).
+// Returns the daemon URL (svn://127.0.0.1:3690/<name>) for gaal to clone.
+func initSvnRepo(t *testing.T, env *testEnv, name string) string {
+	t.Helper()
+	ensureSvnServer(t)
+	repo := path.Join(svnServerRoot, name)
+	suite.MustExec(t, nil, "", "svnadmin", "create", repo)
+	// Allow anonymous reads.
+	suite.MustExec(t, nil, "", "sh", "-c",
+		"printf '[general]\\nanon-access = read\\nauth-access = read\\n' > "+
+			path.Join(repo, "conf/svnserve.conf"))
+
+	// Bootstrap via file:// URL — local-only, never reaches gaal config.
+	work := path.Join(env.home, "svn-bootstrap-"+name)
+	suite.MustExec(t, nil, "", "mkdir", "-p", work)
+	env.c.WriteFile(t, path.Join(work, "README.md"), "# initial svn\n")
+	suite.MustExec(t, nil, "", "svn", "import", "-m", "init",
+		work, "file://"+repo)
+	return "svn://127.0.0.1:" + svnServerPort + "/" + name
+}
+
+func TestVCS_SvnBackend_CloneAndCheckout(t *testing.T) {
+	if !haveBinary(t, "svn") || !haveBinary(t, "svnserve") {
+		t.Skip("subversion + svnserve not available in fixture image")
+	}
+	env := newTestEnv(t)
+	url := initSvnRepo(t, env, sanitizeName(t.Name()))
+
+	cfg := newConfig().
+		AddRepository("src/mysvn", "svn", url, "").
+		String()
+	cfgPath := env.writeProjectConfig(t, cfg)
+	env.mustGaal(t, cfgPath, "sync")
+
+	dst := path.Join(env.workdir, "src", "mysvn", "README.md")
+	if !env.c.FileExists(t, dst) {
+		t.Fatalf("expected svn-checked-out README at %s", dst)
+	}
+	if got := env.c.ReadFile(t, dst); got != "# initial svn\n" {
+		t.Errorf("svn README mismatch: got %q", got)
+	}
+}
+
+// ── bzr — intentionally not installed ──────────────────────────────────────
+
+// TestVCS_BzrBackend_Skipped documents why bzr coverage is not in the
+// fixture image. Breezy (the modern Bazaar fork) needs gcc + musl-dev +
+// python3-dev + a Rust toolchain to build from source — alpine 3.20 has
+// no pre-built wheel. That would balloon the image by ~200 MB to cover a
+// backend with effectively no real-world adoption.
+//
+// The urlx allowlist already permits bzr:// to loopback (see scheme.go) so
+// when this test is enabled (different base image, prebuilt breezy wheel,
+// or the alpine package returning) the only change needed is dropping
+// this skip and adding initBzrRepo + ensureBzrServer (analogous to the
+// svn helpers in this file).
 func TestVCS_BzrBackend_Skipped(t *testing.T) {
-	t.Skip("bzr requires file:// (PR #117) and is not in alpine 3.20 — see #143 follow-up")
+	t.Skip("bzr/Breezy is not in the fixture image (would need gcc + Rust toolchain) — see #143")
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────

@@ -2,10 +2,17 @@
 #
 # Builds a small Alpine image carrying the prerequisites the e2e suite
 # exercises:
-#   - git, mercurial, python3                 — VCS backends + HTTP fileserver
+#   - git, mercurial, subversion, python3     — VCS backends + HTTP fileserver
 #   - ca-certificates                         — TLS for skill cloning
 #   - bash, coreutils                         — predictable shell semantics
 #   - node + npm                              — agent CLIs (claude-code, codex)
+#
+# Breezy (the modern Bazaar fork) is intentionally NOT installed: pip
+# install needs gcc + musl-dev + python3-dev + a Rust toolchain (the
+# C extensions can be skipped but Rust ones cannot), which would balloon
+# the image by ~200 MB to cover a backend with effectively no real-world
+# adoption. TestVCS_BzrBackend stays documented-as-skipped — see the
+# t.Skip body in test/e2e/vcs_other_test.go.
 #
 # Two stages:
 #
@@ -34,7 +41,9 @@ RUN apk add --no-cache \
         mercurial \
         nodejs \
         npm \
-        python3
+        py3-pip \
+        python3 \
+        subversion
 
 # Optional: install the agent CLIs that the heavy CLI-verification layer
 # uses. Skipped by default so layer-1 builds stay fast.

@@ -50,12 +50,17 @@ func ValidateRemoteFetchURL(rawurl string) error {
 //   - https://... (any host)
 //   - ssh://... (any host)
 //   - git://... (any host; deprecated transport but still in use)
-//   - http://... only for loopback hosts (CI fixtures)
+//   - http://, svn://, bzr:// only for loopback hosts (CI fixtures)
 //   - SCP-style git URLs (user@host:path) — common for git remotes
 //   - empty scheme — treated as a local filesystem path (containment is the
 //     responsibility of the caller; see issue #118)
 //
 // Rejected: file://, gopher://, ftp://, dict://, anything else.
+//
+// svn:// and bzr:// (the daemon protocols of those backends) are gated to
+// loopback only — same threat model as http://. Public-network svn / bzr
+// access has not been requested in any real config; if it ever is, the
+// gate can be widened with explicit security review.
 func ValidateRepoURL(rawurl string) error {
 	if rawurl == "" {
 		return fmt.Errorf("empty url")
@@ -70,16 +75,16 @@ func ValidateRepoURL(rawurl string) error {
 	switch strings.ToLower(u.Scheme) {
 	case "https", "ssh", "git":
 		return nil
-	case "http":
+	case "http", "svn", "bzr":
 		if isLoopbackHost(u.Host) {
 			return nil
 		}
-		return fmt.Errorf("scheme http:// is only allowed for loopback hosts (got host %q)", u.Host)
+		return fmt.Errorf("scheme %s:// is only allowed for loopback hosts (got host %q)", u.Scheme, u.Host)
 	case "":
 		// Treated as a local path; #118 enforces workspace containment.
 		return nil
 	default:
-		return fmt.Errorf("scheme %q is not allowed (allowed: https, ssh, git, http+loopback)", u.Scheme)
+		return fmt.Errorf("scheme %q is not allowed (allowed: https, ssh, git, http+loopback, svn+loopback, bzr+loopback)", u.Scheme)
 	}
 }
 
