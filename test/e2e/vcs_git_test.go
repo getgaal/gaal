@@ -38,19 +38,20 @@ func initBareGitRepo(t *testing.T, env *testEnv, root, name string) string {
 	bare := path.Join(root, name+".git")
 	work := path.Join(root, name+"-work")
 
-	env.c.MustExec(t, nil, "", "git", "init", "--bare", bare)
-	env.c.MustExec(t, nil, "", "git", "init", work)
+	// `git -c init.defaultBranch=main` per call sets the initial branch
+	// without ever touching the host's global git config (AGENTS.md
+	// forbids global mutations) and silences the "Using 'master'" hint
+	// that would otherwise pollute verbose / failure logs.
+	env.c.MustExec(t, nil, "", "git", "-c", "init.defaultBranch=main", "init", "--bare", bare)
+	env.c.MustExec(t, nil, "", "git", "-c", "init.defaultBranch=main", "init", work)
 	env.c.WriteFile(t, path.Join(work, "README.md"), "# initial\n")
 	env.c.MustExec(t, gitConfigEnv, work, "git", "add", "README.md")
 	env.c.MustExec(t, gitConfigEnv, work, "git", "commit", "-m", "initial")
-	// Default branch name varies across git versions — force "main".
-	env.c.MustExec(t, gitConfigEnv, work, "git", "branch", "-M", "main")
 	env.c.MustExec(t, gitConfigEnv, work, "git", "remote", "add", "origin", bare)
 	env.c.MustExec(t, gitConfigEnv, work, "git", "push", "-u", "origin", "main")
 	// Re-point HEAD on the bare repo so go-git's PlainClone resolves the
-	// default branch. `git init --bare` defaults HEAD to whatever
-	// init.defaultBranch is (often "master") which leaves it unborn after
-	// pushing "main"; clone then fails with "reference not found".
+	// default branch. Even with init.defaultBranch=main on `git init --bare`,
+	// the bare's HEAD is unborn until the first push lands.
 	env.c.MustExec(t, nil, "", "git", "--git-dir", bare,
 		"symbolic-ref", "HEAD", "refs/heads/main")
 	return bare

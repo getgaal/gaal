@@ -358,9 +358,18 @@ func (e *testEnv) gaalEnv() Env {
 // The first argv element is typically "sync"/"status"/"prune"; the test
 // supplies a config path via -c. The --no-banner flag suppresses the
 // ASCII art so test output stays grep-friendly.
+//
+// When GAAL_E2E_VERBOSE=1, --verbose is also injected so gaal's own
+// slog DEBUG lines stream out (the harness's docker-exec MultiWriter
+// only carries them through if gaal actually emits them — default mode
+// is summary-first by design, so without --verbose there is nothing
+// meaningful to watch). See issue #183.
 func (e *testEnv) gaal(t *testing.T, configPath string, argv ...string) ExecResult {
 	t.Helper()
 	full := []string{"gaal", "--no-banner"}
+	if verboseExec() {
+		full = append(full, "--verbose")
+	}
 	if configPath != "" {
 		full = append(full, "-c", configPath)
 	}
