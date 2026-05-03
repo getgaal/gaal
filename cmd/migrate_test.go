@@ -14,20 +14,17 @@ func resetMigrateFlags(t *testing.T) {
 	origCfg := cfgFile
 	origTarget := migrateTarget
 	origDryRun := migrateDryRun
-	origYes := migrateYes
 	origOpts := engineOpts
 	origResolved := resolvedCfg
 	t.Cleanup(func() {
 		cfgFile = origCfg
 		migrateTarget = origTarget
 		migrateDryRun = origDryRun
-		migrateYes = origYes
 		engineOpts = origOpts
 		resolvedCfg = origResolved
 	})
 	migrateTarget = ""
 	migrateDryRun = false
-	migrateYes = false
 }
 
 func writeMinimalConfig(t *testing.T, dir string) string {

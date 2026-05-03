@@ -12,7 +12,6 @@ import (
 var (
 	migrateTarget string
 	migrateDryRun bool
-	migrateYes    bool
 )
 
 var migrateCmd = &cobra.Command{
@@ -30,8 +29,7 @@ when migration becomes available.
 
 Examples:
   gaal migrate --to community https://community.example.com
-  gaal migrate --to community https://community.example.com --dry-run
-  gaal migrate --to community https://community.example.com --yes`,
+  gaal migrate --to community https://community.example.com --dry-run`,
 	SilenceUsage: true,
 	Args:         cobra.MaximumNArgs(1),
 	RunE:         runMigrate,
@@ -40,7 +38,6 @@ Examples:
 func init() {
 	migrateCmd.Flags().StringVar(&migrateTarget, "to", "", `migration target (currently only "community" is supported)`)
 	migrateCmd.Flags().BoolVar(&migrateDryRun, "dry-run", false, "validate everything but do not perform the migration")
-	migrateCmd.Flags().BoolVar(&migrateYes, "yes", false, "skip interactive confirmation")
 	rootCmd.AddCommand(migrateCmd)
 }
 
