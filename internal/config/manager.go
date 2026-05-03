@@ -1,8 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -155,8 +157,14 @@ func loadOne(path string, enforceContainment bool) (*Config, error) {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
 
+	// KnownFields(true) makes the parser reject unknown top-level (and
+	// any nested) keys instead of silently dropping them. Without this,
+	// `skils:` (typo of `skills:`) would parse as an empty config and
+	// `gaal sync` would report "nothing to do" with no signal to the user.
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil && err != io.EOF {
 		return nil, fmt.Errorf("parsing YAML: %w", err)
 	}
 
