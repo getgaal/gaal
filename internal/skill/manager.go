@@ -15,6 +15,7 @@ import (
 	"gaal/internal/config"
 	"gaal/internal/core/vcs"
 	"gaal/internal/discover"
+	"gaal/internal/urlx"
 )
 
 // buildDiscoveryDirs returns the deduplicated list of subdirectories to scan
@@ -247,9 +248,10 @@ func (m *Manager) resolveSource(ctx context.Context, source string) (string, err
 	}
 
 	if !backend.IsCloned(localPath) {
-		slog.Debug("cloning skill source", "url", cloneURL, "path", localPath)
+		safeURL := urlx.Redact(cloneURL)
+		slog.Debug("cloning skill source", "url", safeURL, "path", localPath)
 		if err := backend.Clone(ctx, cloneURL, localPath, ""); err != nil {
-			return "", fmt.Errorf("cloning %s: %w", cloneURL, err)
+			return "", fmt.Errorf("cloning %s: %w", safeURL, err)
 		}
 	} else {
 		slog.Debug("updating skill source", "path", localPath)

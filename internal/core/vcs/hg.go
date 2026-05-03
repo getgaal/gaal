@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"gaal/internal/runner"
+	"gaal/internal/urlx"
 )
 
 // VcsMercurial implements VCS for Mercurial repositories.
@@ -22,7 +23,7 @@ func (m *VcsMercurial) Clone(ctx context.Context, url, path, version string) err
 		return fmt.Errorf("creating parent directory: %w", err)
 	}
 
-	slog.DebugContext(ctx, "cloning", "url", url, "path", shortPath(path), "version", version)
+	slog.DebugContext(ctx, "cloning", "url", urlx.Redact(url), "path", shortPath(path), "version", version)
 
 	args := []string{"clone"}
 	if version != "" {
