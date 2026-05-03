@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,6 +54,41 @@ func isGitHubShorthand(s string) bool {
 		return false
 	}
 	return len(strings.Split(s, "/")) == 2
+}
+
+// validateRepositoryContainment rejects repository keys that escape the
+// workspace root via an absolute path, "..", or "~/" prefix. This prevents a
+// shared / public gaal.yaml from clobbering arbitrary user-writable paths
+// (e.g. ~/.ssh) on first sync. Only applied to project-scope configs
+// (LoadStrict); global/user configs legitimately use absolute paths.
+//
+// Set GAAL_ALLOW_ABSOLUTE_PATHS=1 to bypass when needed.
+func (c *Config) validateRepositoryContainment() error {
+	if os.Getenv("GAAL_ALLOW_ABSOLUTE_PATHS") == "1" {
+		return nil
+	}
+	for key := range c.Repositories {
+		if err := checkRepoPathContained(key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkRepoPathContained rejects keys that look like an attempt to escape the
+// workspace dir. Returns nil on safe keys.
+func checkRepoPathContained(key string) error {
+	if filepath.IsAbs(key) || strings.HasPrefix(key, "/") {
+		return fmt.Errorf("repository path %q is absolute; refusing to clone outside the workspace (set GAAL_ALLOW_ABSOLUTE_PATHS=1 to bypass)", key)
+	}
+	if strings.HasPrefix(key, "~/") || strings.HasPrefix(key, `~\`) {
+		return fmt.Errorf("repository path %q starts with ~ (home directory); refusing to clone outside the workspace (set GAAL_ALLOW_ABSOLUTE_PATHS=1 to bypass)", key)
+	}
+	cleaned := filepath.ToSlash(filepath.Clean(key))
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return fmt.Errorf("repository path %q escapes the workspace via '..'; refusing (set GAAL_ALLOW_ABSOLUTE_PATHS=1 to bypass)", key)
+	}
+	return nil
 }
 
 // expandPaths expands ~ and relative paths in c, while leaving remote URLs and

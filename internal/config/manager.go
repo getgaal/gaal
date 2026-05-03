@@ -133,8 +133,23 @@ func UserConfigFilePath() string {
 // Load reads and validates a single gaal configuration file.
 // Duplicate skill sources and MCP names within the file are silently
 // deduplicated, keeping the first occurrence.
+//
+// Repository keys are NOT containment-checked here; callers loading a
+// project-scope config should use LoadStrict instead so that a shared YAML
+// cannot clone over arbitrary user-writable paths (~/.ssh, etc.).
 func Load(path string) (*Config, error) {
-	slog.Debug("loading config file", "path", path)
+	return loadOne(path, false)
+}
+
+// LoadStrict is like Load but additionally enforces that every repository
+// path is contained under the config file's directory (i.e. the workspace
+// root). Used for project-scope configs in LoadChain.
+func LoadStrict(path string) (*Config, error) {
+	return loadOne(path, true)
+}
+
+func loadOne(path string, enforceContainment bool) (*Config, error) {
+	slog.Debug("loading config file", "path", path, "enforceContainment", enforceContainment)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
@@ -151,6 +166,12 @@ func Load(path string) (*Config, error) {
 
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	if enforceContainment {
+		if err := cfg.validateRepositoryContainment(); err != nil {
+			return nil, fmt.Errorf("invalid config %s: %w", path, err)
+		}
 	}
 
 	cfg.expandPaths(filepath.Dir(path))
@@ -186,7 +207,15 @@ func LoadChain(workspacePath string) (*ResolvedConfig, error) {
 	loaded := 0
 
 	for _, c := range candidates {
-		cfg, err := Load(c.path)
+		var (
+			cfg *Config
+			err error
+		)
+		if c.scope == ScopeWorkspace {
+			cfg, err = LoadStrict(c.path)
+		} else {
+			cfg, err = Load(c.path)
+		}
 		if errors.Is(err, os.ErrNotExist) {
 			slog.Debug("config file not found, skipping", "path", c.path)
 			continue
