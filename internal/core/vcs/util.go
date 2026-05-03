@@ -33,3 +33,22 @@ func shortPath(p string) string {
 	}
 	return strings.Join(parts[len(parts)-2:], "/")
 }
+
+// validateVCSOperand rejects user-controlled subprocess operands (URL, version
+// pin) that begin with "-", which would be parsed as a CLI flag by hg/svn/bzr.
+// Combined with the "--" end-of-options separator on the argv, this defends
+// against flag-injection attacks like:
+//
+//	version: "--config=hooks.preupdate=touch /tmp/pwned"   (hg)
+//	version: "--config-dir=/tmp/evil"                       (svn)
+//
+// kind is used for the error message ("url", "version", etc).
+func validateVCSOperand(kind, value string) error {
+	if value == "" {
+		return nil
+	}
+	if strings.HasPrefix(value, "-") {
+		return fmt.Errorf("%s %q must not start with '-' (would be parsed as a flag)", kind, value)
+	}
+	return nil
+}

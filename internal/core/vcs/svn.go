@@ -19,6 +19,12 @@ func (s *VcsSVN) Clone(ctx context.Context, url, path, version string) error {
 	if err := requireBinary("svn"); err != nil {
 		return err
 	}
+	if err := validateVCSOperand("url", url); err != nil {
+		return err
+	}
+	if err := validateVCSOperand("version", version); err != nil {
+		return err
+	}
 	if err := urlx.ValidateRepoURL(url); err != nil {
 		return err
 	}
@@ -32,13 +38,16 @@ func (s *VcsSVN) Clone(ctx context.Context, url, path, version string) error {
 	if version != "" {
 		args = append(args, "-r", version)
 	}
-	args = append(args, url, path)
+	args = append(args, "--", url, path)
 
 	return runner.Run(ctx, "checkout "+shortPath(path), "", "svn", args...)
 }
 
 func (s *VcsSVN) Update(ctx context.Context, path, version string) error {
 	if err := requireBinary("svn"); err != nil {
+		return err
+	}
+	if err := validateVCSOperand("version", version); err != nil {
 		return err
 	}
 	slog.DebugContext(ctx, "updating", "path", shortPath(path), "version", version)
