@@ -1044,3 +1044,48 @@ func TestManager_Sync_AggregatesErrorsAcrossSources(t *testing.T) {
 		t.Errorf("aggregated error must reference source B (proves loop continued past A); got: %v", err)
 	}
 }
+
+// TestInstallSkill_DoesNotDereferenceSymlink is the regression for #113:
+// a malicious skill source containing a symlink pointing at /etc/passwd
+// previously had copyFile read the link target and write its contents into
+// the install dir under the gaal-managed name. The new behavior skips
+// symlinks (and other non-regular entries) with a warn.
+func TestInstallSkill_DoesNotDereferenceSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on Windows")
+	}
+	src := t.TempDir()
+	// A regular file that should be installed normally.
+	if err := os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("# ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A "secret" target outside src that the malicious symlink would expose.
+	secretDir := t.TempDir()
+	secretPath := filepath.Join(secretDir, "secret.txt")
+	if err := os.WriteFile(secretPath, []byte("PRIVATE-DATA"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The malicious symlink inside src.
+	if err := os.Symlink(secretPath, filepath.Join(src, "leak.txt")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	dst := filepath.Join(t.TempDir(), "installed")
+	if err := installSkill(src, dst); err != nil {
+		t.Fatalf("installSkill: %v", err)
+	}
+
+	// SKILL.md must be installed.
+	if _, err := os.Stat(filepath.Join(dst, "SKILL.md")); err != nil {
+		t.Errorf("expected SKILL.md in dst: %v", err)
+	}
+	// leak.txt must NOT exist in dst (neither as a copy of secret content nor
+	// as a recreated symlink).
+	leakDst := filepath.Join(dst, "leak.txt")
+	if data, err := os.ReadFile(leakDst); err == nil {
+		t.Errorf("symlink leak: dst contains leak.txt with content %q (should not exist)", data)
+	}
+	if _, err := os.Lstat(leakDst); err == nil {
+		t.Errorf("symlink leak: dst contains leak.txt entry (should not exist)")
+	}
+}
