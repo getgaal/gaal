@@ -72,6 +72,11 @@ type ConfigMcp struct {
 	//   true            -> global_mcp_config_file   (user-global)
 	Global bool           `yaml:"global,omitempty" json:"global,omitempty"  jsonschema:"description=When true the MCP is configured in the agent's global config file instead of the project-scoped one"`
 	Merge  *bool          `yaml:"merge,omitempty"  json:"merge,omitempty"   jsonschema:"description=Merge server entry into existing file rather than overwriting it (default: true when omitted)"`
+	// Prune opts this entry's target file in for `gaal sync --prune`.
+	// Default false — without this gate, --prune was destructive even
+	// against agent config files holding entries the user added by hand
+	// outside of gaal. See #142.
+	Prune  bool           `yaml:"prune,omitempty"  json:"prune,omitempty"   jsonschema:"description=Allow gaal sync --prune to remove orphan entries from this MCP target file (default: false)"`
 	Inline *ConfigMcpItem `yaml:"inline,omitempty" json:"inline,omitempty"  jsonschema:"description=Inline server definition (mutually exclusive with source)"                          validate:"omitempty"`
 }
 

@@ -718,9 +718,11 @@ func TestMCPPrune_RemovesOrphanEntry(t *testing.T) {
 	initial := `{"mcpServers":{"kept":{"command":"node"},"orphan":{"command":"python"}}}`
 	os.WriteFile(target, []byte(initial), 0o644)
 
-	// Config only declares "kept".
+	// Config only declares "kept" — and opts the target in to pruning
+	// per #142 (without prune: true on at least one entry, the target
+	// is not eligible for orphan removal even when --prune is passed).
 	cfg := []config.ConfigMcp{
-		{Name: "kept", Target: target, Inline: &config.ConfigMcpItem{Command: "node"}},
+		{Name: "kept", Target: target, Prune: true, Inline: &config.ConfigMcpItem{Command: "node"}},
 	}
 	m := NewManager(cfg, "", "")
 	if err := m.Prune(context.Background()); err != nil {
