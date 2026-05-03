@@ -1,12 +1,13 @@
 package discover
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"gaal/internal/core/agent"
 	"gaal/internal/core/vcs"
@@ -162,39 +163,52 @@ func skillName(dir string) string {
 // parseSkillFrontmatter reads the "name" and "description" fields from the
 // YAML frontmatter block (--- … ---) of a SKILL.md file.
 // Returns empty strings on any error; the caller must use a sensible fallback.
+//
+// Uses yaml.v3 on the frontmatter slice (#133). Tolerates CRLF, quoted
+// values, and values containing ":" — all of which the previous
+// strings.Cut(":") implementation silently mangled.
 func parseSkillFrontmatter(path string) (name, desc string, err error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", "", err
 	}
-	defer f.Close()
+	fm := extractDiscoverFrontmatter(data)
+	if len(fm) == 0 {
+		return "", "", nil
+	}
+	var meta struct {
+		Name        string `yaml:"name"`
+		Description string `yaml:"description"`
+	}
+	if err := yaml.Unmarshal(fm, &meta); err != nil {
+		// Bad frontmatter degrades to empty — caller falls back to dir name.
+		return "", "", nil
+	}
+	return meta.Name, meta.Description, nil
+}
 
-	sc := bufio.NewScanner(f)
-	inFrontmatter := false
-	for sc.Scan() {
-		line := sc.Text()
-		if line == "---" {
-			if !inFrontmatter {
-				inFrontmatter = true
+// extractDiscoverFrontmatter mirrors skill.extractFrontmatter (kept here
+// to avoid an import cycle: discover is imported by skill, not vice
+// versa).
+func extractDiscoverFrontmatter(data []byte) []byte {
+	lines := bytes.Split(data, []byte("\n"))
+	in := false
+	var fm bytes.Buffer
+	for _, raw := range lines {
+		line := bytes.TrimRight(raw, "\r")
+		if string(line) == "---" {
+			if !in {
+				in = true
 				continue
 			}
-			break
+			return fm.Bytes()
 		}
-		if !inFrontmatter {
-			continue
-		}
-		k, v, ok := strings.Cut(line, ":")
-		if !ok {
-			continue
-		}
-		switch strings.TrimSpace(k) {
-		case "name":
-			name = strings.TrimSpace(v)
-		case "description":
-			desc = strings.TrimSpace(v)
+		if in {
+			fm.Write(line)
+			fm.WriteByte('\n')
 		}
 	}
-	return name, desc, sc.Err()
+	return nil
 }
 
 // walkSkillDirs recursively finds directories named "skills" under root.

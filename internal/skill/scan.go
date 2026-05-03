@@ -1,11 +1,12 @@
 package skill
 
 import (
-	"bufio"
+	"bytes"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Meta holds the discovered metadata of a single skill (a directory that
@@ -19,49 +20,64 @@ type Meta struct {
 	Path string
 }
 
-// ParseSkillMeta reads the YAML frontmatter block (--- ... ---) from the given
-// SKILL.md file and returns the name and description fields.
-// If name is not present in the frontmatter the directory name is used instead.
+// ParseSkillMeta reads the YAML frontmatter block (--- ... ---) from the
+// given SKILL.md file and returns the name and description fields.
+// If name is missing from the frontmatter, the directory name is used.
+//
+// Uses yaml.v3 on the frontmatter slice instead of strings.Cut(":") so
+// values containing ":" (e.g. `description: foo: bar`), quoted values
+// (`name: "my:skill"`), and Windows CRLF line endings all parse
+// correctly. #133.
 func ParseSkillMeta(filePath string) (name, desc string, err error) {
 	slog.Debug("parsing skill meta", "file", filePath)
-	f, err := os.Open(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", "", err
 	}
-	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
-	inFrontmatter := false
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "---" {
-			if !inFrontmatter {
-				inFrontmatter = true
-				continue
-			}
-			break
-		}
-		if !inFrontmatter {
-			continue
-		}
-		if k, v, ok := strings.Cut(line, ":"); ok {
-			switch strings.TrimSpace(k) {
-			case "name":
-				name = strings.TrimSpace(v)
-			case "description":
-				desc = strings.TrimSpace(v)
-			}
+	fm := extractFrontmatter(data)
+	var meta struct {
+		Name        string `yaml:"name"`
+		Description string `yaml:"description"`
+	}
+	if len(fm) > 0 {
+		if err := yaml.Unmarshal(fm, &meta); err != nil {
+			// Bad frontmatter is degraded to "no metadata" — the caller
+			// gets the dir-name fallback. Logged so the user knows.
+			slog.Warn("skill: invalid YAML frontmatter", "path", filePath, "err", err)
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return "", "", err
-	}
-
+	name = meta.Name
+	desc = meta.Description
 	if name == "" {
 		name = filepath.Base(filepath.Dir(filePath))
 	}
 	return name, desc, nil
+}
+
+// extractFrontmatter returns the bytes between the opening and closing
+// "---" markers, or nil when no frontmatter block is present. Tolerant
+// of CRLF line endings (\r is stripped before the marker comparison).
+func extractFrontmatter(data []byte) []byte {
+	lines := bytes.Split(data, []byte("\n"))
+	in := false
+	var fm bytes.Buffer
+	for _, raw := range lines {
+		line := bytes.TrimRight(raw, "\r")
+		if string(line) == "---" {
+			if !in {
+				in = true
+				continue
+			}
+			return fm.Bytes()
+		}
+		if in {
+			fm.Write(line)
+			fm.WriteByte('\n')
+		}
+	}
+	return nil
 }
 
 // ScanDir scans dir at exactly 1 level deep and returns metadata for every
