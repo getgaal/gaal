@@ -19,6 +19,9 @@ func (s *VcsSVN) Clone(ctx context.Context, url, path, version string) error {
 	if err := requireBinary("svn"); err != nil {
 		return err
 	}
+	if err := urlx.ValidateRepoURL(url); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("creating parent directory: %w", err)
 	}

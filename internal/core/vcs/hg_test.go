@@ -67,7 +67,7 @@ func TestVcsMercurial_Clone_FakeBin(t *testing.T) {
 	t.Setenv("PATH", binDir)
 	m := &VcsMercurial{}
 	dest := filepath.Join(t.TempDir(), "repo")
-	if err := m.Clone(context.Background(), "http://fake/repo", dest, ""); err != nil {
+	if err := m.Clone(context.Background(), "https://fake.example/repo", dest, ""); err != nil {
 		t.Fatalf("Clone with fake hg: %v", err)
 	}
 }
@@ -77,7 +77,7 @@ func TestVcsMercurial_Clone_FakeBin_WithVersion(t *testing.T) {
 	t.Setenv("PATH", binDir)
 	m := &VcsMercurial{}
 	dest := filepath.Join(t.TempDir(), "repo")
-	if err := m.Clone(context.Background(), "http://fake/repo", dest, "tip"); err != nil {
+	if err := m.Clone(context.Background(), "https://fake.example/repo", dest, "tip"); err != nil {
 		t.Fatalf("Clone with fake hg + version: %v", err)
 	}
 }

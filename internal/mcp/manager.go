@@ -217,6 +217,9 @@ func (m *Manager) writeMCPSnapshot(target string) {
 // If the remote file is a full mcpServers document the matching key is extracted;
 // otherwise the whole document is treated as a single server entry.
 func fetchRemoteEntry(ctx context.Context, rawURL, name string) (serverEntry, error) {
+	if err := urlx.ValidateRemoteFetchURL(rawURL); err != nil {
+		return serverEntry{}, err
+	}
 	safeURL := urlx.Redact(rawURL)
 	slog.DebugContext(ctx, "fetching remote mcp config", "url", safeURL, "name", name)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)

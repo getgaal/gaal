@@ -68,6 +68,9 @@ func (a *VcsArchive) HasChanges(_ context.Context, _ string) (bool, error) {
 
 // fetchURL performs a GET request and returns the response body.
 func fetchURL(ctx context.Context, rawURL string) (io.ReadCloser, error) {
+	if err := urlx.ValidateRemoteFetchURL(rawURL); err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)

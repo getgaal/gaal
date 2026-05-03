@@ -33,6 +33,9 @@ func (g *VcsGit) depth() int {
 }
 
 func (g *VcsGit) Clone(ctx context.Context, url, path, version string) error {
+	if err := urlx.ValidateRepoURL(url); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("creating parent directory: %w", err)
 	}

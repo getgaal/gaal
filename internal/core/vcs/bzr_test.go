@@ -67,7 +67,7 @@ func TestVcsBazaar_Clone_FakeBin(t *testing.T) {
 	t.Setenv("PATH", binDir)
 	b := &VcsBazaar{}
 	dest := filepath.Join(t.TempDir(), "repo")
-	if err := b.Clone(context.Background(), "http://fake/repo", dest, ""); err != nil {
+	if err := b.Clone(context.Background(), "https://fake.example/repo", dest, ""); err != nil {
 		t.Fatalf("Clone with fake bzr: %v", err)
 	}
 }
@@ -77,7 +77,7 @@ func TestVcsBazaar_Clone_FakeBin_WithVersion(t *testing.T) {
 	t.Setenv("PATH", binDir)
 	b := &VcsBazaar{}
 	dest := filepath.Join(t.TempDir(), "repo")
-	if err := b.Clone(context.Background(), "http://fake/repo", dest, "1"); err != nil {
+	if err := b.Clone(context.Background(), "https://fake.example/repo", dest, "1"); err != nil {
 		t.Fatalf("Clone with fake bzr + version: %v", err)
 	}
 }

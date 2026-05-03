@@ -67,7 +67,7 @@ func TestVcsSVN_Clone_FakeBin(t *testing.T) {
 	t.Setenv("PATH", binDir)
 	s := &VcsSVN{}
 	dest := filepath.Join(t.TempDir(), "repo")
-	if err := s.Clone(context.Background(), "http://fake/repo", dest, ""); err != nil {
+	if err := s.Clone(context.Background(), "https://fake.example/repo", dest, ""); err != nil {
 		t.Fatalf("Clone with fake svn: %v", err)
 	}
 }
@@ -77,7 +77,7 @@ func TestVcsSVN_Clone_FakeBin_WithVersion(t *testing.T) {
 	t.Setenv("PATH", binDir)
 	s := &VcsSVN{}
 	dest := filepath.Join(t.TempDir(), "repo")
-	if err := s.Clone(context.Background(), "http://fake/repo", dest, "HEAD"); err != nil {
+	if err := s.Clone(context.Background(), "https://fake.example/repo", dest, "HEAD"); err != nil {
 		t.Fatalf("Clone with fake svn + version: %v", err)
 	}
 }
