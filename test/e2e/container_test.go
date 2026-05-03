@@ -137,6 +137,39 @@ func (c *TestContainer) MustExec(t *testing.T, env Env, workdir string, argv ...
 	return res
 }
 
+// ExecTTY runs argv inside the container with `docker exec -t`, allocating
+// a pseudo-TTY for the in-container process so isatty(stdout) returns true.
+// pterm and similar TTY-detecting libraries will then emit ANSI escapes.
+//
+// Stdout and stderr are merged into the result's Stdout (the pty conflates
+// them — there is no separate stderr stream over a single pty fd). Used by
+// TTY rendering tests; non-TTY tests should keep using Exec.
+func (c *TestContainer) ExecTTY(t *testing.T, env Env, workdir string, argv ...string) ExecResult {
+	t.Helper()
+	full := []string{"exec", "-t"}
+	for _, e := range env.toSlice() {
+		full = append(full, "-e", e)
+	}
+	if workdir != "" {
+		full = append(full, "-w", workdir)
+	}
+	full = append(full, c.id)
+	full = append(full, argv...)
+
+	cmd := exec.Command("docker", full...)
+	out, err := cmd.CombinedOutput()
+	res := ExecResult{Stdout: string(out)}
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			res.ExitCode = ee.ExitCode()
+		} else {
+			res.ExitCode = -1
+			res.Stderr = err.Error()
+		}
+	}
+	return res
+}
+
 // WriteFile writes content into a file in the container, creating parent
 // directories as needed. Uses `sh -c` with stdin so the body never needs
 // shell-escaping.
