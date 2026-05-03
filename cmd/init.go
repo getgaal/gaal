@@ -110,6 +110,13 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	plan, err := selectPlan(candidates, scope, isTTY, initImportAll)
 	if err != nil {
+		// Wizard cancellation (Ctrl-C inside the multi-select) reaches
+		// here as a plain "init cancelled" error — convert to the same
+		// quiet exit-130 path used for the post-preview confirm prompt.
+		if err.Error() == "init cancelled" {
+			pterm.Warning.Println("init cancelled")
+			return &ExitCodeError{Code: 130}
+		}
 		return err
 	}
 
@@ -127,7 +134,9 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		}
 		if !confirmed {
 			pterm.Warning.Println("init cancelled")
-			return errors.New("init cancelled")
+			// User cancellation isn't an error — exit 130 (SIGINT
+			// convention) without the cobra "Error:" banner.
+			return &ExitCodeError{Code: 130}
 		}
 	}
 
