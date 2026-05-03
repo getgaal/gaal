@@ -27,8 +27,10 @@ RUN apk add --no-cache \
         ca-certificates \
         coreutils \
         git \
+        mercurial \
         nodejs \
-        npm
+        npm \
+        python3
 
 # Optional: install the agent CLIs that the heavy CLI-verification layer
 # uses. Skipped by default so layer-1 builds stay fast.

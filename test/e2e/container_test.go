@@ -175,13 +175,21 @@ func (c *TestContainer) ExecTTY(t *testing.T, env Env, workdir string, argv ...s
 // shell-escaping.
 func (c *TestContainer) WriteFile(t *testing.T, p string, content string) {
 	t.Helper()
+	c.WriteFileBytes(t, p, []byte(content))
+}
+
+// WriteFileBytes is the binary-safe variant of WriteFile. Use it when the
+// payload may contain null bytes or other content that would not survive a
+// string-typed path (e.g. tar/zip archives in #143's hermetic VCS tests).
+func (c *TestContainer) WriteFileBytes(t *testing.T, p string, content []byte) {
+	t.Helper()
 	parent := path.Dir(p)
 	if mk := c.Exec(t, nil, "", "mkdir", "-p", parent); mk.ExitCode != 0 {
 		t.Fatalf("mkdir -p %s: %s", parent, mk.Combined())
 	}
 	args := []string{"exec", "-i", c.id, "sh", "-c", "cat > " + shellQuote(p)}
 	cmd := exec.Command("docker", args...)
-	cmd.Stdin = strings.NewReader(content)
+	cmd.Stdin = bytes.NewReader(content)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
