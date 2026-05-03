@@ -26,8 +26,20 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
       - name: Run Layer 2 e2e suite
         run: make test-e2e-cli
+
+      - name: Upload Layer 2 test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-layer2-test-results
+          path: report/e2e-cli-tests.xml
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Capture e2e diagnostics on failure
         if: failure()

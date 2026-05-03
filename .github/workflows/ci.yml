@@ -253,10 +253,48 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # gotestsum drives the e2e run when available, producing
+      # report/e2e-tests.xml that the upload step ships as an artifact.
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@latest
+
       # ubuntu-latest ships with the Docker daemon and BuildKit enabled by
       # default — no extra setup step needed before `make test-e2e`.
       - name: Run e2e suite
         run: make test-e2e
+
+      - name: Post e2e test summary
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import xml.etree.ElementTree as ET, os, pathlib
+          p = pathlib.Path("report/e2e-tests.xml")
+          if not p.exists():
+              print("No e2e test report found.")
+          else:
+              tree = ET.parse(p)
+              root = tree.getroot()
+              suites = root.findall("testsuite") or ([root] if root.tag == "testsuite" else [])
+              tests = sum(int(s.get("tests", 0)) for s in suites)
+              failed = sum(int(s.get("failures", 0)) + int(s.get("errors", 0)) for s in suites)
+              skipped = sum(int(s.get("skipped", 0)) for s in suites)
+              passed = tests - failed - skipped
+              summary = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/stdout")
+              with open(summary, "a") as f:
+                  f.write("## E2E Test Results\n\n")
+                  f.write("| Suites | Tests | ✅ Passed | ❌ Failed | ⏭ Skipped |\n")
+                  f.write("|--------|-------|-----------|-----------|----------|\n")
+                  f.write(f"| {len(suites)} | {tests} | {passed} | {failed} | {skipped} |\n\n")
+          EOF
+
+      - name: Upload e2e test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-test-results
+          path: report/e2e-tests.xml
+          retention-days: 30
+          if-no-files-found: warn
 
       # On failure, capture the suite container's logs and any stray gaal
       # state under /tmp inside it. The harness uses `docker run --rm`

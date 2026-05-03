@@ -74,22 +74,39 @@ test-ci:
 ##   builds the test image with a matching --platform, runs the suite.
 ##   Requires Docker on the host. Set GAAL_E2E_REBUILD=1 to force a rebuild.
 ##   Override the target arch with: make test-e2e GOARCH=amd64
+##
+##   When gotestsum is on PATH (CI sets this up via test-ci's install step),
+##   a JUnit XML report is written to report/e2e-tests.xml. CI uploads it
+##   as the e2e-test-results artifact alongside the unit test report.
 test-e2e:
-	@mkdir -p test/e2e/fixtures
+	@mkdir -p test/e2e/fixtures report
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH) \
 		go build -trimpath -o test/e2e/fixtures/gaal .
-	GAAL_E2E_PLATFORM=linux/$(GOARCH) \
-		go test -tags e2e -count=1 -timeout 15m ./test/e2e/...
+	@if [ -x "$(GOBIN)/gotestsum" ]; then \
+		GAAL_E2E_PLATFORM=linux/$(GOARCH) \
+			$(GOBIN)/gotestsum --junitfile report/e2e-tests.xml --format github-actions \
+			-- -tags e2e -count=1 -timeout 15m ./test/e2e/...; \
+	else \
+		GAAL_E2E_PLATFORM=linux/$(GOARCH) \
+			go test -tags e2e -count=1 -timeout 15m ./test/e2e/...; \
+	fi
 
 ## test-e2e-cli: full e2e suite including the heavy CLI verification layer
 ##   Installs claude-code + codex into the image and exercises them
 ##   against the configs gaal wrote. Slower; meant for nightly / release CI.
+##   Writes report/e2e-cli-tests.xml when gotestsum is available.
 test-e2e-cli:
-	@mkdir -p test/e2e/fixtures
+	@mkdir -p test/e2e/fixtures report
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH) \
 		go build -trimpath -o test/e2e/fixtures/gaal .
-	GAAL_E2E_CLI=1 GAAL_E2E_PLATFORM=linux/$(GOARCH) \
-		go test -tags e2e -count=1 -timeout 30m ./test/e2e/...
+	@if [ -x "$(GOBIN)/gotestsum" ]; then \
+		GAAL_E2E_CLI=1 GAAL_E2E_PLATFORM=linux/$(GOARCH) \
+			$(GOBIN)/gotestsum --junitfile report/e2e-cli-tests.xml --format github-actions \
+			-- -tags e2e -count=1 -timeout 30m ./test/e2e/...; \
+	else \
+		GAAL_E2E_CLI=1 GAAL_E2E_PLATFORM=linux/$(GOARCH) \
+			go test -tags e2e -count=1 -timeout 30m ./test/e2e/...; \
+	fi
 
 ## coverage: run tests with coverage — generates all reports in report/
 ##   report/coverage.html          — standard go tool cover (default)
