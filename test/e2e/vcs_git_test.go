@@ -47,6 +47,12 @@ func initBareGitRepo(t *testing.T, env *testEnv, root, name string) string {
 	env.c.MustExec(t, gitConfigEnv, work, "git", "branch", "-M", "main")
 	env.c.MustExec(t, gitConfigEnv, work, "git", "remote", "add", "origin", bare)
 	env.c.MustExec(t, gitConfigEnv, work, "git", "push", "-u", "origin", "main")
+	// Re-point HEAD on the bare repo so go-git's PlainClone resolves the
+	// default branch. `git init --bare` defaults HEAD to whatever
+	// init.defaultBranch is (often "master") which leaves it unborn after
+	// pushing "main"; clone then fails with "reference not found".
+	env.c.MustExec(t, nil, "", "git", "--git-dir", bare,
+		"symbolic-ref", "HEAD", "refs/heads/main")
 	return bare
 }
 

@@ -75,9 +75,12 @@ func TestSmoke_AgentsInstalled(t *testing.T) {
 
 // TestSmoke_InfoAgent shows the detail view for a known agent. The command
 // is `gaal info <kind> [name]` per cmd/info.go; here we ask for an agent.
+// info requires a config (it is not annotated `optional`), so the test
+// writes an empty skeleton first.
 func TestSmoke_InfoAgent(t *testing.T) {
 	env := newTestEnv(t)
-	res := env.mustGaal(t, "", "info", "agent", "claude-code")
+	cfgPath := env.writeProjectConfig(t, newConfig().String())
+	res := env.mustGaal(t, cfgPath, "info", "agent", "claude-code")
 	if !strings.Contains(res.Stdout, "claude-code") {
 		t.Errorf("expected `gaal info agent claude-code` to mention the agent\n%s",
 			res.Combined())
