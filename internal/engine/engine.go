@@ -274,5 +274,8 @@ func (e *Engine) Migrate(target, url string, dryRun bool) (*ops.MigrateResult, e
 
 // Doctor runs sanity checks and returns a diagnostic report.
 func (e *Engine) Doctor(opts ops.DoctorOptions) *ops.DoctorReport {
+	if opts.WorkDir == "" {
+		opts.WorkDir = e.workDir
+	}
 	return ops.RunDoctor(e.cfg, opts)
 }

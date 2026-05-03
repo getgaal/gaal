@@ -55,20 +55,30 @@ type DoctorReport struct {
 type DoctorOptions struct {
 	Offline bool
 	Levels  config.LevelConfigs // individual config levels before merging
+	// WorkDir is the workspace root used for project-scope agent detection.
+	// Required so --sandbox redirection is honored — caller must pass
+	// engine.Engine.workDir; falling back to os.Getwd() would leak the
+	// real shell cwd through the sandbox.
+	WorkDir string
 }
 
 // RunDoctor executes all sanity checks against the given config and returns
 // a structured report. Exit code: 0 = clean, 1 = warnings only, 2 = any errors.
 func RunDoctor(cfg *config.Config, opts DoctorOptions) *DoctorReport {
-	slog.Debug("running doctor checks", "offline", opts.Offline)
+	slog.Debug("running doctor checks", "offline", opts.Offline, "workDir", opts.WorkDir)
+
+	if opts.WorkDir == "" {
+		// Defensive default for direct callers (tests). Engine always sets it.
+		opts.WorkDir, _ = os.Getwd()
+	}
 
 	var findings []Finding
 	findings = append(findings, checkSchema(opts.Levels, cfg.Schema)...)
 	findings = append(findings, checkTelemetry(cfg)...)
-	findings = append(findings, checkSkillSources(cfg, opts.Offline)...)
+	findings = append(findings, checkSkillSources(cfg, opts.Offline, opts.WorkDir)...)
 	findings = append(findings, checkMCPTargets(cfg)...)
 	findings = append(findings, checkTools(cfg)...)
-	findings = append(findings, checkAgents()...)
+	findings = append(findings, checkAgents(opts.WorkDir)...)
 
 	exitCode := 0
 	for _, f := range findings {
@@ -169,7 +179,7 @@ func checkTelemetry(cfg *config.Config) []Finding {
 }
 
 // checkSkillSources validates each configured skill source.
-func checkSkillSources(cfg *config.Config, offline bool) []Finding {
+func checkSkillSources(cfg *config.Config, offline bool, workDir string) []Finding {
 	var findings []Finding
 
 	// Check for duplicate sources.
@@ -190,7 +200,7 @@ func checkSkillSources(cfg *config.Config, offline bool) []Finding {
 	for _, sk := range cfg.Skills {
 		// Warn on agents:["*"] with zero detected agents.
 		if len(sk.Agents) == 1 && sk.Agents[0] == "*" {
-			if countInstalledAgents() == 0 {
+			if countInstalledAgents(workDir) == 0 {
 				findings = append(findings, Finding{
 					Section:  "skills",
 					Severity: SeverityWarning,
@@ -281,8 +291,8 @@ func checkMCPTargets(cfg *config.Config) []Finding {
 }
 
 // checkAgents counts installed agents and reports as info.
-func checkAgents() []Finding {
-	count := countInstalledAgents()
+func checkAgents(workDir string) []Finding {
+	count := countInstalledAgents(workDir)
 	return []Finding{
 		{Section: "agents", Severity: SeverityInfo, Message: fmt.Sprintf("%d agent(s) detected", count)},
 	}
@@ -346,15 +356,16 @@ func checkRemoteReachable(url string) error {
 }
 
 // countInstalledAgents returns the number of agents currently installed on this
-// machine, using agent.Names() and skill.IsAgentInstalled().
-func countInstalledAgents() int {
+// machine, using agent.Names() and skill.IsAgentInstalled(). workDir is the
+// workspace root used for project-scope detection (must be the engine's
+// configured WorkDir so --sandbox redirection is honored).
+func countInstalledAgents(workDir string) int {
 	home, _ := os.UserHomeDir()
-	wd, _ := os.Getwd()
 
 	count := 0
 	for _, name := range agent.Names() {
-		if skill.IsAgentInstalled(name, true, home, wd) ||
-			skill.IsAgentInstalled(name, false, home, wd) {
+		if skill.IsAgentInstalled(name, true, home, workDir) ||
+			skill.IsAgentInstalled(name, false, home, workDir) {
 			count++
 		}
 	}

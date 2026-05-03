@@ -551,3 +551,35 @@ func TestDoctorTools_PerSkillAttribution(t *testing.T) {
 		t.Errorf("message lacks skill attribution: %q", got[0].Message)
 	}
 }
+
+// TestCountInstalledAgents_HonorsWorkDir asserts that countInstalledAgents
+// uses the workDir argument and not os.Getwd, so --sandbox redirection is
+// effective. Regression for #119: the old implementation called os.Getwd
+// internally, leaking the real shell cwd through a sandboxed doctor run.
+func TestCountInstalledAgents_HonorsWorkDir(t *testing.T) {
+	// Isolate HOME so global-installed agents don't pollute the count.
+	isolatedHome := t.TempDir()
+	t.Setenv("HOME", isolatedHome)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(isolatedHome, ".config"))
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", isolatedHome)
+		t.Setenv("APPDATA", filepath.Join(isolatedHome, "AppData"))
+		t.Setenv("LOCALAPPDATA", filepath.Join(isolatedHome, "AppData", "Local"))
+	}
+
+	emptyWork := t.TempDir()
+	emptyCount := countInstalledAgents(emptyWork)
+
+	populatedWork := t.TempDir()
+	// Create the parent dir of claude-code's project skill dir
+	// (.claude/skills → check is for .claude existing).
+	if err := os.MkdirAll(filepath.Join(populatedWork, ".claude"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	populatedCount := countInstalledAgents(populatedWork)
+
+	if populatedCount <= emptyCount {
+		t.Errorf("workDir with .claude/ should detect more agents than empty workDir; got empty=%d populated=%d (workDir not honored?)",
+			emptyCount, populatedCount)
+	}
+}
