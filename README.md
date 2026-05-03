@@ -401,11 +401,42 @@ validates your YAML and prints what would be migrated. Subscribe at
 
 ```bash
 make build     # compile to dist/gaal
-make test      # run the full test suite
-make coverage  # tests + coverage reports in report/
-make lint      # go vet
+make test      # run the full unit-test suite
+make coverage  # unit tests + coverage reports in report/
+make lint      # gofmt + go vet
 make sandbox   # one-shot sync in an isolated /tmp directory
 ```
+
+### End-to-end tests
+
+The e2e suite runs gaal inside a hermetic Docker container so it can clone
+real repos, write to agent skill dirs, and merge MCP configs without
+touching your real `$HOME`.
+
+```bash
+make test-e2e        # Layer 1: filesystem assertions only (fast, ~45s)
+make test-e2e-cli    # Layer 2: also installs claude-code + codex CLIs and
+                     # verifies the configs gaal writes are accepted
+                     # (~2 min; runs nightly in CI, not on every PR)
+```
+
+Requires Docker on the host. The Makefile builds gaal for `linux/<host-arch>`
+(amd64 on x86_64, arm64 on Apple Silicon) and forwards `--platform` to
+docker so the binary and image always match. Override with
+`make test-e2e GOARCH=amd64`.
+
+The fixture image (`alpine + git + mercurial + python3 + node`) is published
+to ghcr on every Dockerfile change. Pull it once to skip the slow `apk` and
+`npm install` on your first local run:
+
+```bash
+docker pull ghcr.io/getgaal/gaal-e2e:base-latest
+docker tag  ghcr.io/getgaal/gaal-e2e:base-latest gaal-e2e:base-latest
+make test-e2e   # reuses the cached base layers; only the binary COPY re-runs
+```
+
+CI uploads the JUnit report (`report/e2e-tests.xml`) plus
+`docker logs`/`docker inspect` diagnostics on failure as workflow artifacts.
 
 See [`docs/architecture.md`](docs/architecture.md) for a full description of the internals.
 
