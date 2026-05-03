@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -151,7 +152,7 @@ func (e *Engine) RunOnce(ctx context.Context) error {
 
 	if len(errs) > 0 {
 		slog.Error("sync completed with errors", "errors", len(errs))
-		return fmt.Errorf("sync errors: %v", errs)
+		return errors.Join(errs...)
 	}
 
 	slog.Debug("sync completed successfully")
@@ -197,10 +198,7 @@ func (e *Engine) Prune(ctx context.Context) error {
 	if err := e.mcps.Prune(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("mcps prune: %w", err))
 	}
-	if len(errs) > 0 {
-		return fmt.Errorf("prune errors: %v", errs)
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // Collect gathers the current status of all resources without side effects.

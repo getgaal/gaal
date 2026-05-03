@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -60,10 +61,7 @@ func (m *Manager) Sync(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 
-	if len(errs) > 0 {
-		return fmt.Errorf("%d repository error(s): %v", len(errs), errs)
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (m *Manager) syncOne(ctx context.Context, path string, cfg config.ConfigRepo) error {

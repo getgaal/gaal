@@ -122,15 +122,19 @@ func (m *Manager) SourcePaths() []string {
 	return out
 }
 
-// Sync installs or updates every skill in the configuration.
+// Sync installs or updates every skill in the configuration. A failure on one
+// source does not abort the rest — every entry is attempted, and the
+// per-entry errors are joined via errors.Join so callers can inspect each
+// underlying cause via errors.As / errors.Is.
 func (m *Manager) Sync(ctx context.Context) error {
 	m.emitConfigWarnings()
+	var errs []error
 	for _, sc := range m.skills {
 		if err := m.syncOne(ctx, sc); err != nil {
-			return fmt.Errorf("skill %q: %w", sc.Source, err)
+			errs = append(errs, fmt.Errorf("skill %q: %w", sc.Source, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // emitConfigWarnings surfaces issues that depend on the user's skill config
@@ -185,7 +189,10 @@ func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
 	agents := m.syncAgents(sc)
 	slog.DebugContext(ctx, "resolved sync agents", "source", sc.Source, "agents", agents)
 
-	// 5. Install each skill to each agent.
+	// 5. Install each skill to each agent. Per-agent and per-skill errors are
+	//    accumulated so a single failure (e.g. one agent's dir is read-only)
+	//    does not skip every later install.
+	var errs []error
 	for _, agent := range agents {
 		skillsDir, ok := SkillDir(agent, sc.Global, m.home)
 		if !ok {
@@ -200,20 +207,22 @@ func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
 
 		// Create the skills directory if it does not exist yet.
 		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
-			return fmt.Errorf("creating skills dir for agent %q: %w", agent, err)
+			errs = append(errs, fmt.Errorf("creating skills dir for agent %q: %w", agent, err))
+			continue
 		}
 
 		for _, sk := range selected {
 			dest := filepath.Join(skillsDir, filepath.Base(sk.Dir))
 			if err := installSkill(sk.Dir, dest); err != nil {
-				return fmt.Errorf("installing skill %q to agent %q: %w", sk.Name, agent, err)
+				errs = append(errs, fmt.Errorf("installing skill %q to agent %q: %w", sk.Name, agent, err))
+				continue
 			}
 			slog.Debug("installed skill", "name", sk.Name, "agent", agent, "dest", dest)
 			m.writeSkillSnapshot(dest)
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 // resolveSource ensures the source is available locally and returns its path.

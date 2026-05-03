@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -151,14 +152,18 @@ func (m *Manager) warnLegacyClaudeDesktopJSON() {
 		"hint", "Claude Code now writes ~/.claude.json; Claude Desktop uses ~/Library/Application Support/Claude/")
 }
 
-// Sync applies every MCP configuration entry.
+// Sync applies every MCP configuration entry. A failure on one entry does not
+// abort the rest — every entry is attempted, and the per-entry errors are
+// joined via errors.Join so callers can inspect each underlying cause via
+// errors.As / errors.Is.
 func (m *Manager) Sync(ctx context.Context) error {
+	var errs []error
 	for _, mc := range m.resolvedMCPs() {
 		if err := m.syncOne(ctx, mc); err != nil {
-			return fmt.Errorf("mcp %q: %w", mc.Name, err)
+			errs = append(errs, fmt.Errorf("mcp %q: %w", mc.Name, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (m *Manager) syncOne(ctx context.Context, mc config.ConfigMcp) error {
