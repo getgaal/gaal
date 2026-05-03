@@ -393,6 +393,16 @@ func discoverSkills(root string) ([]SkillMeta, error) {
 			if !e.IsDir() {
 				continue
 			}
+			// Reject directory names that would let a malicious skill
+			// source escape the install root via filepath.Join — `..`,
+			// `.`, empty, or names containing path separators after
+			// cleaning. The install path uses filepath.Base(sk.Dir) so
+			// these would otherwise walk above the agent skill dir.
+			if !isSafeSkillDirName(e.Name()) {
+				slog.Warn("skill: refusing unsafe directory name",
+					"name", e.Name(), "parent", base)
+				continue
+			}
 			skillDir := filepath.Join(base, e.Name())
 			mdPath := filepath.Join(skillDir, "SKILL.md")
 			if _, err := os.Stat(mdPath); err != nil {
@@ -406,6 +416,14 @@ func discoverSkills(root string) ([]SkillMeta, error) {
 			meta, err := parseSkillMeta(mdPath)
 			if err != nil {
 				slog.Warn("skipping invalid SKILL.md", "path", mdPath, "err", err)
+				continue
+			}
+			// Frontmatter `name:` is also subject to the same containment
+			// rule — a malicious source could ship `name: ../escape` and
+			// the install layer uses Name to compose select-list matches.
+			if meta.Name != "" && !isSafeSkillDirName(meta.Name) {
+				slog.Warn("skill: refusing unsafe frontmatter name",
+					"name", meta.Name, "path", mdPath)
 				continue
 			}
 			meta.Dir = skillDir
@@ -570,6 +588,24 @@ func skillDirModified(src, dst string) bool {
 		return nil
 	})
 	return errors.Is(err, errDiffer)
+}
+
+// isSafeSkillDirName rejects directory or frontmatter names that would
+// allow a malicious skill source to escape the install root via
+// filepath.Join. Disallows: empty, ".", "..", path separators, and any
+// name whose filepath.Clean form differs from itself (catches embedded
+// "./" tricks). #131.
+func isSafeSkillDirName(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return false
+	}
+	if filepath.Clean(name) != name {
+		return false
+	}
+	return true
 }
 
 // isLocalPath reports whether source is a local filesystem path.
