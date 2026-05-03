@@ -43,13 +43,20 @@ func ListAgents(home, workDir string) ([]render.AgentEntry, error) {
 			source = "user"
 		}
 
+		// Resolved (absolute) MCP config paths for both scopes. Render
+		// uses these to attribute MCP entries to their owning agent —
+		// see render.buildAgentRollup (#127 fix).
+		projectMCP, _ := agent.ProjectMCPConfigPath(a.Name, home)
+		globalMCP, _ := agent.GlobalMCPConfigPath(a.Name, home)
+
 		entries = append(entries, render.AgentEntry{
 			Name:                    a.Name,
 			Installed:               installed,
 			Source:                  source,
 			ProjectSkillsDir:        projectDir,
 			GlobalSkillsDir:         globalDir,
-			ProjectMCPConfigFile:    a.Info.GlobalMCPConfigFile,
+			ProjectMCPConfigFile:    projectMCP,
+			GlobalMCPConfigFile:     globalMCP,
 			ProjectSkillsViaGeneric: a.Info.SupportsGenericProject,
 			GlobalSkillsViaGeneric:  a.Info.SupportsGenericGlobal,
 		})
