@@ -92,6 +92,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     needs: [lint, changes]
     if: needs.changes.outputs.code_changed == 'true'
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -128,6 +129,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     needs: [build, changes]
     if: needs.changes.outputs.code_changed == 'true'
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -242,6 +244,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, changes]
     if: needs.changes.outputs.code_changed == 'true'
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
@@ -255,6 +258,31 @@ jobs:
       - name: Run e2e suite
         run: make test-e2e
 
+      # On failure, capture the suite container's logs and any stray gaal
+      # state under /tmp inside it. The harness uses `docker run --rm`
+      # so without this step every signal disappears with the container.
+      - name: Capture e2e diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p e2e-diagnostics
+          # Find any container started from the suite image (running or exited).
+          for cid in $(docker ps -a --filter "ancestor=gaal-e2e:dev" --format '{{.ID}}'); do
+            echo "--- docker inspect $cid ---" > "e2e-diagnostics/$cid.inspect"
+            docker inspect "$cid" >> "e2e-diagnostics/$cid.inspect" 2>&1 || true
+            docker logs "$cid" > "e2e-diagnostics/$cid.log" 2>&1 || true
+          done
+          # Save the test binary's stderr if it landed somewhere conventional.
+          cp -r test/e2e/fixtures e2e-diagnostics/fixtures 2>/dev/null || true
+          ls -la e2e-diagnostics/
+
+      - name: Upload e2e diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-diagnostics
+          path: e2e-diagnostics/
+          retention-days: 7
+
   # ──────────────────────────────────────────────────────────────────────────
   # Coverage: generate HTML report and post summary to the job summary page
   # ──────────────────────────────────────────────────────────────────────────
@@ -263,6 +291,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, changes]
     if: needs.changes.outputs.code_changed == 'true'
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
