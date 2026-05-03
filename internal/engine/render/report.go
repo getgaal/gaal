@@ -154,9 +154,11 @@ type AuditSkillEntry struct {
 
 // AuditMCPEntry holds the MCP servers found for a single agent.
 type AuditMCPEntry struct {
-	Agent      string   `json:"agent"`
-	ConfigFile string   `json:"config_file"`
-	Servers    []string `json:"servers"`
+	Agent      string `json:"agent"`
+	ConfigFile string `json:"config_file"`
+	// Scope is "project" or "global".
+	Scope   string   `json:"scope"`
+	Servers []string `json:"servers"`
 }
 
 // AuditReport aggregates all skills and MCP servers discovered on the machine.

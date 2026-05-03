@@ -25,14 +25,14 @@
       "mode": "auto",
       "program": "${workspaceFolder}",
       "args": [
-        //"--config", "${workspaceFolder}/example.gaal.yaml",
+        "--config", "${workspaceFolder}/.sandbox/workspace/gaal.yaml",
         "--sandbox", "${workspaceFolder}/.sandbox",
         "--log-file", "${workspaceFolder}/.sandbox/gaal.log",
         //"--verbose",
         "status"
       ],
       "env": {},
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/.sandbox/workspace",
       "console": "integratedTerminal"
     },
     {

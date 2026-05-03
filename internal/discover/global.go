@@ -12,39 +12,51 @@ import (
 	"gaal/internal/core/vcs"
 )
 
-// scanGlobal discovers skill resources at predictable agent-registry paths.
+// scanGlobal discovers skill and MCP config resources at predictable
+// agent-registry paths.
 //
-// It mirrors the two-pass attribution strategy from ops/audit.go:
-//   - Pass 1: canonical dirs only (ProjectSkillsDir / GlobalSkillsDir).
-//   - Pass 2: full search lists, skipping already-attributed directories.
+// A single call to agent.List() is used across both passes to avoid
+// redundant iteration:
+//   - Pass 1: canonical dirs (ProjectSkillsDir / GlobalSkillsDir) + MCP
+//     config files — builds the dedup set with correct ownership.
+//   - Pass 2: full extended search lists, skipping already-attributed dirs.
 func scanGlobal(ctx context.Context, home, workDir, stateDir string) ([]Resource, error) {
-	slog.DebugContext(ctx, "scanning global skill paths", "home", home)
+	slog.DebugContext(ctx, "scanning global agent resource paths", "home", home)
 
-	seen := make(map[string]struct{})
+	seenSkill := make(map[string]struct{})
+	seenMCP := make(map[string]struct{})
 	var resources []Resource
 
 	agents := agent.List()
 
-	// Pass 1: canonical install dirs.
+	// Pass 1: canonical install dirs + MCP config files.
 	for _, a := range agents {
 		if a.Info.ProjectSkillsDir != "" {
 			dir := filepath.Join(workDir, a.Info.ProjectSkillsDir)
-			resources = append(resources, skillsFromDir(ctx, dir, ScopeWorkspace, a.Name, stateDir, seen)...)
+			resources = append(resources, skillsFromDir(ctx, dir, ScopeWorkspace, a.Name, stateDir, "project", seenSkill)...)
 		}
 		if a.Info.GlobalSkillsDir != "" {
 			dir := agent.ExpandHome(a.Info.GlobalSkillsDir, home)
-			resources = append(resources, skillsFromDir(ctx, dir, ScopeGlobal, a.Name, stateDir, seen)...)
+			resources = append(resources, skillsFromDir(ctx, dir, ScopeGlobal, a.Name, stateDir, "global", seenSkill)...)
+		}
+		// MCP config files are collected here alongside canonical skill dirs
+		// so that a single agent.List() iteration covers both resource types.
+		if cfgFile, ok := agent.ProjectMCPConfigPath(a.Name, home); ok {
+			resources = appendMCPResource(resources, seenMCP, a.Name, cfgFile, ScopeWorkspace, stateDir)
+		}
+		if cfgFile, ok := agent.GlobalMCPConfigPath(a.Name, home); ok {
+			resources = appendMCPResource(resources, seenMCP, a.Name, cfgFile, ScopeGlobal, stateDir)
 		}
 	}
 
-	// Pass 2: extended search lists.
+	// Pass 2: extended search lists (skills only; MCPs use direct paths, no extended search).
 	for _, a := range agents {
 		for _, rel := range agent.ExpandedProjectSkillsSearch(a.Name) {
 			dir := filepath.Join(workDir, rel)
-			resources = append(resources, skillsFromDir(ctx, dir, ScopeWorkspace, a.Name, stateDir, seen)...)
+			resources = append(resources, skillsFromDir(ctx, dir, ScopeWorkspace, a.Name, stateDir, "project", seenSkill)...)
 		}
 		for _, abs := range agent.ExpandedGlobalSkillsSearch(a.Name, home) {
-			resources = append(resources, skillsFromDir(ctx, abs, ScopeGlobal, a.Name, stateDir, seen)...)
+			resources = append(resources, skillsFromDir(ctx, abs, ScopeGlobal, a.Name, stateDir, "global", seenSkill)...)
 		}
 		for _, pmRoot := range agent.ExpandedPmSkillsSearch(a.Name, home) {
 			skillDirs, err := walkSkillDirs(pmRoot)
@@ -53,7 +65,7 @@ func scanGlobal(ctx context.Context, home, workDir, stateDir string) ([]Resource
 				continue
 			}
 			for _, sd := range skillDirs {
-				resources = append(resources, skillsFromDir(ctx, sd, ScopeGlobal, a.Name, stateDir, seen)...)
+				resources = append(resources, skillsFromDir(ctx, sd, ScopeGlobal, a.Name, stateDir, "package-manager", seenSkill)...)
 			}
 		}
 	}
@@ -64,7 +76,7 @@ func scanGlobal(ctx context.Context, home, workDir, stateDir string) ([]Resource
 // skillsFromDir scans dir at one level deep and returns a Resource for each
 // subdirectory that contains a SKILL.md file. dir itself is also checked.
 // Directories already present in seen are skipped.
-func skillsFromDir(ctx context.Context, dir string, scope Scope, agentName, stateDir string, seen map[string]struct{}) []Resource {
+func skillsFromDir(ctx context.Context, dir string, scope Scope, agentName, stateDir, source string, seen map[string]struct{}) []Resource {
 	var out []Resource
 
 	add := func(skillDir string) {
@@ -72,15 +84,21 @@ func skillsFromDir(ctx context.Context, dir string, scope Scope, agentName, stat
 			return
 		}
 		seen[skillDir] = struct{}{}
+		slog.DebugContext(ctx, "adding skill resource", "path", skillDir, "agent", agentName, "source", source)
 		name := skillName(skillDir)
 		drift := computeSkillDrift(ctx, skillDir, stateDir)
+		_, desc, _ := parseSkillFrontmatter(filepath.Join(skillDir, "SKILL.md"))
 		out = append(out, Resource{
 			Type:  ResourceSkill,
 			Scope: scope,
 			Path:  skillDir,
 			Name:  name,
 			Drift: drift,
-			Meta:  map[string]string{"agent": agentName},
+			Meta: map[string]string{
+				"agent":  agentName,
+				"source": source,
+				"desc":   desc,
+			},
 		})
 	}
 

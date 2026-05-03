@@ -8,6 +8,7 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/core/agent"
+	"gaal/internal/discover"
 	"gaal/internal/engine/render"
 	"gaal/internal/mcp"
 )
@@ -23,10 +24,14 @@ func BuildImportCandidates(ctx context.Context, scope Scope, home, workDir, cach
 	slog.DebugContext(ctx, "building import candidates",
 		"scope", scope, "home", home, "workDir", workDir, "cacheRoot", cacheRoot)
 
-	skills, err := collectAuditSkills(ctx, home, workDir)
+	scanResources, err := discover.Scan(ctx, home, workDir, discover.ScanOptions{
+		Mode:             discover.ScanModeFull,
+		IncludeWorkspace: true,
+	})
 	if err != nil {
-		return Candidates{}, fmt.Errorf("collecting audit skills: %w", err)
+		slog.DebugContext(ctx, "scan error in BuildImportCandidates", "err", err)
 	}
+	skills := resourcesToAuditSkills(scanResources)
 
 	filteredSkills := filterSkillsByScope(skills, scope)
 

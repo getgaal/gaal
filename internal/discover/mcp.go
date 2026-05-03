@@ -1,38 +1,9 @@
 package discover
 
 import (
-	"context"
-	"log/slog"
 	"os"
 	"path/filepath"
-
-	"gaal/internal/core/agent"
 )
-
-// scanMCPs discovers MCP config files by reading each registered agent's
-// project_mcp_config_file AND global_mcp_config_file paths directly from
-// the filesystem, independent of any gaal.yaml.
-//
-// Global-scope coverage was missing before #137: the audit / `init`
-// import wizard never saw entries living in global config files
-// (e.g. ~/.codex/config.toml's [mcp_servers.foo]).
-func scanMCPs(ctx context.Context, home, stateDir string) ([]Resource, error) {
-	slog.DebugContext(ctx, "scanning MCP config files", "home", home)
-
-	seen := make(map[string]struct{})
-	var resources []Resource
-
-	for _, a := range agent.List() {
-		if cfgFile, ok := agent.ProjectMCPConfigPath(a.Name, home); ok {
-			resources = appendMCPResource(resources, seen, a.Name, cfgFile, ScopeWorkspace, stateDir)
-		}
-		if cfgFile, ok := agent.GlobalMCPConfigPath(a.Name, home); ok {
-			resources = appendMCPResource(resources, seen, a.Name, cfgFile, ScopeGlobal, stateDir)
-		}
-	}
-
-	return resources, nil
-}
 
 // appendMCPResource stats cfgFile and, if it exists and hasn't been seen
 // before (some agents share project + global paths), appends a Resource

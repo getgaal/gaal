@@ -45,12 +45,13 @@ func (j *auditJSONRenderer) Render(w io.Writer, r *AuditReport) error {
 //
 // Matches the sample in cli/audit.mdx:
 //
-//	discovered:
-//	  skills (project)
-//	    .claude/skills/code-review     (claude-code)
-//	  mcps
-//	    ~/.config/claude/claude_desktop_config.json
-//	      filesystem, git, github
+//discovered:
+//  skills (project)
+//    .claude/skills/code-review     (claude-code)
+//  mcps (project)
+//    ~/.config/claude/claude_desktop_config.json
+//      · filesystem
+//      · git
 
 type auditTextRenderer struct{}
 
@@ -104,37 +105,63 @@ func (tr *auditTextRenderer) mcpGroups(w io.Writer, mcps []AuditMCPEntry, home s
 		return
 	}
 
-	// Collapse entries by config file so the same file (reachable via several
-	// agents) renders once with the combined server list.
 	type fileGroup struct {
 		path    string
+		scope   string
 		servers map[string]struct{}
 	}
-	byFile := map[string]*fileGroup{}
-	order := []string{}
+	// Group by scope first, then collapse by config file within each scope.
+	byScope := map[string]map[string]*fileGroup{}
+	scopeOrder := []string{"project", "global"}
+	for _, scope := range scopeOrder {
+		byScope[scope] = map[string]*fileGroup{}
+	}
 	for _, e := range mcps {
-		g, ok := byFile[e.ConfigFile]
+		scope := e.Scope
+		if scope == "" {
+			scope = "project"
+		}
+		if _, ok := byScope[scope]; !ok {
+			byScope[scope] = map[string]*fileGroup{}
+		}
+		g, ok := byScope[scope][e.ConfigFile]
 		if !ok {
-			g = &fileGroup{path: e.ConfigFile, servers: map[string]struct{}{}}
-			byFile[e.ConfigFile] = g
-			order = append(order, e.ConfigFile)
+			g = &fileGroup{path: e.ConfigFile, scope: scope, servers: map[string]struct{}{}}
+			byScope[scope][e.ConfigFile] = g
 		}
 		for _, s := range e.Servers {
 			g.servers[s] = struct{}{}
 		}
 	}
 
-	fmt.Fprintln(w, "  mcps")
-	for _, path := range order {
-		g := byFile[path]
-		servers := make([]string, 0, len(g.servers))
-		for s := range g.servers {
-			servers = append(servers, s)
+	labels := map[string]string{
+		"project": "mcps (project)",
+		"global":  "mcps (global)",
+	}
+	for _, scope := range scopeOrder {
+		files := byScope[scope]
+		if len(files) == 0 {
+			continue
 		}
-		sort.Strings(servers)
-		fmt.Fprintf(w, "    %s\n", shortenHome(g.path, home))
-		if len(servers) > 0 {
-			fmt.Fprintf(w, "      %s\n", strings.Join(servers, ", "))
+		// Sort file paths for stable output.
+		sortedFiles := make([]string, 0, len(files))
+		for f := range files {
+			sortedFiles = append(sortedFiles, f)
+		}
+		sort.Strings(sortedFiles)
+
+		fmt.Fprintf(w, "  %s\n", labels[scope])
+		for _, path := range sortedFiles {
+			g := files[path]
+			servers := make([]string, 0, len(g.servers))
+			for s := range g.servers {
+				servers = append(servers, s)
+			}
+			sort.Strings(servers)
+			fmt.Fprintf(w, "    %s\n", shortenHome(g.path, home))
+			for _, s := range servers {
+				fmt.Fprintf(w, "      · %s\n", s)
+			}
 		}
 	}
 }
@@ -213,17 +240,22 @@ func (tr *auditTableRenderer) mcpTable(w io.Writer, entries []AuditMCPEntry, hom
 		return nil
 	}
 
-	// Fixed cols: AGENT(22) = 22; variable cols: CONFIG FILE and SERVERS share the rest.
-	vw := varColWidth(termW, 3, 2, 22)
+	// Fixed cols: AGENT(22) + SCOPE(10) = 32; variable cols: CONFIG FILE and SERVERS share the rest.
+	vw := varColWidth(termW, 4, 2, 32)
 	if vw < 14 {
 		vw = 14
 	}
 
-	data := pterm.TableData{{"AGENT", "CONFIG FILE", "SERVERS"}}
+	data := pterm.TableData{{"AGENT", "SCOPE", "CONFIG FILE", "SERVERS"}}
 	for _, e := range entries {
 		servers := strings.Join(e.Servers, ", ")
+		scope := e.Scope
+		if scope == "" {
+			scope = "project"
+		}
 		data = append(data, []string{
 			e.Agent,
+			scope,
 			trunc(shortenHome(e.ConfigFile, home), vw),
 			trunc(servers, vw),
 		})
