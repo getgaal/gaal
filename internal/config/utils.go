@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,8 +112,18 @@ func (c *Config) expandPaths(baseDir string) {
 	}
 
 	expanded := make(map[string]ConfigRepo, len(c.Repositories))
+	// Track which raw key produced each expanded path so a collision
+	// surfaces a useful warning instead of silently overwriting one of
+	// the entries (#136).
+	rawKeyFor := make(map[string]string, len(c.Repositories))
 	for path, repo := range c.Repositories {
-		expanded[expandPath(path)] = repo
+		exp := expandPath(path)
+		if prev, dup := rawKeyFor[exp]; dup {
+			slog.Warn("repository entries collide after path expansion; one will be lost",
+				"expanded", exp, "first_key", prev, "duplicate_key", path)
+		}
+		expanded[exp] = repo
+		rawKeyFor[exp] = path
 	}
 	c.Repositories = expanded
 
