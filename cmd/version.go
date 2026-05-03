@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"gaal/internal/httpx"
 )
 
 // These variables are optionally injected at build time via ldflags:
@@ -36,4 +38,5 @@ var versionCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(versionCmd)
+	httpx.SetUserAgent("gaal/" + Version)
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"gaal/internal/config"
 	"gaal/internal/core/agent"
 	"gaal/internal/discover"
+	"gaal/internal/httpx"
 	"gaal/internal/urlx"
 )
 
@@ -227,12 +229,12 @@ func fetchRemoteEntry(ctx context.Context, rawURL, name string) (serverEntry, er
 	}
 	safeURL := urlx.Redact(rawURL)
 	slog.DebugContext(ctx, "fetching remote mcp config", "url", safeURL, "name", name)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	req, err := httpx.NewRequest(ctx, http.MethodGet, rawURL)
 	if err != nil {
 		return serverEntry{}, fmt.Errorf("building request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpx.Client().Do(req)
 	if err != nil {
 		return serverEntry{}, fmt.Errorf("fetching %s: %w", safeURL, err)
 	}
@@ -242,11 +244,15 @@ func fetchRemoteEntry(ctx context.Context, rawURL, name string) (serverEntry, er
 		return serverEntry{}, fmt.Errorf("fetching %s: HTTP %d", safeURL, resp.StatusCode)
 	}
 
+	// Cap the JSON body so a hostile or runaway server cannot OOM the
+	// process. 16 MiB is well above any realistic mcpServers document.
+	body := io.LimitReader(resp.Body, httpx.MaxBodyBytes+1)
+
 	// Try to decode as a full mcpServers document first.
 	var doc struct {
 		MCPServers map[string]serverEntry `json:"mcpServers"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+	if err := json.NewDecoder(body).Decode(&doc); err != nil {
 		return serverEntry{}, fmt.Errorf("decoding JSON: %w", err)
 	}
 

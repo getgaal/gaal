@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gaal/internal/httpx"
 	"gaal/internal/urlx"
 )
 
@@ -96,16 +97,18 @@ func (a *VcsArchive) HasChanges(_ context.Context, _ string) (bool, error) {
 }
 
 // fetchURL performs a GET request and returns the response body.
+// Body-size enforcement is the caller's responsibility — extractors wrap
+// the returned ReadCloser in io.LimitReader(MaxArchiveBytes+1).
 func fetchURL(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	if err := urlx.ValidateRemoteFetchURL(rawURL); err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	req, err := httpx.NewRequest(ctx, http.MethodGet, rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpx.Client().Do(req)
 	safeURL := urlx.Redact(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetching %s: %w", safeURL, err)
