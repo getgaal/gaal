@@ -97,6 +97,14 @@ func runSync(_ *cobra.Command, _ []string) error {
 		telemetry.TrackError("sync", err)
 		return err
 	}
+	// Surface plan-level errors before apply (#134). A plan that already
+	// knows e.g. "unsupported VCS type" should fail fast instead of
+	// re-discovering the same error per resource inside RunOnce.
+	if plan.HasErrors {
+		err := fmt.Errorf("plan has errors; refusing to apply (run `gaal sync --dry-run` for details)")
+		telemetry.TrackError("sync", err)
+		return &ExitCodeError{Code: 2, Cause: err}
+	}
 
 	start := time.Now()
 	if err := eng.RunOnce(ctx); err != nil {

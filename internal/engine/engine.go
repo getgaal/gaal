@@ -159,13 +159,45 @@ func (e *Engine) RunOnce(ctx context.Context) error {
 	return nil
 }
 
-// RunService runs synchronisation in a loop until the context is cancelled.
+// maxConsecutiveServiceFailures bounds the number of consecutive failed
+// RunOnce iterations RunService tolerates before exiting. A misconfigured
+// service (bad config, dead remote) used to retry forever, burning CPU
+// and network indefinitely. After the cap, RunService returns the last
+// error so a process supervisor (systemd, kubelet, …) can intervene. #134.
+const maxConsecutiveServiceFailures = 5
+
+// RunService runs synchronisation in a loop until the context is cancelled
+// or maxConsecutiveServiceFailures is reached. A successful sync resets
+// the failure counter; transient errors are absorbed.
 func (e *Engine) RunService(ctx context.Context, interval time.Duration) error {
-	slog.Info("service mode started", "interval", interval)
+	slog.Info("service mode started", "interval", interval,
+		"failure_cap", maxConsecutiveServiceFailures)
+
+	consecutiveFailures := 0
+	var lastErr error
+
+	runIteration := func(label string) {
+		err := e.RunOnce(ctx)
+		if err != nil {
+			consecutiveFailures++
+			lastErr = err
+			slog.Error(label+" sync failed", "err", err,
+				"consecutive_failures", consecutiveFailures,
+				"failure_cap", maxConsecutiveServiceFailures)
+			return
+		}
+		if consecutiveFailures > 0 {
+			slog.Info("service: sync recovered", "after_failures", consecutiveFailures)
+		}
+		consecutiveFailures = 0
+		lastErr = nil
+	}
 
 	// Run immediately on startup.
-	if err := e.RunOnce(ctx); err != nil {
-		slog.Error("initial sync failed", "err", err)
+	runIteration("initial")
+	if consecutiveFailures >= maxConsecutiveServiceFailures {
+		return fmt.Errorf("service exiting after %d consecutive failures: %w",
+			consecutiveFailures, lastErr)
 	}
 
 	ticker := time.NewTicker(interval)
@@ -178,8 +210,10 @@ func (e *Engine) RunService(ctx context.Context, interval time.Duration) error {
 			return nil
 		case t := <-ticker.C:
 			slog.Info("periodic sync triggered", "time", t)
-			if err := e.RunOnce(ctx); err != nil {
-				slog.Error("periodic sync failed", "err", err)
+			runIteration("periodic")
+			if consecutiveFailures >= maxConsecutiveServiceFailures {
+				return fmt.Errorf("service exiting after %d consecutive failures: %w",
+					consecutiveFailures, lastErr)
 			}
 		}
 	}
