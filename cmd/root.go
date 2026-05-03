@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,6 +17,26 @@ import (
 	"gaal/internal/logger"
 	"gaal/internal/telemetry"
 )
+
+// ExitCodeError carries a process exit code separate from the error's
+// human-readable message. RunE handlers return one of these when a command
+// needs an exit code other than the cobra default (0 on nil, 1 on any error).
+//
+// Returning an error skips PersistentPostRunE (cobra design), so cleanup that
+// must happen on every code path lives in Execute() instead.
+type ExitCodeError struct {
+	Code  int
+	Cause error
+}
+
+func (e *ExitCodeError) Error() string {
+	if e.Cause != nil {
+		return e.Cause.Error()
+	}
+	return fmt.Sprintf("exit %d", e.Code)
+}
+
+func (e *ExitCodeError) Unwrap() error { return e.Cause }
 
 var (
 	cfgFile      string
@@ -45,6 +66,10 @@ configurations.
 
 Run once (one-shot mode) or continuously as a service with --service.`,
 	SilenceUsage: true,
+	// Silence cobra's own "Error:" print so that ExitCodeError without a Cause
+	// (used purely to set the process exit code) does not leak "Error: exit N"
+	// onto stderr. Execute() prints the error itself when a Cause is present.
+	SilenceErrors: true,
 	// PersistentPreRunE runs before every sub-command (sync, status, …) and
 	// before RunE on the root command itself. It is the single place where the
 	// logger, banner and sandbox are initialised so no sub-command needs to repeat it.
@@ -115,11 +140,30 @@ Run once (one-shot mode) or continuously as a service with --service.`,
 }
 
 // Execute is the entry-point called by main.
+//
+// Cobra's PersistentPostRunE is skipped when RunE returns an error, so the
+// telemetry consent/shutdown cleanup happens here unconditionally to avoid
+// dropping in-flight events or losing freshly-granted consent.
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		telemetry.Shutdown()
-		os.Exit(1)
+	err := rootCmd.Execute()
+	if flushErr := telemetry.FlushConsent(); flushErr != nil {
+		slog.Warn("failed to persist telemetry consent", "err", flushErr)
 	}
+	telemetry.Shutdown()
+	if err == nil {
+		return
+	}
+	var exitErr *ExitCodeError
+	if errors.As(err, &exitErr) {
+		// Only print when there's a real underlying cause; bare exit-code
+		// errors are control-flow only.
+		if exitErr.Cause != nil {
+			fmt.Fprintln(os.Stderr, "Error:", exitErr.Cause.Error())
+		}
+		os.Exit(exitErr.Code)
+	}
+	fmt.Fprintln(os.Stderr, "Error:", err.Error())
+	os.Exit(1)
 }
 
 func init() {

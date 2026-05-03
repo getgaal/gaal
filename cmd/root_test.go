@@ -138,3 +138,23 @@ func TestSkipTelemetry(t *testing.T) {
 		})
 	}
 }
+
+// TestExitCodeError_ErrorString covers both shapes: with a Cause it returns the
+// cause's message; bare it returns "exit N" (used purely as control flow).
+func TestExitCodeError_ErrorString(t *testing.T) {
+	bare := &ExitCodeError{Code: 2}
+	if got := bare.Error(); got != "exit 2" {
+		t.Errorf("bare Error() = %q, want %q", got, "exit 2")
+	}
+	wrapped := &ExitCodeError{Code: 2, Cause: errStub("underlying")}
+	if got := wrapped.Error(); got != "underlying" {
+		t.Errorf("wrapped Error() = %q, want %q", got, "underlying")
+	}
+	if wrapped.Unwrap() == nil {
+		t.Error("Unwrap() = nil, want non-nil")
+	}
+}
+
+type errStub string
+
+func (e errStub) Error() string { return string(e) }

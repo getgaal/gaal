@@ -73,16 +73,16 @@ func runSync(_ *cobra.Command, _ []string) error {
 		plan, err := eng.DryRun(ctx, format)
 		if err != nil {
 			telemetry.TrackError("sync", err)
-			os.Exit(2)
+			return &ExitCodeError{Code: 2, Cause: err}
 		}
 		telemetry.Track("sync-dry-run")
 		if plan.HasErrors {
-			os.Exit(2)
+			return &ExitCodeError{Code: 2}
 		}
 		if plan.HasChanges {
-			os.Exit(1)
+			return &ExitCodeError{Code: 1}
 		}
-		os.Exit(0)
+		return nil
 	}
 
 	if service {

@@ -77,7 +77,7 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	}
 
 	if report.ExitCode != 0 {
-		os.Exit(report.ExitCode)
+		return &ExitCodeError{Code: report.ExitCode}
 	}
 	return nil
 }
@@ -364,7 +364,7 @@ func renderDoctorJSON(report *ops.DoctorReport, showUpsell bool) error {
 		return err
 	}
 	if report.ExitCode != 0 {
-		os.Exit(report.ExitCode)
+		return &ExitCodeError{Code: report.ExitCode}
 	}
 	return nil
 }
