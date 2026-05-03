@@ -522,6 +522,12 @@ func installSkill(src, dst string) error {
 // copyFile copies a single file from src to dst. Callers must have already
 // filtered out symlinks (see installSkill) — copyFile uses os.ReadFile which
 // follows them.
+//
+// File mode is sanitised: the executable bit is preserved when present in
+// the source, but read/write bits for owner are forced on (0o644 base, or
+// 0o755 when exec). Without this a source shipping a 0o000 / 0o400 file
+// would land unwritable on disk and break the next sync (#132 — same
+// class as the .git pack-file regression in #86).
 func copyFile(src, dst string) error {
 	data, err := os.ReadFile(src)
 	if err != nil {
@@ -533,7 +539,11 @@ func copyFile(src, dst string) error {
 		return err
 	}
 
-	return os.WriteFile(dst, data, fi.Mode())
+	mode := os.FileMode(0o644)
+	if fi.Mode().Perm()&0o111 != 0 {
+		mode = 0o755
+	}
+	return os.WriteFile(dst, data, mode)
 }
 
 // errDiffer is a sentinel used inside skillDirModified to stop the walk early.
