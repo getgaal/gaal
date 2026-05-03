@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -292,4 +293,64 @@ func containsStr(s, sub string) bool {
 		}
 		return false
 	})())
+}
+
+// TestTrackError_DoesNotLeakRawErrorMessage is a regression for #111: the
+// raw err.Error() string used to flow into the "message" prop of every
+// Plausible event, leaking URLs (with embedded credentials), absolute paths,
+// and other PII — directly contradicting PRIVACY_POLICY.md which lists each
+// of those categories as "never collected." Only command + category may be
+// transmitted.
+func TestTrackError_DoesNotLeakRawErrorMessage(t *testing.T) {
+	resetGlobals()
+	defer resetGlobals()
+
+	var capturedBody []byte
+	var called atomic.Bool
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = body
+		called.Store(true)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	enabled = true
+	httpClient = &client{endpoint: srv.URL, userAgent: "gaal/test"}
+	baseProps = map[string]string{"version": "1.0.0"}
+
+	leakyErr := errors.New("cloning https://oops:hunter2@github.com/me/private: fatal: not found at /home/alice/secrets/")
+	TrackError("sync", leakyErr)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for !called.Load() && time.Now().Before(deadline) {
+		runtime.Gosched()
+	}
+	if !called.Load() {
+		t.Fatal("expected telemetry HTTP call, server was not contacted")
+	}
+
+	bodyStr := string(capturedBody)
+	// These tokens come ONLY from the err.Error() string. None of them
+	// should appear in the transmitted payload. (The bare "://" token
+	// would false-match our own "app://gaal/custom/Error" envelope, so
+	// we check the host-and-credential fragments instead.)
+	leakyMarkers := []string{
+		"hunter2",
+		"oops:hunter2",
+		"github.com/me/private",
+		"/home/alice/secrets",
+		"fatal: not found",
+	}
+	for _, m := range leakyMarkers {
+		if strings.Contains(bodyStr, m) {
+			t.Errorf("telemetry payload leaks %q in body: %s", m, bodyStr)
+		}
+	}
+
+	// Sanity: the legitimate fields must still be there.
+	if !strings.Contains(bodyStr, "sync") {
+		t.Errorf("expected command 'sync' in payload, got: %s", bodyStr)
+	}
 }

@@ -197,12 +197,16 @@ func TrackCustom(name string, extra map[string]string) {
 }
 
 // TrackError sends a categorised error event.
+//
+// Per PRIVACY_POLICY.md, the raw err.Error() string is NEVER transmitted —
+// it routinely contains skill source URLs (sometimes with embedded
+// credentials), absolute paths, and other PII. Only the command and the
+// derived category (e.g. "network", "filesystem", "config") are sent.
 func TrackError(command string, err error) {
 	category := categorizeError(err)
 	TrackCustom("Error", map[string]string{
 		"command":  command,
 		"category": category,
-		"message":  err.Error(),
 	})
 }
 
