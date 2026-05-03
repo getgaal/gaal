@@ -1,7 +1,14 @@
 package repo
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"gaal/internal/config"
@@ -26,14 +33,32 @@ func TestManager_Sync_Empty(t *testing.T) {
 }
 
 func TestManager_Sync_ArchiveAlreadyCloned(t *testing.T) {
-	// Archive.Update is a no-op, so this tests the Update path.
+	// Archive.Update used to be a silent no-op (#124); now it re-fetches
+	// and atomically swaps the destination. Verify the path doesn't
+	// regress: an existing archive directory triggers Update, which
+	// must succeed against a live upstream.
 	existing := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var buf bytes.Buffer
+		gw := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(gw)
+		_ = tw.WriteHeader(&tar.Header{Name: "project/file.txt", Mode: 0o644, Size: 2})
+		_, _ = tw.Write([]byte("hi"))
+		_ = tw.Close()
+		_ = gw.Close()
+		_, _ = w.Write(buf.Bytes())
+	}))
+	t.Cleanup(srv.Close)
+
 	repos := map[string]config.ConfigRepo{
-		existing: {Type: "tar", URL: "https://example.com/x.tar.gz"},
+		existing: {Type: "tar", URL: srv.URL + "/x.tar.gz"},
 	}
 	m := NewManager(repos, "")
 	if err := m.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync with already-cloned archive: %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(existing, "file.txt")); string(got) != "hi" {
+		t.Errorf("file.txt = %q, want %q", got, "hi")
 	}
 }
 

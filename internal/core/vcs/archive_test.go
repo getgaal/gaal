@@ -83,11 +83,71 @@ func TestVcsArchive_CurrentVersion(t *testing.T) {
 	}
 }
 
-func TestVcsArchive_Update_NoOp(t *testing.T) {
+// TestVcsArchive_Update_RequiresURL guards against a future regression
+// to the historical no-op behaviour: Update must surface the missing
+// URL instead of silently doing nothing.
+func TestVcsArchive_Update_RequiresURL(t *testing.T) {
 	a := &VcsArchive{Format: "tar"}
-	err := a.Update(context.Background(), t.TempDir(), "")
-	if err != nil {
-		t.Errorf("Update should be a no-op, got error: %v", err)
+	err := a.Update(context.Background(), "", t.TempDir(), "")
+	if err == nil {
+		t.Fatal("expected error when Update is called without a URL")
+	}
+}
+
+// TestVcsArchive_Update_RefetchesAndReplaces verifies that a second
+// Update call against a changed upstream archive produces a fresh
+// extracted tree (and removes files no longer present in the new
+// archive). This is the regression test for #124.
+func TestVcsArchive_Update_RefetchesAndReplaces(t *testing.T) {
+	v1 := buildTarGz(t, map[string]string{
+		"project/keep.txt":   "v1",
+		"project/old.txt":    "removed in v2",
+		"project/sub/data.x": "v1",
+	})
+	v2 := buildTarGz(t, map[string]string{
+		"project/keep.txt":   "v2",
+		"project/new.txt":    "added in v2",
+		"project/sub/data.x": "v2",
+	})
+
+	var serveV2 bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		if serveV2 {
+			w.Write(v2)
+			return
+		}
+		w.Write(v1)
+	}))
+	t.Cleanup(srv.Close)
+
+	dest := filepath.Join(t.TempDir(), "extract")
+	a := &VcsArchive{Format: "tar"}
+
+	// First Clone — extracts v1.
+	if err := a.Clone(context.Background(), srv.URL, dest, ""); err != nil {
+		t.Fatalf("Clone v1: %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dest, "keep.txt")); string(got) != "v1" {
+		t.Errorf("keep.txt after v1 = %q, want %q", got, "v1")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "old.txt")); err != nil {
+		t.Errorf("old.txt missing after v1 install: %v", err)
+	}
+
+	// Update against changed upstream — extracts v2, drops old.txt, adds new.txt.
+	serveV2 = true
+	if err := a.Update(context.Background(), srv.URL, dest, ""); err != nil {
+		t.Fatalf("Update v2: %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dest, "keep.txt")); string(got) != "v2" {
+		t.Errorf("keep.txt after v2 = %q, want %q", got, "v2")
+	}
+	if got, _ := os.ReadFile(filepath.Join(dest, "new.txt")); string(got) != "added in v2" {
+		t.Errorf("new.txt after v2 = %q, want %q", got, "added in v2")
+	}
+	if _, err := os.Stat(filepath.Join(dest, "old.txt")); !os.IsNotExist(err) {
+		t.Errorf("old.txt should be removed after v2 install (err=%v)", err)
 	}
 }
 

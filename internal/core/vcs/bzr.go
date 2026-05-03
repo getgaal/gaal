@@ -43,7 +43,7 @@ func (b *VcsBazaar) Clone(ctx context.Context, url, path, version string) error 
 	return runner.Run(ctx, "branching "+shortPath(path), "", "bzr", args...)
 }
 
-func (b *VcsBazaar) Update(ctx context.Context, path, version string) error {
+func (b *VcsBazaar) Update(ctx context.Context, _ /* url */, path, version string) error {
 	if err := requireBinary("bzr"); err != nil {
 		return err
 	}

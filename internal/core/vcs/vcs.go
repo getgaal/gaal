@@ -11,8 +11,13 @@ type VCS interface {
 	// If version is empty the default branch is used.
 	Clone(ctx context.Context, url, path, version string) error
 
-	// Update fetches and checks out version in an already-cloned repo at path.
-	Update(ctx context.Context, path, version string) error
+	// Update fetches and checks out version in an already-cloned repo at
+	// path. The url is provided for backends that have no on-disk metadata
+	// recording the origin (notably VcsArchive, which has to re-fetch the
+	// upstream URL). Backends like git/hg/svn/bzr already track origin in
+	// their own metadata and may ignore this argument; an empty url means
+	// "use whatever the working copy already has".
+	Update(ctx context.Context, url, path, version string) error
 
 	// IsCloned reports whether path contains a valid local working copy.
 	IsCloned(path string) bool

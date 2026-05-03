@@ -48,9 +48,41 @@ const (
 var errEntryTooLarge = errors.New("archive entry exceeds per-file size cap")
 
 func (a *VcsArchive) Clone(ctx context.Context, url, path, version string) error {
-	if err := os.MkdirAll(path, 0o755); err != nil {
-		return fmt.Errorf("creating target directory: %w", err)
+	return a.fetchAndExtract(ctx, url, path, version)
+}
+
+// Update re-downloads and re-extracts the archive. Archives have no
+// incremental-update primitive (no commit graph, no working metadata) so
+// every Update is a fresh fetch + atomic swap of the destination tree.
+// Unlike the historical no-op behaviour, this guarantees that changes to
+// the upstream archive — or to the configured version: prefix — are
+// reflected on the next sync. #124.
+func (a *VcsArchive) Update(ctx context.Context, url, path, version string) error {
+	if url == "" {
+		return fmt.Errorf("archive update requires a url (callers must pass cfg.URL)")
 	}
+	return a.fetchAndExtract(ctx, url, path, version)
+}
+
+// fetchAndExtract downloads the archive at url and extracts it into path,
+// staging into a sibling temp directory and atomically replacing path on
+// success. A crash mid-extract leaves the previous tree intact (or the
+// new one fully installed) — never a half-written hybrid.
+func (a *VcsArchive) fetchAndExtract(ctx context.Context, url, path, version string) error {
+	parent := filepath.Dir(path)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return fmt.Errorf("creating archive parent dir: %w", err)
+	}
+	staging, err := os.MkdirTemp(parent, ".gaal-archive-tmp-*")
+	if err != nil {
+		return fmt.Errorf("creating archive staging dir: %w", err)
+	}
+	cleanupStage := true
+	defer func() {
+		if cleanupStage {
+			_ = os.RemoveAll(staging)
+		}
+	}()
 
 	data, err := fetchURL(ctx, url)
 	if err != nil {
@@ -64,19 +96,29 @@ func (a *VcsArchive) Clone(ctx context.Context, url, path, version string) error
 
 	switch a.Format {
 	case "tar":
-		return extractTar(limited, path, version)
+		if err := extractTar(limited, staging, version); err != nil {
+			return err
+		}
 	case "zip":
-		return extractZip(limited, path, version)
+		if err := extractZip(limited, staging, version); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported archive format: %q", a.Format)
 	}
-}
 
-// Update re-downloads and extracts the archive (no incremental update possible).
-func (a *VcsArchive) Update(ctx context.Context, path, version string) error {
-	// Archives have no "version" concept — just re-extract.
-	// We need the URL: it is not stored in the struct, so Update is a no-op
-	// for archives. The manager should call Clone instead.
+	// Replace path atomically. RemoveAll + Rename — Go's os.Rename onto
+	// an existing directory fails on POSIX, so we have to remove first.
+	// The window is brief and a crash mid-swap leaves either the old
+	// tree (Remove failed before Rename ran) or the new one (Rename
+	// completed); never a partial overlay.
+	if err := os.RemoveAll(path); err != nil {
+		return fmt.Errorf("removing previous archive dir: %w", err)
+	}
+	if err := os.Rename(staging, path); err != nil {
+		return fmt.Errorf("renaming staging archive dir: %w", err)
+	}
+	cleanupStage = false
 	return nil
 }
 
