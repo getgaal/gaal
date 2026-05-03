@@ -13,6 +13,7 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/core/agent"
+	"gaal/internal/secfile"
 	"gaal/internal/skill"
 )
 
@@ -311,7 +312,7 @@ func saveMilestoneState(path string, ms milestoneState) {
 		slog.Warn("failed to create milestone state directory", "err", err)
 		return
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := secfile.Write(path, data); err != nil {
 		slog.Warn("failed to write milestone state", "err", err)
 	}
 }

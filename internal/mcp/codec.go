@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
+
+	"gaal/internal/secfile"
 )
 
 // mcpCodec abstracts reading and writing the MCP-server table inside an
@@ -90,7 +92,7 @@ func (jsonCodec) WriteServers(path string, servers map[string]serverEntry) error
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, out, 0o644) //nolint:gosec
+	return secfile.Write(path, out)
 }
 
 // ── TOML ────────────────────────────────────────────────────────────────────
@@ -154,7 +156,7 @@ func (tomlCodec) WriteServers(path string, servers map[string]serverEntry) error
 	if err != nil {
 		return fmt.Errorf("encoding %s: %w", path, err)
 	}
-	return os.WriteFile(path, out, 0o644) //nolint:gosec
+	return secfile.Write(path, out)
 }
 
 // decodeTOMLEntry converts a parsed TOML table into a serverEntry, normalising

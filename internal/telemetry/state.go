@@ -12,6 +12,7 @@ import (
 
 	"gaal/internal/config"
 	configtemplate "gaal/internal/config/template"
+	"gaal/internal/secfile"
 )
 
 // consentState represents the resolved telemetry consent.
@@ -150,5 +151,5 @@ func persistConsent(cfgPath string, enabled bool) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	return os.WriteFile(cfgPath, out, 0o644)
+	return secfile.Write(cfgPath, out)
 }

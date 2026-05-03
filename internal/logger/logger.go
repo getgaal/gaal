@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+
+	"gaal/internal/secfile"
 )
 
 // Setup initialises the global slog logger.
@@ -23,7 +25,7 @@ func Setup(level slog.Level, logFile string) (func(), error) {
 	noop := func() {}
 
 	if logFile != "" {
-		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644) //nolint:gosec
+		f, err := secfile.OpenAppend(logFile)
 		if err != nil {
 			return noop, fmt.Errorf("opening log file %q: %w", logFile, err)
 		}

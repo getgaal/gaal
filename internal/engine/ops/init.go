@@ -12,6 +12,7 @@ import (
 
 	"gaal/internal/config"
 	configtemplate "gaal/internal/config/template"
+	"gaal/internal/secfile"
 )
 
 // Init writes the documented gaal.yaml skeleton to dest.
@@ -33,7 +34,7 @@ func Init(dest string, force bool) error {
 		return err
 	}
 
-	if err := os.WriteFile(dest, tmpl, 0o644); err != nil {
+	if err := secfile.Write(dest, tmpl); err != nil {
 		return fmt.Errorf("writing %s: %w", dest, err)
 	}
 
@@ -63,7 +64,7 @@ func InitFromPlan(dest string, plan Plan, force bool) error {
 		return err
 	}
 
-	if err := os.WriteFile(dest, content, 0o644); err != nil {
+	if err := secfile.Write(dest, content); err != nil {
 		return fmt.Errorf("writing %s: %w", dest, err)
 	}
 
