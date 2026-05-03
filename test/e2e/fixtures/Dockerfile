@@ -2,21 +2,25 @@
 #
 # Builds a small Alpine image carrying the prerequisites the e2e suite
 # exercises:
-#   - git, ca-certificates                    — VCS + TLS for skill cloning
+#   - git, mercurial, python3                 — VCS backends + HTTP fileserver
+#   - ca-certificates                         — TLS for skill cloning
 #   - bash, coreutils                         — predictable shell semantics
 #   - node + npm                              — agent CLIs (claude-code, codex)
 #
-# The gaal binary itself is NOT installed by the agent CLI install step:
-# the surrounding Makefile target compiles it for linux/amd64 and the test
-# harness COPYs it into /usr/local/bin/gaal as the LAST layer so iterative
-# rebuilds only re-do the cheap final step. The agent CLIs are gated behind
-# a build arg so the cheap layer-1 image can skip the slow npm install when
-# Layer 2 (`GAAL_E2E_CLI=1`) is not requested.
+# Two stages:
+#
+#   `base`   apk + (optional) npm install. Cacheable across CI runs and
+#            published as `ghcr.io/getgaal/gaal-e2e:base-latest` from main.
+#            Local devs and CI both pull it as a cache source so the slow
+#            apk + npm install layers are reused.
+#
+#   `final`  base + the gaal binary. The binary changes per build, so this
+#            layer is the only one that re-runs in the per-PR loop.
 #
 # Versions are pinned to specific patches so an upstream publish cannot
-# break CI overnight. Bump these deliberately (and re-run `make test-e2e`)
+# break CI overnight. Bump them deliberately (and re-run `make test-e2e`)
 # rather than letting the floating tags drift.
-FROM alpine:3.20.3
+FROM alpine:3.20.3 AS base
 
 ARG INSTALL_AGENT_CLIS=0
 ARG CLAUDE_CODE_VERSION=2.1.126
@@ -44,7 +48,12 @@ RUN if [ "$INSTALL_AGENT_CLIS" = "1" ]; then \
 # alive per `go test` invocation and `docker exec`s into it for every test.
 CMD ["sleep", "infinity"]
 
-# The gaal binary is copied last so editing the binary only invalidates
-# this layer (apk + npm stay cached).
+# Final stage adds the gaal binary on top of the cached base. Local devs
+# can pull just the base via:
+#   docker pull ghcr.io/getgaal/gaal-e2e:base-latest
+#   docker tag  ghcr.io/getgaal/gaal-e2e:base-latest gaal-e2e:base-latest
+# and `make test-e2e` will reuse those layers on its next build.
+FROM base AS final
+
 COPY gaal /usr/local/bin/gaal
 RUN chmod +x /usr/local/bin/gaal
