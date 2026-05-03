@@ -37,12 +37,21 @@ gaal/
     ├── engine/                # Central orchestrator — sequences the three managers
     │   ├── ops/               # Command operations (audit, info, init, status)
     │   └── render/            # Output types and renderers (table, JSON)
+    ├── httpx/                 # Hardened outbound HTTP client (TLS min, redirect SSRF, body cap, UA)
+    ├── installscript/         # `curl | sh` installer payload generation
     ├── logger/                # Console logging (colorized) + JSON file handler
     ├── mcp/                   # MCP configuration management
     ├── repo/                  # Repository manager (uses core/vcs)
     ├── runner/                # External subprocess execution
-    └── skill/                 # AI agent skill management (uses core/vcs + core/agent)
+    ├── secfile/               # Atomic 0o600 file writes (temp + fsync + rename)
+    ├── skill/                 # AI agent skill management (uses core/vcs + core/agent)
+    ├── telemetry/             # Anonymous usage telemetry (consent-gated)
+    ├── tools/                 # External-tool PATH probe (declared by sources)
+    └── urlx/                  # URL validation + credential redaction (scheme allowlist)
 ```
+
+Per-package detail lives in [`docs/packages/`](packages/); per-command flows
+live in [`docs/commands/`](commands/).
 
 ---
 
@@ -70,7 +79,7 @@ All sub-commands share the global flags defined on the root command:
 | `gaal audit` | — | Discover all skills and MCP servers installed on this machine |
 | `gaal doctor` | `--offline`, `--no-upsell` | Run configuration health checks and report agent status |
 | `gaal init` | `--scope`, `--import-all`, `--empty`, `--force/-f` | Bootstrap a `gaal.yaml` from discovered skills and MCPs |
-| `gaal migrate` | `--to`, `--dry-run`, `--yes` | Migrate configuration to a Community Edition instance |
+| `gaal migrate` | `--to`, `--dry-run` | Migrate configuration to a Community Edition instance (stub — not yet implemented) |
 | `gaal version` | — | Version string and build timestamp |
 | `gaal schema` | `--file/-f` | Print the JSON Schema (draft-07) for the config file |
 | `gaal completion <bash\|zsh\|fish\|powershell>` | — | Shell completion script (built-in Cobra) |
@@ -255,7 +264,7 @@ VCS backends are described in [**docs/core.md — VCS Sub-package**](core.md#vcs
 
 ### Parallelism
 
-`repo.Manager.Sync()` spawns one goroutine per repository. Errors flow through a buffered channel and are aggregated after `sync.WaitGroup`. The `version` field in `RepoConfig` acts as a strip prefix for archive extraction; `Update()` is a no-op for archives.
+`repo.Manager.Sync()` spawns one goroutine per repository. Errors flow through a buffered channel and are aggregated after `sync.WaitGroup`. The `version` field in `RepoConfig` acts as a strip prefix for archive extraction; `VcsArchive.Update` is currently a no-op (tracked: #124). See [packages/repo.md](packages/repo.md) and [packages/core-vcs.md](packages/core-vcs.md) for the per-backend behaviour.
 
 ---
 
