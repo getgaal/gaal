@@ -191,6 +191,61 @@ func TestTOMLCodec_PreservesEnv(t *testing.T) {
 	}
 }
 
+func TestTOMLCodec_PreservesHTTPHeaderEnvMappings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	in := map[string]serverEntry{
+		"memory-mcp": {
+			URL: "https://memory.example.com/mcp",
+			EnvHTTPHeaders: map[string]string{
+				"CF-Access-Client-Id":     "CF_ACCESS_CLIENT_ID",
+				"CF-Access-Client-Secret": "CF_ACCESS_CLIENT_SECRET",
+			},
+		},
+	}
+	c := tomlCodec{}
+	if err := c.WriteServers(path, in); err != nil {
+		t.Fatalf("WriteServers: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	rendered := string(data)
+	for _, forbidden := range []string{"client-id-value", "client-secret-value"} {
+		if strings.Contains(rendered, forbidden) {
+			t.Fatalf("rendered config leaked secret value %q:\n%s", forbidden, rendered)
+		}
+	}
+	for _, want := range []string{
+		`url = 'https://memory.example.com/mcp'`,
+		`CF-Access-Client-Id = 'CF_ACCESS_CLIENT_ID'`,
+		`CF-Access-Client-Secret = 'CF_ACCESS_CLIENT_SECRET'`,
+		"env_http_headers",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered TOML missing %q:\n%s", want, rendered)
+		}
+	}
+
+	out, err := c.ReadServers(path)
+	if err != nil {
+		t.Fatalf("ReadServers: %v", err)
+	}
+	got := out["memory-mcp"]
+	if got.URL != "https://memory.example.com/mcp" {
+		t.Errorf("url = %q", got.URL)
+	}
+	if got.EnvHTTPHeaders["CF-Access-Client-Id"] != "CF_ACCESS_CLIENT_ID" {
+		t.Errorf("env header id not preserved: %+v", got.EnvHTTPHeaders)
+	}
+	if got.EnvHTTPHeaders["CF-Access-Client-Secret"] != "CF_ACCESS_CLIENT_SECRET" {
+		t.Errorf("env header secret not preserved: %+v", got.EnvHTTPHeaders)
+	}
+}
+
 // End-to-end via mergeIntoTarget --------------------------------------------
 
 func TestMergeIntoTarget_TOMLDispatch(t *testing.T) {

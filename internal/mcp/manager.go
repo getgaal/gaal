@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 
 	"gaal/internal/config"
@@ -24,9 +25,14 @@ import (
 // serverEntry mirrors the MCP server JSON structure used by Claude Desktop,
 // VS Code and other compatible clients.
 type serverEntry struct {
-	Command string            `json:"command,omitempty"`
-	Args    []string          `json:"args,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
+	Type           string            `json:"type,omitempty"`
+	Command        string            `json:"command,omitempty"`
+	Args           []string          `json:"args,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	URL            string            `json:"url,omitempty"`
+	Headers        map[string]string `json:"headers,omitempty"`
+	HTTPHeaders    map[string]string `json:"http_headers,omitempty"`
+	EnvHTTPHeaders map[string]string `json:"env_http_headers,omitempty"`
 }
 
 // mcpServersDoc is the top-level document shape most MCP clients expect.
@@ -175,12 +181,8 @@ func (m *Manager) syncOne(ctx context.Context, mc config.ConfigMcp) error {
 
 	switch {
 	case mc.Inline != nil:
-		slog.DebugContext(ctx, "mcp inline definition", "name", mc.Name, "command", mc.Inline.Command)
-		entry = serverEntry{
-			Command: mc.Inline.Command,
-			Args:    mc.Inline.Args,
-			Env:     mc.Inline.Env,
-		}
+		slog.DebugContext(ctx, "mcp inline definition", "name", mc.Name, "type", mc.Inline.Type, "command", mc.Inline.Command, "url", urlx.Redact(mc.Inline.URL))
+		entry = inlineServerEntry(mc.Inline, strings.EqualFold(extOf(mc.Target), ".toml"))
 
 	case mc.Source != "":
 		slog.DebugContext(ctx, "mcp remote source", "name", mc.Name, "url", urlx.Redact(mc.Source))
@@ -380,11 +382,7 @@ func (m *Manager) Status(_ context.Context) []Status {
 			st.Present = true
 			// For inline configs we can detect divergence without I/O.
 			if mc.Inline != nil {
-				want := serverEntry{
-					Command: mc.Inline.Command,
-					Args:    mc.Inline.Args,
-					Env:     mc.Inline.Env,
-				}
+				want := inlineServerEntry(mc.Inline, strings.EqualFold(extOf(mc.Target), ".toml"))
 				st.Dirty = !serverEntryEqual(stored, want)
 			}
 		}
@@ -398,7 +396,14 @@ func (m *Manager) Status(_ context.Context) []Status {
 // serverEntryEqual reports whether two serverEntry values are semantically equal.
 // Nil and empty slices/maps are treated as equivalent.
 func serverEntryEqual(a, b serverEntry) bool {
+	slog.Debug("comparing mcp server entries")
+	if a.Type != b.Type {
+		return false
+	}
 	if a.Command != b.Command {
+		return false
+	}
+	if a.URL != b.URL {
 		return false
 	}
 	if len(a.Args) != len(b.Args) {
@@ -414,6 +419,72 @@ func serverEntryEqual(a, b serverEntry) bool {
 	}
 	for k, v := range a.Env {
 		if b.Env[k] != v {
+			return false
+		}
+	}
+	return stringMapEqual(a.Headers, b.Headers) &&
+		stringMapEqual(a.HTTPHeaders, b.HTTPHeaders) &&
+		stringMapEqual(a.EnvHTTPHeaders, b.EnvHTTPHeaders)
+}
+
+func inlineServerEntry(item *config.ConfigMcpItem, tomlTarget bool) serverEntry {
+	slog.Debug("building inline mcp server entry", "type", item.Type, "toml", tomlTarget, "url", urlx.Redact(item.URL))
+	entry := serverEntry{
+		Command: item.Command,
+		Args:    item.Args,
+		Env:     item.Env,
+		URL:     item.URL,
+	}
+	typ := item.Type
+	if typ == "" {
+		if item.URL != "" {
+			typ = "http"
+		} else {
+			typ = "stdio"
+		}
+	}
+	if !tomlTarget && typ != "stdio" {
+		entry.Type = typ
+	}
+	if len(item.Headers) == 0 {
+		return entry
+	}
+	if tomlTarget {
+		entry.HTTPHeaders = map[string]string{}
+		entry.EnvHTTPHeaders = map[string]string{}
+		for name, header := range item.Headers {
+			if header.Env != "" {
+				entry.EnvHTTPHeaders[name] = header.Env
+				continue
+			}
+			entry.HTTPHeaders[name] = header.Value
+		}
+		if len(entry.HTTPHeaders) == 0 {
+			entry.HTTPHeaders = nil
+		}
+		if len(entry.EnvHTTPHeaders) == 0 {
+			entry.EnvHTTPHeaders = nil
+		}
+		return entry
+	}
+	entry.Headers = map[string]string{}
+	for name, header := range item.Headers {
+		if header.Env != "" {
+			entry.Headers[name] = "${" + header.Env + "}"
+			continue
+		}
+		entry.Headers[name] = header.Value
+	}
+	return entry
+}
+
+func stringMapEqual(a, b map[string]string) bool {
+	slog.Debug("comparing string maps", "left", len(a), "right", len(b))
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
 			return false
 		}
 	}
@@ -435,10 +506,26 @@ func LoadServers(configFile string) (map[string]config.ConfigMcpItem, error) {
 	}
 	out := make(map[string]config.ConfigMcpItem, len(servers))
 	for name, s := range servers {
+		headers := make(map[string]config.ConfigMcpHeader, len(s.Headers)+len(s.HTTPHeaders)+len(s.EnvHTTPHeaders))
+		for k, v := range s.Headers {
+			headers[k] = config.ConfigMcpHeader{Value: v}
+		}
+		for k, v := range s.HTTPHeaders {
+			headers[k] = config.ConfigMcpHeader{Value: v}
+		}
+		for k, v := range s.EnvHTTPHeaders {
+			headers[k] = config.ConfigMcpHeader{Env: v}
+		}
+		if len(headers) == 0 {
+			headers = nil
+		}
 		out[name] = config.ConfigMcpItem{
+			Type:    s.Type,
 			Command: s.Command,
 			Args:    s.Args,
 			Env:     s.Env,
+			URL:     s.URL,
+			Headers: headers,
 		}
 	}
 	return out, nil

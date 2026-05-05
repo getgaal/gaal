@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -239,9 +240,16 @@ func (tomlCodec) WriteServers(path string, servers map[string]serverEntry) error
 // decodeTOMLEntry converts a parsed TOML table into a serverEntry, normalising
 // the args slice (TOML decodes arrays as []any) and env table types.
 func decodeTOMLEntry(t map[string]any) serverEntry {
+	slog.Debug("decoding toml mcp entry", "fields", len(t))
 	var e serverEntry
+	if v, ok := t["type"].(string); ok {
+		e.Type = v
+	}
 	if v, ok := t["command"].(string); ok {
 		e.Command = v
+	}
+	if v, ok := t["url"].(string); ok {
+		e.URL = v
 	}
 	if rawArgs, ok := t["args"].([]any); ok {
 		e.Args = make([]string, 0, len(rawArgs))
@@ -259,15 +267,31 @@ func decodeTOMLEntry(t map[string]any) serverEntry {
 			}
 		}
 	}
+	if rawHeaders, ok := t["headers"].(map[string]any); ok && len(rawHeaders) > 0 {
+		e.Headers = decodeStringMap(rawHeaders)
+	}
+	if rawHeaders, ok := t["http_headers"].(map[string]any); ok && len(rawHeaders) > 0 {
+		e.HTTPHeaders = decodeStringMap(rawHeaders)
+	}
+	if rawHeaders, ok := t["env_http_headers"].(map[string]any); ok && len(rawHeaders) > 0 {
+		e.EnvHTTPHeaders = decodeStringMap(rawHeaders)
+	}
 	return e
 }
 
 // encodeTOMLEntry produces the inverse of decodeTOMLEntry, omitting empty
 // fields so the rendered TOML stays minimal.
 func encodeTOMLEntry(e serverEntry) map[string]any {
+	slog.Debug("encoding toml mcp entry", "type", e.Type, "command", e.Command != "", "url", e.URL != "")
 	out := map[string]any{}
+	if e.Type != "" {
+		out["type"] = e.Type
+	}
 	if e.Command != "" {
 		out["command"] = e.Command
+	}
+	if e.URL != "" {
+		out["url"] = e.URL
 	}
 	if len(e.Args) > 0 {
 		args := make([]any, len(e.Args))
@@ -282,6 +306,35 @@ func encodeTOMLEntry(e serverEntry) map[string]any {
 			env[k] = v
 		}
 		out["env"] = env
+	}
+	if len(e.Headers) > 0 {
+		out["headers"] = encodeStringMap(e.Headers)
+	}
+	if len(e.HTTPHeaders) > 0 {
+		out["http_headers"] = encodeStringMap(e.HTTPHeaders)
+	}
+	if len(e.EnvHTTPHeaders) > 0 {
+		out["env_http_headers"] = encodeStringMap(e.EnvHTTPHeaders)
+	}
+	return out
+}
+
+func decodeStringMap(raw map[string]any) map[string]string {
+	slog.Debug("decoding string map", "count", len(raw))
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if s, ok := v.(string); ok {
+			out[k] = s
+		}
+	}
+	return out
+}
+
+func encodeStringMap(in map[string]string) map[string]any {
+	slog.Debug("encoding string map", "count", len(in))
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
 	}
 	return out
 }

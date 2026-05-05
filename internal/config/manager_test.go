@@ -276,6 +276,84 @@ mcps:
 	}
 }
 
+func TestLoad_MCPInlineHTTPWithHeaderEnv_IsValid(t *testing.T) {
+	p := writeYAML(t, `
+mcps:
+  - name: memory-mcp
+    target: /tmp/mcp.toml
+    inline:
+      type: http
+      url: https://memory.example.com/mcp
+      headers:
+        CF-Access-Client-Id:
+          env: CF_ACCESS_CLIENT_ID
+        CF-Access-Client-Secret:
+          env: CF_ACCESS_CLIENT_SECRET
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("expected no validation error for http mcp: %v", err)
+	}
+	got := cfg.MCPs[0].Inline.Headers["CF-Access-Client-Id"].Env
+	if got != "CF_ACCESS_CLIENT_ID" {
+		t.Errorf("header env = %q", got)
+	}
+}
+
+func TestLoad_MCPInlineHTTPWithStaticScalarHeader_IsValid(t *testing.T) {
+	p := writeYAML(t, `
+mcps:
+  - name: public-mcp
+    target: /tmp/mcp.json
+    inline:
+      type: http
+      url: https://public.example.com/mcp
+      headers:
+        X-Workspace: test
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("expected no validation error for scalar header: %v", err)
+	}
+	got := cfg.MCPs[0].Inline.Headers["X-Workspace"].Value
+	if got != "test" {
+		t.Errorf("header value = %q", got)
+	}
+}
+
+func TestLoad_ValidationError_MCPHeaderValueAndEnv(t *testing.T) {
+	p := writeYAML(t, `
+mcps:
+  - name: bad-mcp
+    target: /tmp/mcp.json
+    inline:
+      type: http
+      url: https://bad.example.com/mcp
+      headers:
+        Authorization:
+          value: static
+          env: AUTH_TOKEN
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected validation error for header with value and env")
+	}
+}
+
+func TestLoad_ValidationError_MCPHTTPWithoutURL(t *testing.T) {
+	p := writeYAML(t, `
+mcps:
+  - name: memory-mcp
+    target: /tmp/mcp.toml
+    inline:
+      type: http
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected validation error for http mcp without url")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Schema field
 // ---------------------------------------------------------------------------

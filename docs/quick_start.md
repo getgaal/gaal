@@ -70,7 +70,7 @@ skills:
     global: true                        # user-wide install (~/.copilot/skills, etc.)
 
 # ── MCP Servers ───────────────────────────────────────────────────────────────
-# Upsert MCP server entries into agent JSON config files.
+# Upsert MCP server entries into agent config files.
 # Existing entries are preserved; only the named key is updated.
 mcps:
   - name: filesystem
@@ -86,6 +86,18 @@ mcps:
     inline:
       command: uvx
       args: [mcp-server-filesystem, /home/user/projects]
+
+  - name: memory-mcp
+    agents: ["codex", "claude-code"]
+    global: true
+    inline:
+      type: http
+      url: https://memory.example.com/mcp
+      headers:
+        CF-Access-Client-Id:
+          env: CF_ACCESS_CLIENT_ID
+        CF-Access-Client-Secret:
+          env: CF_ACCESS_CLIENT_SECRET
 ```
 
 ### Configuration reference

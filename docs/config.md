@@ -287,7 +287,8 @@ Key validation rules applied to `Config` structs:
 | `ConfigMcp.Name` | `required` |
 | `ConfigMcp.Target` | _(deprecated)_ explicit path; prefer `agents` + `global` |
 | `ConfigMcp.Source` | `required_without=Inline` |
-| `ConfigMcpItem.Command` | `required` |
+| `ConfigMcpItem.Command` | required for stdio inline MCPs |
+| `ConfigMcpItem.URL` | required for http/sse inline MCPs |
 
 ### Relationship with `internal/config`
 

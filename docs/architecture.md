@@ -309,11 +309,14 @@ For `git` sources the cache uses a **shallow clone** (`depth=1`) with a **hard-r
 
 ## Package `internal/mcp`
 
-Each MCP entry is **upserted** into the target JSON file under the `mcpServers.<name>` key. Existing keys not managed by gaal are preserved. The write is atomic: temp file + `os.Rename()`.
+Each MCP entry is **upserted** into the target agent config. JSON-based targets
+use the `mcpServers.<name>` key. Codex TOML targets use `mcp_servers.<name>`.
+Existing keys not managed by gaal are preserved. The write is atomic: temp file
+and `os.Rename()`.
 
 | Source mode | Description |
 |-------------|-------------|
-| `inline:` | Full server definition in YAML (command, args, env) |
+| `inline:` | Full server definition in YAML (stdio `command`/`args`/`env`, or HTTP `type`/`url`/`headers`) |
 | `source:` | Remote URL returning `{"mcpServers": {...}}` JSON |
 
 ---
