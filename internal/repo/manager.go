@@ -78,7 +78,7 @@ func (m *Manager) syncOne(ctx context.Context, path string, cfg config.ConfigRep
 	}
 
 	slog.Debug("updating repository", "path", path)
-	return backend.Update(ctx, path, cfg.Version)
+	return backend.Update(ctx, cfg.URL, path, cfg.Version)
 }
 
 // Status returns the current status of every repository.

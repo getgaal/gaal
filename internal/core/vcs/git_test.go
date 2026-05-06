@@ -72,7 +72,7 @@ func TestVcsGit_Update_AfterClone(t *testing.T) {
 	if err := g.Clone(context.Background(), srcDir, destDir, ""); err != nil {
 		t.Fatalf("Clone: %v", err)
 	}
-	err := g.Update(context.Background(), destDir, "")
+	err := g.Update(context.Background(), "", destDir, "")
 	_ = err
 }
 
@@ -238,7 +238,7 @@ func TestVcsGit_Clone_BadURL(t *testing.T) {
 
 func TestVcsGit_Update_NotARepo(t *testing.T) {
 	g := &VcsGit{}
-	err := g.Update(context.Background(), t.TempDir(), "")
+	err := g.Update(context.Background(), "", t.TempDir(), "")
 	if err == nil {
 		t.Fatal("expected error when updating non-git directory")
 	}
@@ -260,7 +260,7 @@ func TestVcsGit_Update_InitedRepoNoRemote(t *testing.T) {
 	g := &VcsGit{}
 	// Update will fail because there is no remote configured; this covers
 	// the fetch error branch.
-	err := g.Update(context.Background(), dir, "")
+	err := g.Update(context.Background(), "", dir, "")
 	if err == nil {
 		t.Log("update succeeded unexpectedly on repo without remote")
 	}
@@ -363,7 +363,7 @@ func TestVcsGit_Update_Shallow_ResetsToOrigin(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	if err := g.Update(context.Background(), destDir, ""); err != nil {
+	if err := g.Update(context.Background(), "", destDir, ""); err != nil {
 		t.Fatalf("shallow Update: %v", err)
 	}
 	// The new file should now exist in the destination.

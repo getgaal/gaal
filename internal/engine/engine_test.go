@@ -1,7 +1,12 @@
 package engine
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,16 +55,27 @@ func TestRunOnce_EmptyConfig(t *testing.T) {
 }
 
 func TestRunOnce_WithRepository_NoNetwork(t *testing.T) {
-	// A repo with an archive type (Update is a no-op) pointing at a local
-	// directory avoids any network call. We use a pre-cloned archive path
-	// (a dir that already exists) so IsCloned returns true and Update is invoked.
+	// Archive Update used to be a silent no-op; with #124 it re-fetches.
+	// Stand up a local httptest server so the test stays hermetic.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		var buf bytes.Buffer
+		gw := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(gw)
+		_ = tw.WriteHeader(&tar.Header{Name: "project/file.txt", Mode: 0o644, Size: 2})
+		_, _ = tw.Write([]byte("hi"))
+		_ = tw.Close()
+		_ = gw.Close()
+		_, _ = w.Write(buf.Bytes())
+	}))
+	t.Cleanup(srv.Close)
+
 	existing := t.TempDir()
 
 	cfg := &config.Config{
 		Repositories: map[string]config.ConfigRepo{
 			existing: {
 				Type: "tar",
-				URL:  "https://example.com/unused.tar.gz",
+				URL:  srv.URL + "/x.tar.gz",
 			},
 		},
 	}
