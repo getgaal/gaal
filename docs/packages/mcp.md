@@ -17,7 +17,7 @@
 
 | Mode | Description |
 |------|-------------|
-| `inline:` | Full server definition in YAML (`command`, `args`, `env`) |
+| `inline:` | Full server definition in YAML (stdio `command`/`args`/`env`, or HTTP `type`/`url`/`headers`) |
 | `source:` | Remote URL returning a JSON document (full `mcpServers` map or a single entry) |
 
 Validated via [`packages/urlx.md`](urlx.md) before any HTTP call.

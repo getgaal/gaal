@@ -77,9 +77,41 @@ type ConfigMcp struct {
 
 // ConfigMcpItem is an inline MCP server specification.
 type ConfigMcpItem struct {
-	Command string            `yaml:"command"        json:"command"         jsonschema:"description=Executable to launch the MCP server process" validate:"required"`
-	Args    []string          `yaml:"args,omitempty" json:"args,omitempty"  jsonschema:"description=Command-line arguments passed to the command"`
-	Env     map[string]string `yaml:"env,omitempty"  json:"env,omitempty"   jsonschema:"description=Additional environment variables injected into the server process"`
+	Type    string                     `yaml:"type,omitempty"    json:"type,omitempty"     jsonschema:"description=MCP transport type; defaults to stdio when command is set, or http when url is set"`
+	Command string                     `yaml:"command,omitempty" json:"command,omitempty"  jsonschema:"description=Executable to launch the MCP stdio server process"`
+	Args    []string                   `yaml:"args,omitempty"    json:"args,omitempty"     jsonschema:"description=Command-line arguments passed to the stdio command"`
+	Env     map[string]string          `yaml:"env,omitempty"     json:"env,omitempty"      jsonschema:"description=Additional environment variables injected into the stdio server process"`
+	URL     string                     `yaml:"url,omitempty"     json:"url,omitempty"      jsonschema:"description=Endpoint for an MCP HTTP or SSE server"`
+	Headers map[string]ConfigMcpHeader `yaml:"headers,omitempty" json:"headers,omitempty"  jsonschema:"description=HTTP headers for remote MCP servers; use env to reference secret environment variables"`
+}
+
+// ConfigMcpHeader is one HTTP header value for a remote MCP server.
+// Value is written as a static header. Env writes only the environment variable
+// name where the target agent supports env-backed headers.
+type ConfigMcpHeader struct {
+	Value string `yaml:"value,omitempty" json:"value,omitempty" jsonschema:"description=Static header value; avoid for secrets"`
+	Env   string `yaml:"env,omitempty"   json:"env,omitempty"   jsonschema:"description=Environment variable name that supplies the header value"`
+}
+
+// UnmarshalYAML accepts HTTP headers as either a scalar static value or an
+// explicit mapping. Secrets should use the mapping form with env.
+func (h *ConfigMcpHeader) UnmarshalYAML(node *yaml.Node) error {
+	slog.Debug("decoding mcp header", "line", node.Line, "kind", node.Kind)
+	switch node.Kind {
+	case yaml.ScalarNode:
+		h.Value = node.Value
+		return nil
+	case yaml.MappingNode:
+		type rawHeader ConfigMcpHeader
+		var raw rawHeader
+		if err := node.Decode(&raw); err != nil {
+			return err
+		}
+		*h = ConfigMcpHeader(raw)
+		return nil
+	default:
+		return fmt.Errorf("line %d: expected header value or mapping", node.Line)
+	}
 }
 
 // LevelConfigs holds each configuration level as loaded from disk, before
@@ -349,7 +381,48 @@ func (c *Config) deduplicate() {
 
 func (c *Config) validate() error {
 	slog.Debug("validating config", "repos", len(c.Repositories), "skills", len(c.Skills), "mcps", len(c.MCPs))
-	return schema.Validate(c)
+	if err := schema.Validate(c); err != nil {
+		return err
+	}
+	return c.validateMCPItems()
+}
+
+func (c *Config) validateMCPItems() error {
+	slog.Debug("validating mcp inline items", "count", len(c.MCPs))
+	for _, mc := range c.MCPs {
+		if mc.Inline == nil {
+			continue
+		}
+		typ := mc.Inline.Type
+		if typ == "" {
+			if mc.Inline.URL != "" {
+				typ = "http"
+			} else {
+				typ = "stdio"
+			}
+		}
+		switch typ {
+		case "stdio":
+			if mc.Inline.Command == "" {
+				return fmt.Errorf("mcp %q: inline.command is required for stdio MCP servers", mc.Name)
+			}
+		case "http", "sse":
+			if mc.Inline.URL == "" {
+				return fmt.Errorf("mcp %q: inline.url is required for %s MCP servers", mc.Name, typ)
+			}
+		default:
+			return fmt.Errorf("mcp %q: inline.type must be one of [stdio http sse], got %q", mc.Name, typ)
+		}
+		for name, header := range mc.Inline.Headers {
+			if header.Value != "" && header.Env != "" {
+				return fmt.Errorf("mcp %q: inline.headers.%s cannot set both value and env", mc.Name, name)
+			}
+			if header.Value == "" && header.Env == "" {
+				return fmt.Errorf("mcp %q: inline.headers.%s must set value or env", mc.Name, name)
+			}
+		}
+	}
+	return nil
 }
 
 // ── ConfigSkill methods ───────────────────────────────────────────────────────

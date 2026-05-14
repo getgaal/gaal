@@ -176,6 +176,87 @@ func TestManager_Sync_Inline(t *testing.T) {
 	}
 }
 
+func TestManager_Sync_InlineHTTPToCodexTOML(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "config.toml")
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "memory-mcp",
+			Target: target,
+			Inline: &config.ConfigMcpItem{
+				Type: "http",
+				URL:  "https://memory.example.com/mcp",
+				Headers: map[string]config.ConfigMcpHeader{
+					"CF-Access-Client-Id":     {Env: "CF_ACCESS_CLIENT_ID"},
+					"CF-Access-Client-Secret": {Env: "CF_ACCESS_CLIENT_SECRET"},
+				},
+			},
+		},
+	}
+	m := NewManager(mcps, "", "")
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read target: %v", err)
+	}
+	rendered := string(data)
+	for _, want := range []string{
+		`url = 'https://memory.example.com/mcp'`,
+		`CF-Access-Client-Id = 'CF_ACCESS_CLIENT_ID'`,
+		`CF-Access-Client-Secret = 'CF_ACCESS_CLIENT_SECRET'`,
+		"env_http_headers",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("rendered TOML missing %q:\n%s", want, rendered)
+		}
+	}
+	if strings.Contains(rendered, ".http_headers]") {
+		t.Errorf("env-backed headers should not be rendered as static http_headers:\n%s", rendered)
+	}
+}
+
+func TestManager_Sync_InlineHTTPToJSON(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "mcp.json")
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "memory-mcp",
+			Target: target,
+			Inline: &config.ConfigMcpItem{
+				Type: "http",
+				URL:  "https://memory.example.com/mcp",
+				Headers: map[string]config.ConfigMcpHeader{
+					"CF-Access-Client-Id":     {Env: "CF_ACCESS_CLIENT_ID"},
+					"CF-Access-Client-Secret": {Env: "CF_ACCESS_CLIENT_SECRET"},
+				},
+			},
+		},
+	}
+	m := NewManager(mcps, "", "")
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	servers, err := codecFor(target).ReadServers(target)
+	if err != nil {
+		t.Fatalf("ReadServers: %v", err)
+	}
+	got := servers["memory-mcp"]
+	if got.Type != "http" {
+		t.Errorf("type = %q, want http", got.Type)
+	}
+	if got.URL != "https://memory.example.com/mcp" {
+		t.Errorf("url = %q", got.URL)
+	}
+	if got.Headers["CF-Access-Client-Id"] != "${CF_ACCESS_CLIENT_ID}" {
+		t.Errorf("header id = %q", got.Headers["CF-Access-Client-Id"])
+	}
+	if got.Headers["CF-Access-Client-Secret"] != "${CF_ACCESS_CLIENT_SECRET}" {
+		t.Errorf("header secret = %q", got.Headers["CF-Access-Client-Secret"])
+	}
+}
+
 func TestManager_Sync_NoSourceOrInline(t *testing.T) {
 	mcps := []config.ConfigMcp{
 		{Name: "bad", Target: filepath.Join(t.TempDir(), "mcp.json")},

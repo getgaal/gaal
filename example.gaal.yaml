@@ -95,6 +95,9 @@ skills:
 #
 # source: URL to a remote JSON file containing an mcpServers document.
 # inline: define the server entry directly in this file.
+#         Stdio entries use command/args/env. HTTP entries use type/url/headers.
+#         For HTTP header secrets, set headers.<name>.env to an environment
+#         variable name; gaal writes the env reference, not the secret value.
 # agents: list of agent identifiers (or ["*"] to target all agents).
 #         The target JSON file is resolved automatically from the agent registry.
 # global: true  → write to the agent's global MCP config (global_mcp_config_file)
@@ -141,6 +144,19 @@ mcps:
       args:
         - -y
         - "@modelcontextprotocol/server-sequential-thinking"
+
+  # Native HTTP server with env-backed headers.
+  - name: memory-mcp
+    agents: ["codex", "claude-code"]
+    global: true
+    inline:
+      type: http
+      url: https://memory.example.com/mcp
+      headers:
+        CF-Access-Client-Id:
+          env: CF_ACCESS_CLIENT_ID
+        CF-Access-Client-Secret:
+          env: CF_ACCESS_CLIENT_SECRET
 
 # ─────────────────────────────────────────────────────────────────────────────
 # tools
