@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gaal/internal/config"
+	"gaal/internal/engine/hooks"
 	"gaal/internal/engine/ops"
 	"gaal/internal/engine/render"
 	"gaal/internal/mcp"
@@ -75,6 +76,7 @@ type Engine struct {
 	repos     *repo.Manager
 	skills    *skill.Manager
 	mcps      *mcp.Manager
+	hooks     *hooks.Manager
 	home      string
 	workDir   string
 	cacheRoot string
@@ -116,12 +118,18 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 		repos:     repo.NewManager(cfg.Repositories, stateDir),
 		skills:    skill.NewManager(cfg.Skills, cacheDir, home, workDir, stateDir, opts.Force),
 		mcps:      mcp.NewManager(cfg.MCPs, home, stateDir),
+		hooks:     hooks.NewManager(cfg.Hooks, workDir, home, ""),
 		home:      home,
 		workDir:   workDir,
 		cacheRoot: cacheRoot,
 		stateDir:  stateDir,
 	}
 }
+
+// Hooks exposes the engine's hook manager so callers (cmd/sync) can run
+// pre-sync and post-sync hooks at the right moments. It is never nil but
+// may have no hooks declared.
+func (e *Engine) Hooks() *hooks.Manager { return e.hooks }
 
 // RunOnce performs a single synchronisation pass.
 func (e *Engine) RunOnce(ctx context.Context) error {
@@ -160,13 +168,14 @@ func (e *Engine) RunOnce(ctx context.Context) error {
 }
 
 // RunService runs synchronisation in a loop until the context is cancelled.
+// Each iteration runs pre-sync hooks, then sync, then post-sync hooks (only
+// if sync succeeded). Hook failures are logged but never break the loop —
+// a daemon that exits on a transient hook error would be hostile to users.
 func (e *Engine) RunService(ctx context.Context, interval time.Duration) error {
 	slog.Info("service mode started", "interval", interval)
 
 	// Run immediately on startup.
-	if err := e.RunOnce(ctx); err != nil {
-		slog.Error("initial sync failed", "err", err)
-	}
+	e.serviceIteration(ctx)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -178,10 +187,26 @@ func (e *Engine) RunService(ctx context.Context, interval time.Duration) error {
 			return nil
 		case t := <-ticker.C:
 			slog.Info("periodic sync triggered", "time", t)
-			if err := e.RunOnce(ctx); err != nil {
-				slog.Error("periodic sync failed", "err", err)
-			}
+			e.serviceIteration(ctx)
 		}
+	}
+}
+
+func (e *Engine) serviceIteration(ctx context.Context) {
+	plan, planErr := e.Plan(ctx)
+	if planErr != nil {
+		slog.Error("plan failed", "err", planErr)
+	}
+	if err := e.hooks.RunPreSync(ctx, plan); err != nil {
+		slog.Error("pre-sync hooks failed; skipping sync this iteration", "err", err)
+		return
+	}
+	if err := e.RunOnce(ctx); err != nil {
+		slog.Error("periodic sync failed; skipping post-sync hooks", "err", err)
+		return
+	}
+	if err := e.hooks.RunPostSync(ctx, plan); err != nil {
+		slog.Error("post-sync hooks failed", "err", err)
 	}
 }
 
@@ -210,7 +235,18 @@ func (e *Engine) Collect(ctx context.Context) (*render.StatusReport, error) {
 // It returns the plan so the caller can inspect HasChanges / HasErrors for
 // exit code logic.
 func (e *Engine) DryRun(ctx context.Context, format OutputFormat) (*render.PlanReport, error) {
-	return ops.RenderPlan(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir, format)
+	plan, err := e.Plan(ctx)
+	if err != nil {
+		return nil, err
+	}
+	renderer, err := render.NewPlanRenderer(format)
+	if err != nil {
+		return nil, err
+	}
+	if err := renderer.Render(os.Stdout, plan); err != nil {
+		return nil, err
+	}
+	return plan, nil
 }
 
 // Plan computes the sync plan without rendering it. It is the same planner
@@ -218,7 +254,12 @@ func (e *Engine) DryRun(ctx context.Context, format OutputFormat) (*render.PlanR
 // summary can report past-tense verbs ("cloned", "installed", "upserted")
 // for each managed resource.
 func (e *Engine) Plan(ctx context.Context) (*render.PlanReport, error) {
-	return ops.SyncPlan(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir)
+	plan, err := ops.SyncPlan(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir)
+	if err != nil {
+		return nil, err
+	}
+	plan.Hooks = e.hooks.Plan()
+	return plan, nil
 }
 
 // Status collects the current resource state and renders it to os.Stdout.

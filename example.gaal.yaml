@@ -185,3 +185,53 @@ tools:
     hint: "cargo install rtk"
   - name: fnm                # Fast Node manager
     hint: "https://github.com/Schniz/fnm#installation"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# hooks
+#
+# Run user-defined commands before and after every successful sync. Hooks
+# use exec-form (command + args[]) so they remain portable across Linux,
+# macOS, and Windows — no shell is involved.
+#
+# pre-sync runs before any resource is touched. A non-zero exit aborts the
+#          sync (unless continue_on_error: true). Use for backups, gating
+#          checks, etc. Pre-sync hooks see GAAL_PLANNED_REPOS,
+#          GAAL_PLANNED_SKILLS, GAAL_PLANNED_MCPS env vars describing what
+#          sync intends to change.
+#
+# post-sync runs only when sync (and any --prune) succeeded. Skipped on any
+#          sync error. Post-sync hooks see GAAL_CHANGED_REPOS,
+#          GAAL_CHANGED_SKILLS, GAAL_CHANGED_MCPS env vars (newline-separated
+#          lists) describing what actually changed.
+#
+# Fields:
+#   name              — optional label shown in logs and dry-run output
+#   command           — executable; found on PATH unless given as a path
+#   args              — list of arguments. ~/, $VAR, ${VAR} are expanded.
+#   cwd               — working directory; defaults to gaal's workdir
+#   os                — restrict to [linux | darwin | windows]; empty = all
+#   timeout           — Go duration string, e.g. "30s", "2m". Default 5m.
+#   continue_on_error — true → log a warning and keep going on non-zero exit
+#   env               — extra environment variables for this hook
+# ─────────────────────────────────────────────────────────────────────────────
+hooks:
+  pre-sync:
+    - name: "snapshot working copies"
+      command: ./scripts/backup.sh
+      os: [linux, darwin]
+      timeout: 1m
+      continue_on_error: true
+
+  post-sync:
+    # Keep ~/.claude in sync with the dotclaude working copy after gaal
+    # has updated everything else. Runs on every OS.
+    - name: "pull dotclaude into ~/.claude"
+      command: git
+      args: ["-C", "~/.claude", "pull"]
+
+    # Reload an MCP-using agent only when the MCP config actually changed.
+    - name: "kick claude-code on mcp changes"
+      command: sh
+      args: ["-c", "test -n \"$GAAL_CHANGED_MCPS\" && pkill -HUP -f claude-code || true"]
+      os: [linux, darwin]
+      continue_on_error: true

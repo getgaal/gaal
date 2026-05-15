@@ -111,6 +111,9 @@ Config
 ├── Skills        []ConfigSkill
 ├── MCPs          []ConfigMcp
 │                   └── Inline  *ConfigMcpItem
+├── Hooks         *ConfigHooks
+│                   ├── PreSync  []ConfigHook
+│                   └── PostSync []ConfigHook
 ├── Telemetry     *bool          gaal:"maxscope=user"
 └── SourcePath    string         yaml:"-"  (runtime only)
 ```
@@ -139,6 +142,7 @@ Per-field merge rules:
 | `repositories` | Map merge — source entry wins on key conflict |
 | `skills` | Upsert by `Source` — source entry replaces the existing entry with the same `Source` |
 | `mcps` | Upsert by `Name` — source entry replaces the existing entry with the same `Name` |
+| `hooks` | Append — higher-priority hooks run *after* lower-priority ones at the same phase, so workspace-level hooks fire last |
 
 Intra-file duplicates (same `Source` or `Name` within a single file) are
 silently dropped, keeping the first occurrence. Cross-level deduplication

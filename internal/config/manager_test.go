@@ -637,6 +637,29 @@ func TestMergeFrom_SchemaSrcWins(t *testing.T) {
 	}
 }
 
+func TestMergeFrom_HooksConcatenateInPriorityOrder(t *testing.T) {
+	low := &Config{Hooks: &ConfigHooks{
+		PreSync:  []ConfigHook{{Name: "low-pre", Command: "true"}},
+		PostSync: []ConfigHook{{Name: "low-post", Command: "true"}},
+	}}
+	high := &Config{Hooks: &ConfigHooks{
+		PreSync:  []ConfigHook{{Name: "high-pre", Command: "true"}},
+		PostSync: []ConfigHook{{Name: "high-post", Command: "true"}},
+	}}
+	merged := &Config{}
+	merged.mergeFrom(low, ScopeGlobal)
+	merged.mergeFrom(high, ScopeWorkspace)
+	if merged.Hooks == nil {
+		t.Fatal("expected merged hooks")
+	}
+	if got := len(merged.Hooks.PreSync); got != 2 {
+		t.Fatalf("expected 2 pre-sync hooks, got %d", got)
+	}
+	if merged.Hooks.PreSync[0].Name != "low-pre" || merged.Hooks.PreSync[1].Name != "high-pre" {
+		t.Errorf("ordering: %+v", merged.Hooks.PreSync)
+	}
+}
+
 func TestMergeFrom_SchemaDstPreservedWhenSrcNil(t *testing.T) {
 	v1 := 1
 	dst := &Config{Schema: &v1}
@@ -1312,3 +1335,95 @@ tools:
 
 // Ensure fmt is used (suppress unused import).
 var _ = fmt.Sprintf
+
+// ---------------------------------------------------------------------------
+// Hooks
+// ---------------------------------------------------------------------------
+
+func TestLoad_Hooks_Valid(t *testing.T) {
+	p := writeYAML(t, `
+schema: 1
+hooks:
+  pre-sync:
+    - name: "backup"
+      command: ./scripts/backup.sh
+      timeout: 30s
+  post-sync:
+    - command: git
+      args: ["-C", "~/.claude", "pull"]
+      os: [linux, darwin]
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Hooks == nil {
+		t.Fatal("expected hooks block to be parsed")
+	}
+	if len(cfg.Hooks.PreSync) != 1 || cfg.Hooks.PreSync[0].Name != "backup" {
+		t.Errorf("pre-sync: %+v", cfg.Hooks.PreSync)
+	}
+	if got := cfg.Hooks.PreSync[0].EffectiveTimeout(); got != 30*1_000_000_000 { // 30s
+		t.Errorf("timeout: want 30s, got %s", got)
+	}
+	if len(cfg.Hooks.PostSync) != 1 || cfg.Hooks.PostSync[0].Command != "git" {
+		t.Errorf("post-sync: %+v", cfg.Hooks.PostSync)
+	}
+	if want := []string{"-C", "~/.claude", "pull"}; !sliceEq(cfg.Hooks.PostSync[0].Args, want) {
+		t.Errorf("args: want %v, got %v", want, cfg.Hooks.PostSync[0].Args)
+	}
+}
+
+func TestLoad_Hooks_MissingCommand_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+schema: 1
+hooks:
+  post-sync:
+    - name: "no command"
+`)
+	if _, err := Load(p); err == nil {
+		t.Fatal("expected validation error when command is missing")
+	}
+}
+
+func TestLoad_Hooks_InvalidOS_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+schema: 1
+hooks:
+  post-sync:
+    - command: true
+      os: [linux, plan9]
+`)
+	_, err := Load(p)
+	if err == nil {
+		t.Fatal("expected validation error for unsupported os value")
+	}
+	if !strings.Contains(err.Error(), "plan9") {
+		t.Errorf("error should mention bad os value; got %v", err)
+	}
+}
+
+func TestLoad_Hooks_InvalidTimeout_Rejected(t *testing.T) {
+	p := writeYAML(t, `
+schema: 1
+hooks:
+  post-sync:
+    - command: true
+      timeout: "ten seconds"
+`)
+	if _, err := Load(p); err == nil {
+		t.Fatal("expected validation error for unparseable timeout")
+	}
+}
+
+func sliceEq(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

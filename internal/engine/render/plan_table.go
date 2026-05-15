@@ -15,6 +15,8 @@ var actionLabel = map[PlanAction]string{
 	PlanUpdate: "update",
 	PlanCreate: "create",
 	PlanError:  "error",
+	PlanRun:    "run",
+	PlanSkip:   "skip",
 }
 
 // actionCell renders a PlanAction as a coloured pterm string.
@@ -36,6 +38,10 @@ func actionCell(action PlanAction, errMsg string) string {
 			msg = errMsg
 		}
 		return pterm.FgRed.Sprint("! " + msg)
+	case PlanRun:
+		return pterm.FgCyan.Sprint("> " + label)
+	case PlanSkip:
+		return pterm.FgGray.Sprint("- " + label)
 	default:
 		return label
 	}
@@ -57,6 +63,9 @@ func (pr *planTableRenderer) Render(w io.Writer, r *PlanReport) error {
 		return err
 	}
 	if err := pr.mcpTable(w, tr, r.MCPs, termW); err != nil {
+		return err
+	}
+	if err := pr.hookTable(w, tr, r.Hooks, termW); err != nil {
 		return err
 	}
 
@@ -150,6 +159,39 @@ func (pr *planTableRenderer) mcpTable(w io.Writer, tr *tableRenderer, entries []
 			e.Name,
 			actionCell(e.Action, e.Error),
 			trunc(e.Target, vw),
+		})
+	}
+	return tr.ptermTable(w, data)
+}
+
+func (pr *planTableRenderer) hookTable(w io.Writer, tr *tableRenderer, entries []PlanHookEntry, termW int) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	tr.section(w, "Hooks", len(entries))
+	vw := varColWidth(termW, 4, 2, 22)
+	if vw < 12 {
+		vw = 12
+	}
+
+	data := pterm.TableData{{"PHASE", "NAME", "ACTION", "COMMAND"}}
+	for _, e := range entries {
+		name := e.Name
+		if name == "" {
+			name = "—"
+		}
+		command := e.Command
+		if len(e.Args) > 0 {
+			command = e.Command + " " + strings.Join(e.Args, " ")
+		}
+		if e.Action == PlanSkip && e.Reason != "" {
+			command = command + "  (" + e.Reason + ")"
+		}
+		data = append(data, []string{
+			string(e.Phase),
+			trunc(name, vw),
+			actionCell(e.Action, ""),
+			trunc(command, vw*2),
 		})
 	}
 	return tr.ptermTable(w, data)
