@@ -1046,36 +1046,6 @@ func captureSlog(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-func TestWarnLegacyClaudeDesktopJSON_DetectsStaleFile(t *testing.T) {
-	home := t.TempDir()
-	stale := filepath.Join(home, ".config", "claude", "claude_desktop_config.json")
-	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(stale, []byte("{}"), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-
-	out := captureSlog(t, func() {
-		m := NewManager(nil, home, "")
-		m.warnLegacyClaudeDesktopJSON()
-	})
-	if !strings.Contains(out, "stale ~/.config/claude/claude_desktop_config.json") {
-		t.Errorf("expected legacy warning, got: %s", out)
-	}
-}
-
-func TestWarnLegacyClaudeDesktopJSON_SilentWhenAbsent(t *testing.T) {
-	home := t.TempDir() // no legacy file present
-	out := captureSlog(t, func() {
-		m := NewManager(nil, home, "")
-		m.warnLegacyClaudeDesktopJSON()
-	})
-	if strings.Contains(out, "stale") {
-		t.Errorf("expected no warning when legacy file is absent, got: %s", out)
-	}
-}
-
 // ── behaviour warnings (via internal/core/agent) ───────────────────────────
 
 // TestEmitBehaviorWarnings_FiresForExplicitClaudeDesktop is the regression
@@ -1177,21 +1147,21 @@ func TestEmitBehaviorWarnings_FiresMCPProjectUnsupported(t *testing.T) {
 }
 
 func TestEmitConfigWarnings_FiresOncePerManager(t *testing.T) {
-	home := t.TempDir()
-	stale := filepath.Join(home, ".config", "claude", "claude_desktop_config.json")
-	os.MkdirAll(filepath.Dir(stale), 0o755)
-	os.WriteFile(stale, []byte("{}"), 0o644)
-
+	// windsurf has no project MCP — sync.Once must ensure the
+	// resulting mcp_project_unsupported warning fires once even though
+	// Sync, Status, and Prune each call resolvedMCPs.
+	mcps := []config.ConfigMcp{
+		{Name: "x", Agents: []string{"windsurf"}, Global: false,
+			Inline: &config.ConfigMcpItem{Command: "node"}},
+	}
 	out := captureSlog(t, func() {
-		m := NewManager(nil, home, "")
-		// Multiple resolvedMCPs calls (Sync, Status, Prune all use it) must
-		// not duplicate the warning.
+		m := NewManager(mcps, "/home/u", "")
 		_ = m.resolvedMCPs()
 		_ = m.resolvedMCPs()
 		_ = m.resolvedMCPs()
 	})
-	count := strings.Count(out, "stale ~/.config/claude/claude_desktop_config.json")
+	count := strings.Count(out, "code=mcp_project_unsupported")
 	if count != 1 {
-		t.Errorf("expected legacy warning to fire exactly once, fired %d times", count)
+		t.Errorf("expected warning to fire exactly once, fired %d times", count)
 	}
 }

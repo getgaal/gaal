@@ -116,17 +116,15 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 }
 
 // emitConfigWarnings surfaces issues that depend on the user's MCP config
-// or local environment but aren't tied to a single sync entry. Runs at most
-// once per Manager (gated by warnOnce) so the messages don't repeat across
-// resolvedMCPs calls from Sync, Status, and Prune.
+// but aren't tied to a single sync entry. Runs at most once per Manager
+// (gated by warnOnce) so the messages don't repeat across resolvedMCPs
+// calls from Sync, Status, and Prune.
 //
 // Per-agent behavioural constraints (unsupported platforms, project/global
 // MCP scope missing) come from [agent.CollectWarnings] — no hard-coded
-// agent names live here. The legacy-file check below is filesystem-state
-// based, not agent-name based, and is intentionally kept out of Behavior.
+// agent names live here.
 func (m *Manager) emitConfigWarnings() {
 	m.emitBehaviorWarnings()
-	m.warnLegacyClaudeDesktopJSON()
 }
 
 // emitBehaviorWarnings groups the configured MCP entries by scope and
@@ -156,24 +154,6 @@ func (m *Manager) emitBehaviorWarnings() {
 		slog.Warn("mcp: "+w.Msg,
 			"agent", w.Agent, "scope", w.Scope, "code", w.Code, "hint", w.Hint)
 	}
-}
-
-// warnLegacyClaudeDesktopJSON detects the file gaal used to write under the
-// (incorrect) claude-code path: ~/.config/claude/claude_desktop_config.json.
-// Neither Claude Code (~/.claude.json) nor Claude Desktop (macOS:
-// ~/Library/Application Support/Claude/, Windows: %APPDATA%\Claude\) reads
-// it, so users carrying it from older gaal versions can safely delete it.
-func (m *Manager) warnLegacyClaudeDesktopJSON() {
-	if m.home == "" {
-		return
-	}
-	legacy := filepath.Join(m.home, ".config", "claude", "claude_desktop_config.json")
-	if _, err := os.Stat(legacy); err != nil {
-		return
-	}
-	slog.Warn("mcp: stale ~/.config/claude/claude_desktop_config.json detected — neither Claude Code nor Claude Desktop reads this path; safe to delete",
-		"path", legacy,
-		"hint", "Claude Code now writes ~/.claude.json; Claude Desktop uses ~/Library/Application Support/Claude/")
 }
 
 // Sync applies every MCP configuration entry. A failure on one entry does not
