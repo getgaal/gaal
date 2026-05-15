@@ -12,6 +12,13 @@
 #   global_skills_search    – home-relative dirs (~/) scanned at 1 level (empty = fallback to global_skills_dir)
 #   pm_skills_search        – home-relative dirs (~/) from the agent's package manager, scanned recursively
 #
+# Behaviour keys — consumed by [internal/core/agent.BehaviorFor] to warn
+# on no-op or unsupported combinations during sync/status:
+#   supports_skills         – bool, default true. Set to false for agents that have no
+#                             on-disk SKILL.md mechanism (claude-desktop is the canonical case).
+#   supported_platforms     – list, default empty (= all). Allowed values: darwin, linux, windows.
+#                             Use to flag an agent that only ships on a subset of platforms.
+#
 # Custom agents can be added by creating a file at:
 #   $XDG_CONFIG_HOME/gaal/agents.yaml   (Linux)
 #   $XDG_CONFIG_HOME/gaal/agents.yaml   (macOS, defaults to ~/.config/gaal/agents.yaml)
@@ -102,12 +109,17 @@ agents:
 
   # claude-desktop is the GUI app, distinct from claude-code (the CLI).
   # Path below is the macOS canonical location; Claude Desktop is officially
-  # macOS- and Windows-only. Linux users get a sync-time warning.
+  # macOS- and Windows-only — `supported_platforms` makes that explicit so
+  # any sync targeting it on linux fires a behaviour warning.
   # Windows users can override this path via ~/.config/gaal/agents.yaml
   # to point at ~/AppData/Roaming/Claude/claude_desktop_config.json.
+  # Skills are a Claude Code CLI feature; Claude Desktop has no on-disk
+  # SKILL.md mechanism, so `supports_skills: false` flags installs as no-ops.
   claude-desktop:
     supports_generic_project: true
     supports_generic_global: true
+    supports_skills: false
+    supported_platforms: [darwin, windows]
     project_skills_dir: ""
     global_skills_dir: ""
     global_mcp_config_file: ~/Library/Application Support/Claude/claude_desktop_config.json
