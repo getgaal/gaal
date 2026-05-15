@@ -243,6 +243,84 @@ func TestValidateEntry_PmSearchWithoutTilde_Rejected(t *testing.T) {
 	}
 }
 
+func TestValidateEntry_SupportedPlatforms_Allowed(t *testing.T) {
+	e := agentEntry{
+		ProjectSkillsDir:   ".foo/skills",
+		GlobalSkillsDir:    "~/.foo/skills",
+		SupportedPlatforms: []string{"darwin", "windows"},
+	}
+	if err := validateEntry("foo", e); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateEntry_SupportedPlatforms_Rejected(t *testing.T) {
+	e := agentEntry{
+		ProjectSkillsDir:   ".foo/skills",
+		GlobalSkillsDir:    "~/.foo/skills",
+		SupportedPlatforms: []string{"freebsd"},
+	}
+	if err := validateEntry("foo", e); err == nil {
+		t.Error("expected error for non-allow-listed platform")
+	}
+}
+
+// ── SupportsSkills defaulting ─────────────────────────────────────────────────
+
+func TestLoadInto_SupportsSkills_DefaultsToTrue(t *testing.T) {
+	dst := map[string]Info{}
+	data := []byte(`
+agents:
+  defaulty:
+    project_skills_dir: .defaulty/skills
+    global_skills_dir: ~/.defaulty/skills
+    project_mcp_config_file: ""
+`)
+	if err := loadInto(data, dst, false); err != nil {
+		t.Fatalf("loadInto: %v", err)
+	}
+	if !dst["defaulty"].SupportsSkills {
+		t.Error("omitted supports_skills should default to true")
+	}
+}
+
+func TestLoadInto_SupportsSkills_ExplicitFalseRespected(t *testing.T) {
+	dst := map[string]Info{}
+	data := []byte(`
+agents:
+  guily:
+    project_skills_dir: .guily/skills
+    global_skills_dir: ~/.guily/skills
+    project_mcp_config_file: ""
+    supports_skills: false
+`)
+	if err := loadInto(data, dst, false); err != nil {
+		t.Fatalf("loadInto: %v", err)
+	}
+	if dst["guily"].SupportsSkills {
+		t.Error("explicit supports_skills: false should be honoured")
+	}
+}
+
+func TestLoadInto_SupportedPlatforms_Roundtrip(t *testing.T) {
+	dst := map[string]Info{}
+	data := []byte(`
+agents:
+  niche:
+    project_skills_dir: .niche/skills
+    global_skills_dir: ~/.niche/skills
+    project_mcp_config_file: ""
+    supported_platforms: [darwin, windows]
+`)
+	if err := loadInto(data, dst, false); err != nil {
+		t.Fatalf("loadInto: %v", err)
+	}
+	got := dst["niche"].SupportedPlatforms
+	if len(got) != 2 || got[0] != "darwin" || got[1] != "windows" {
+		t.Errorf("SupportedPlatforms roundtrip mismatch: got %v", got)
+	}
+}
+
 func TestIsAbsPath(t *testing.T) {
 	tests := []struct {
 		input string

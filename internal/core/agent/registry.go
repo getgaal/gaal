@@ -60,9 +60,26 @@ type Info struct {
 	// GlobalSkillsDir may be empty; sync and audit transparently
 	// delegate to generic's global path.
 	SupportsGenericGlobal bool
+
+	// SupportsSkills reports whether the agent reads SKILL.md files
+	// from disk. Defaults to true. Set to false for agents that
+	// declare a skills directory by convention but don't actually
+	// consume it (e.g. claude-desktop, where skills are a GUI feature
+	// only). Consumed by [Behavior.Validate] to produce
+	// [WarnSkillsUnsupported].
+	SupportsSkills bool
+	// SupportedPlatforms restricts the agent to one or more values of
+	// runtime.GOOS (darwin, linux, windows). Empty = no restriction.
+	// Consumed by [Behavior.Validate] to produce
+	// [WarnUnsupportedPlatform].
+	SupportedPlatforms []string
 }
 
 // agentEntry is the YAML-decodable shape for a single agent.
+//
+// SupportsSkills is a pointer so loadInto can distinguish "field omitted"
+// (default: true) from "explicitly set to false". Every other boolean
+// defaults to its zero value.
 type agentEntry struct {
 	ProjectSkillsDir       string   `yaml:"project_skills_dir"`
 	GlobalSkillsDir        string   `yaml:"global_skills_dir"`
@@ -73,6 +90,8 @@ type agentEntry struct {
 	PmSkillsSearch         []string `yaml:"pm_skills_search"`
 	SupportsGenericProject bool     `yaml:"supports_generic_project"`
 	SupportsGenericGlobal  bool     `yaml:"supports_generic_global"`
+	SupportsSkills         *bool    `yaml:"supports_skills"`
+	SupportedPlatforms     []string `yaml:"supported_platforms"`
 }
 
 // agentsFile is the top-level structure of agents.yaml.
@@ -129,6 +148,10 @@ func loadInto(data []byte, dst map[string]Info, allowOverride bool) error {
 		if _, exists := dst[name]; exists && !allowOverride {
 			return fmt.Errorf("duplicate agent name %q", name)
 		}
+		supportsSkills := true
+		if e.SupportsSkills != nil {
+			supportsSkills = *e.SupportsSkills
+		}
 		dst[name] = Info{
 			ProjectSkillsDir:       e.ProjectSkillsDir,
 			GlobalSkillsDir:        e.GlobalSkillsDir,
@@ -139,6 +162,8 @@ func loadInto(data []byte, dst map[string]Info, allowOverride bool) error {
 			PmSkillsSearch:         e.PmSkillsSearch,
 			SupportsGenericProject: e.SupportsGenericProject,
 			SupportsGenericGlobal:  e.SupportsGenericGlobal,
+			SupportsSkills:         supportsSkills,
+			SupportedPlatforms:     e.SupportedPlatforms,
 		}
 	}
 	return nil
@@ -212,6 +237,13 @@ func validateEntry(name string, e agentEntry) error {
 	for _, d := range e.PmSkillsSearch {
 		if !strings.HasPrefix(d, "~/") && !strings.HasPrefix(d, `~\`) {
 			return fmt.Errorf("agent %q: pm_skills_search entry must start with '~/', got %q", name, d)
+		}
+	}
+	for _, p := range e.SupportedPlatforms {
+		switch p {
+		case "darwin", "linux", "windows":
+		default:
+			return fmt.Errorf("agent %q: supported_platforms entry must be one of darwin|linux|windows, got %q", name, p)
 		}
 	}
 	return nil
