@@ -925,7 +925,7 @@ func TestPrune_NoOpWhenAllManaged(t *testing.T) {
 	}
 }
 
-// ── claude-desktop warning ──────────────────────────────────────────────────
+// ── behaviour warnings (via internal/core/agent) ───────────────────────────
 
 // captureSlog redirects slog output to a buffer for the duration of fn.
 func captureSlog(t *testing.T, fn func()) string {
@@ -938,43 +938,72 @@ func captureSlog(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-func TestWarnSkillsTargetingClaudeDesktop_FiresForExplicitTarget(t *testing.T) {
+// TestEmitBehaviorWarnings_FiresForExplicitClaudeDesktop is the regression
+// for #208 / former TestWarnSkillsTargetingClaudeDesktop_FiresForExplicitTarget:
+// declaring claude-desktop as a skill target must produce
+// WarnSkillsUnsupported via the data-driven Behavior registry.
+func TestEmitBehaviorWarnings_FiresForExplicitClaudeDesktop(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: "owner/repo", Agents: []string{"claude-desktop"}, Global: true},
 	}
 	out := captureSlog(t, func() {
 		m := NewManager(skills, t.TempDir(), "/home/u", t.TempDir(), t.TempDir(), false)
-		m.warnSkillsTargetingClaudeDesktop()
+		m.emitConfigWarnings()
 	})
-	if !strings.Contains(out, "claude-desktop has no on-disk SKILL.md feature") {
-		t.Errorf("expected claude-desktop skills warning, got: %s", out)
+	if !strings.Contains(out, "code=skills_unsupported") {
+		t.Errorf("expected skills_unsupported warning code in log, got: %s", out)
+	}
+	if !strings.Contains(out, "agent=claude-desktop") {
+		t.Errorf("expected agent=claude-desktop attribute in log, got: %s", out)
 	}
 }
 
-func TestWarnSkillsTargetingClaudeDesktop_FiresForWildcardAgents(t *testing.T) {
+func TestEmitBehaviorWarnings_FiresForWildcardAgents(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: "owner/repo", Agents: []string{"*"}, Global: true},
 	}
 	out := captureSlog(t, func() {
 		m := NewManager(skills, t.TempDir(), "/home/u", t.TempDir(), t.TempDir(), false)
-		m.warnSkillsTargetingClaudeDesktop()
+		m.emitConfigWarnings()
 	})
-	if !strings.Contains(out, "claude-desktop") {
-		t.Errorf("expected warning for wildcard agents, got: %s", out)
+	if !strings.Contains(out, "code=skills_unsupported") || !strings.Contains(out, "agent=claude-desktop") {
+		t.Errorf("expected wildcard expansion to surface claude-desktop skills_unsupported, got: %s", out)
 	}
 }
 
-func TestWarnSkillsTargetingClaudeDesktop_SilentForOtherAgents(t *testing.T) {
+func TestEmitBehaviorWarnings_SilentForHappyAgents(t *testing.T) {
 	skills := []config.ConfigSkill{
 		{Source: "owner/repo", Agents: []string{"claude-code", "codex"}, Global: true},
 		{Source: "owner/other", Agents: []string{"cursor"}, Global: false},
 	}
 	out := captureSlog(t, func() {
 		m := NewManager(skills, t.TempDir(), "/home/u", t.TempDir(), t.TempDir(), false)
-		m.warnSkillsTargetingClaudeDesktop()
+		m.emitConfigWarnings()
 	})
-	if strings.Contains(out, "claude-desktop") {
-		t.Errorf("expected no warning for non-claude-desktop agents, got: %s", out)
+	if strings.Contains(out, "code=skills_unsupported") {
+		t.Errorf("expected no skills_unsupported warning for non-claude-desktop agents, got: %s", out)
+	}
+	if strings.Contains(out, "code=unsupported_platform") {
+		t.Errorf("expected no platform warning for happy agents, got: %s", out)
+	}
+}
+
+// TestEmitBehaviorWarnings_DedupesAcrossScopes is a regression for the
+// pre-refactor behaviour where multiple skill entries targeting
+// claude-desktop produced multiple identical log lines. The new system
+// dedupes by (Code, Agent) regardless of how many entries match.
+func TestEmitBehaviorWarnings_DedupesAcrossScopes(t *testing.T) {
+	skills := []config.ConfigSkill{
+		{Source: "a/x", Agents: []string{"claude-desktop"}, Global: true},
+		{Source: "a/y", Agents: []string{"claude-desktop"}, Global: false},
+		{Source: "a/z", Agents: []string{"claude-desktop"}, Global: false},
+	}
+	out := captureSlog(t, func() {
+		m := NewManager(skills, t.TempDir(), "/home/u", t.TempDir(), t.TempDir(), false)
+		m.emitConfigWarnings()
+	})
+	if got := strings.Count(out, "code=skills_unsupported"); got != 1 {
+		t.Errorf("expected skills_unsupported to fire exactly once across scopes, fired %d times: %s", got, out)
 	}
 }
 
@@ -990,7 +1019,7 @@ func TestEmitConfigWarnings_FiresOncePerManager(t *testing.T) {
 		m.emitConfigWarnings()
 		m.emitConfigWarnings()
 	})
-	count := strings.Count(out, "claude-desktop has no on-disk SKILL.md feature")
+	count := strings.Count(out, "code=skills_unsupported")
 	if count != 1 {
 		t.Errorf("expected warning to fire exactly once, fired %d times", count)
 	}

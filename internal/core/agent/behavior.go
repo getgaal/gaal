@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"sort"
 )
 
 // Scope identifies the kind of resource a [Behavior.Validate] call is
@@ -157,4 +158,65 @@ func behaviorFromInfo(name string, info Info) Behavior {
 		SupportsMCPProject: info.ProjectMCPConfigFile != "",
 		SupportedPlatforms: info.SupportedPlatforms,
 	}
+}
+
+// Group pairs a [Scope] with the list of agent names that operate at
+// that scope. Used by [CollectWarnings] to fan validation across the
+// project + global scopes a manager touches in a single sync.
+type Group struct {
+	Scope  Scope
+	Agents []string
+}
+
+// CollectWarnings runs [Behavior.Validate] for every (scope, agent)
+// combination in groups and returns the resulting warnings deduped by
+// (Code, Agent) and sorted by Code then Agent for stable output.
+//
+// Each agents slice may contain "*" which expands to every registered
+// agent (one entry per name in [Names]). Empty slices contribute no
+// warnings. Unknown agent names are silently ignored — the registry
+// already warns on those at lookup time.
+//
+// Dedup is by (Code, Agent), not (Code, Agent, Scope): the same fact
+// (e.g. claude-desktop unsupported on linux) only fires once across the
+// project + global scopes a single sync touches.
+func CollectWarnings(goos string, groups ...Group) []Warning {
+	slog.Debug("collecting agent behaviour warnings", "groups", len(groups), "goos", goos)
+	seen := map[string]struct{}{}
+	var out []Warning
+	for _, g := range groups {
+		for _, name := range expandAgents(g.Agents) {
+			b, ok := BehaviorFor(name)
+			if !ok {
+				continue
+			}
+			for _, w := range b.Validate(g.Scope, goos) {
+				key := string(w.Code) + ":" + w.Agent
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
+				out = append(out, w)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Code != out[j].Code {
+			return out[i].Code < out[j].Code
+		}
+		return out[i].Agent < out[j].Agent
+	})
+	return out
+}
+
+// expandAgents returns the list of agent names to validate. A single
+// "*" entry expands to every registered agent (sorted, for stable
+// output); anything else is returned as-is.
+func expandAgents(agents []string) []string {
+	if len(agents) == 1 && agents[0] == "*" {
+		all := Names()
+		sort.Strings(all)
+		return all
+	}
+	return agents
 }

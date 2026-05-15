@@ -9,10 +9,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
 	"gaal/internal/config"
+	"gaal/internal/core/agent"
 	"gaal/internal/core/vcs"
 	"gaal/internal/discover"
 	"gaal/internal/urlx"
@@ -141,25 +143,34 @@ func (m *Manager) Sync(ctx context.Context) error {
 // emitConfigWarnings surfaces issues that depend on the user's skill config
 // but aren't tied to a single source. Runs at most once per Manager (gated
 // by warnOnce) so the messages don't repeat across Sync and Status.
+//
+// Per-agent behavioural constraints (skills unsupported, platform
+// restrictions) come from [agent.CollectWarnings] — no hard-coded agent
+// names live here.
 func (m *Manager) emitConfigWarnings() {
-	m.warnOnce.Do(m.warnSkillsTargetingClaudeDesktop)
+	m.warnOnce.Do(m.emitBehaviorWarnings)
 }
 
-// warnSkillsTargetingClaudeDesktop fires when any skill entry targets the
-// claude-desktop agent (explicitly or via the "*" wildcard). Claude Desktop
-// has no on-disk SKILL.md feature — that's a Claude Code CLI–only capability
-// — so the install would land in ~/.agents/skills/ (the generic convention)
-// where Claude Desktop never reads. Better to tell the user upfront than to
-// report a green ✓ for a no-op.
-func (m *Manager) warnSkillsTargetingClaudeDesktop() {
+// emitBehaviorWarnings groups the configured skill entries by scope and
+// asks the agent registry for the behaviour mismatches that apply. One
+// log line per unique (Code, Agent), so wildcard expansion does not
+// produce one warning per matching agent.
+func (m *Manager) emitBehaviorWarnings() {
+	var projectAgents, globalAgents []string
 	for _, sc := range m.skills {
-		for _, a := range sc.Agents {
-			if a == "claude-desktop" || a == "*" {
-				slog.Warn("skill: claude-desktop has no on-disk SKILL.md feature — entries targeting it will install under ~/.agents/skills (or .agents/skills) which Claude Desktop does not read",
-					"hint", "skills are a Claude Code CLI feature; remove claude-desktop from agents:, or list agents explicitly without it")
-				return
-			}
+		if sc.Global {
+			globalAgents = append(globalAgents, sc.Agents...)
+		} else {
+			projectAgents = append(projectAgents, sc.Agents...)
 		}
+	}
+	warnings := agent.CollectWarnings(runtime.GOOS,
+		agent.Group{Scope: agent.ScopeSkillProject, Agents: projectAgents},
+		agent.Group{Scope: agent.ScopeSkillGlobal, Agents: globalAgents},
+	)
+	for _, w := range warnings {
+		slog.Warn("skill: "+w.Msg,
+			"agent", w.Agent, "scope", w.Scope, "code", w.Code, "hint", w.Hint)
 	}
 }
 

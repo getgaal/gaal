@@ -119,27 +119,42 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 // or local environment but aren't tied to a single sync entry. Runs at most
 // once per Manager (gated by warnOnce) so the messages don't repeat across
 // resolvedMCPs calls from Sync, Status, and Prune.
+//
+// Per-agent behavioural constraints (unsupported platforms, project/global
+// MCP scope missing) come from [agent.CollectWarnings] — no hard-coded
+// agent names live here. The legacy-file check below is filesystem-state
+// based, not agent-name based, and is intentionally kept out of Behavior.
 func (m *Manager) emitConfigWarnings() {
-	m.warnClaudeDesktopOnLinux()
+	m.emitBehaviorWarnings()
 	m.warnLegacyClaudeDesktopJSON()
 }
 
-// warnClaudeDesktopOnLinux flags MCP entries that target the claude-desktop
-// agent on Linux. Claude Desktop is officially macOS- and Windows-only; gaal
-// would write to ~/Library/Application Support/Claude/ which the (community)
-// Linux builds, if any, do not consume.
-func (m *Manager) warnClaudeDesktopOnLinux() {
-	if runtime.GOOS != "linux" {
-		return
-	}
+// emitBehaviorWarnings groups the configured MCP entries by scope and
+// asks the agent registry for the behaviour mismatches that apply.
+//
+// Entries using the deprecated `target:` field are skipped here — they
+// bypass agent resolution entirely (a separate deprecation warning fires
+// inside resolvedMCPs). Entries with neither `target:` nor `agents:` are
+// also skipped.
+func (m *Manager) emitBehaviorWarnings() {
+	var projectAgents, globalAgents []string
 	for _, mc := range m.mcps {
-		for _, a := range mc.Agents {
-			if a == "claude-desktop" || a == "*" {
-				slog.Warn("mcp: claude-desktop is officially macOS- and Windows-only — sync targets ~/Library/Application Support/Claude/ which has no effect on Linux",
-					"hint", "remove claude-desktop from agents:, or list agents explicitly without it")
-				return
-			}
+		if mc.Target != "" || len(mc.Agents) == 0 {
+			continue
 		}
+		if mc.Global {
+			globalAgents = append(globalAgents, mc.Agents...)
+		} else {
+			projectAgents = append(projectAgents, mc.Agents...)
+		}
+	}
+	warnings := agent.CollectWarnings(runtime.GOOS,
+		agent.Group{Scope: agent.ScopeMCPProject, Agents: projectAgents},
+		agent.Group{Scope: agent.ScopeMCPGlobal, Agents: globalAgents},
+	)
+	for _, w := range warnings {
+		slog.Warn("mcp: "+w.Msg,
+			"agent", w.Agent, "scope", w.Scope, "code", w.Code, "hint", w.Hint)
 	}
 }
 

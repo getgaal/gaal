@@ -1076,7 +1076,13 @@ func TestWarnLegacyClaudeDesktopJSON_SilentWhenAbsent(t *testing.T) {
 	}
 }
 
-func TestWarnClaudeDesktopOnLinux_FiresForExplicitTarget(t *testing.T) {
+// ── behaviour warnings (via internal/core/agent) ───────────────────────────
+
+// TestEmitBehaviorWarnings_FiresForExplicitClaudeDesktop is the regression
+// for #208 / former TestWarnClaudeDesktopOnLinux_FiresForExplicitTarget:
+// on Linux, an MCP entry targeting claude-desktop must produce
+// WarnUnsupportedPlatform via the data-driven Behavior registry.
+func TestEmitBehaviorWarnings_FiresForExplicitClaudeDesktop(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Linux-only assertion; behavior intentionally differs on macOS/Windows")
 	}
@@ -1086,14 +1092,17 @@ func TestWarnClaudeDesktopOnLinux_FiresForExplicitTarget(t *testing.T) {
 	}
 	out := captureSlog(t, func() {
 		m := NewManager(mcps, "/home/u", "")
-		m.warnClaudeDesktopOnLinux()
+		m.emitBehaviorWarnings()
 	})
-	if !strings.Contains(out, "claude-desktop is officially macOS- and Windows-only") {
-		t.Errorf("expected linux unsupported warning, got: %s", out)
+	if !strings.Contains(out, "code=unsupported_platform") {
+		t.Errorf("expected unsupported_platform warning code, got: %s", out)
+	}
+	if !strings.Contains(out, "agent=claude-desktop") {
+		t.Errorf("expected agent=claude-desktop attribute, got: %s", out)
 	}
 }
 
-func TestWarnClaudeDesktopOnLinux_FiresForWildcardAgents(t *testing.T) {
+func TestEmitBehaviorWarnings_FiresForWildcardAgents(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Linux-only assertion")
 	}
@@ -1103,27 +1112,67 @@ func TestWarnClaudeDesktopOnLinux_FiresForWildcardAgents(t *testing.T) {
 	}
 	out := captureSlog(t, func() {
 		m := NewManager(mcps, "/home/u", "")
-		m.warnClaudeDesktopOnLinux()
+		m.emitBehaviorWarnings()
 	})
-	if !strings.Contains(out, "claude-desktop") {
-		t.Errorf("expected warning for wildcard agents on Linux, got: %s", out)
+	if !strings.Contains(out, "code=unsupported_platform") || !strings.Contains(out, "agent=claude-desktop") {
+		t.Errorf("expected wildcard expansion to surface unsupported_platform for claude-desktop, got: %s", out)
 	}
 }
 
-func TestWarnClaudeDesktopOnLinux_SilentForOtherAgents(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("Linux-only assertion")
-	}
+func TestEmitBehaviorWarnings_SilentForHappyAgents(t *testing.T) {
 	mcps := []config.ConfigMcp{
 		{Name: "x", Agents: []string{"claude-code", "codex"}, Global: true,
 			Inline: &config.ConfigMcpItem{Command: "node"}},
 	}
 	out := captureSlog(t, func() {
 		m := NewManager(mcps, "/home/u", "")
-		m.warnClaudeDesktopOnLinux()
+		m.emitBehaviorWarnings()
 	})
-	if strings.Contains(out, "claude-desktop") {
-		t.Errorf("expected no warning for non-claude-desktop agents, got: %s", out)
+	if strings.Contains(out, "code=unsupported_platform") {
+		t.Errorf("expected no platform warning for happy agents, got: %s", out)
+	}
+	if strings.Contains(out, "code=mcp_global_unsupported") || strings.Contains(out, "code=mcp_project_unsupported") {
+		t.Errorf("expected no MCP-scope warnings for claude-code / codex, got: %s", out)
+	}
+}
+
+// TestEmitBehaviorWarnings_DedupesAcrossScopes regresses the
+// pre-refactor behaviour where the same (Code, Agent) pair logged once
+// per matching entry. Multiple claude-desktop entries across both
+// scopes must produce one platform warning, not three.
+func TestEmitBehaviorWarnings_DedupesAcrossScopes(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-only assertion")
+	}
+	mcps := []config.ConfigMcp{
+		{Name: "a", Agents: []string{"claude-desktop"}, Global: true, Inline: &config.ConfigMcpItem{Command: "node"}},
+		{Name: "b", Agents: []string{"claude-desktop"}, Global: false, Inline: &config.ConfigMcpItem{Command: "node"}},
+		{Name: "c", Agents: []string{"claude-desktop"}, Global: false, Inline: &config.ConfigMcpItem{Command: "node"}},
+	}
+	out := captureSlog(t, func() {
+		m := NewManager(mcps, "/home/u", "")
+		m.emitBehaviorWarnings()
+	})
+	if got := strings.Count(out, "code=unsupported_platform"); got != 1 {
+		t.Errorf("expected unsupported_platform to fire exactly once across scopes, fired %d times: %s", got, out)
+	}
+}
+
+// TestEmitBehaviorWarnings_FiresMCPProjectUnsupported asserts the new
+// project-scope MCP warning that was not surfaced before #208 — e.g.
+// windsurf has no project MCP config, so a `global: false` entry is a
+// silent no-op the user should be told about.
+func TestEmitBehaviorWarnings_FiresMCPProjectUnsupported(t *testing.T) {
+	mcps := []config.ConfigMcp{
+		{Name: "x", Agents: []string{"windsurf"}, Global: false,
+			Inline: &config.ConfigMcpItem{Command: "node"}},
+	}
+	out := captureSlog(t, func() {
+		m := NewManager(mcps, "/home/u", "")
+		m.emitBehaviorWarnings()
+	})
+	if !strings.Contains(out, "code=mcp_project_unsupported") || !strings.Contains(out, "agent=windsurf") {
+		t.Errorf("expected mcp_project_unsupported for windsurf, got: %s", out)
 	}
 }
 

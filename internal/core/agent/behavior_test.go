@@ -234,3 +234,101 @@ func TestBehaviorFor_ClaudeDesktopOnLinux_EmitsBothWarnings(t *testing.T) {
 		t.Error("expected WarnSkillsUnsupported for claude-desktop")
 	}
 }
+
+// ── CollectWarnings ─────────────────────────────────────────────────────────
+
+func TestCollectWarnings_Empty(t *testing.T) {
+	if got := agent.CollectWarnings("linux"); len(got) != 0 {
+		t.Errorf("no groups should yield no warnings, got %d", len(got))
+	}
+}
+
+func TestCollectWarnings_DedupesAcrossScopes(t *testing.T) {
+	// claude-desktop in both skill-global and skill-project on linux
+	// must emit each fact exactly once (WarnUnsupportedPlatform +
+	// WarnSkillsUnsupported), not duplicated per scope.
+	got := agent.CollectWarnings("linux",
+		agent.Group{Scope: agent.ScopeSkillGlobal, Agents: []string{"claude-desktop"}},
+		agent.Group{Scope: agent.ScopeSkillProject, Agents: []string{"claude-desktop"}},
+	)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 deduped warnings, got %d: %+v", len(got), got)
+	}
+	codes := map[agent.WarningCode]int{}
+	for _, w := range got {
+		codes[w.Code]++
+	}
+	if codes[agent.WarnUnsupportedPlatform] != 1 {
+		t.Errorf("WarnUnsupportedPlatform count = %d, want 1", codes[agent.WarnUnsupportedPlatform])
+	}
+	if codes[agent.WarnSkillsUnsupported] != 1 {
+		t.Errorf("WarnSkillsUnsupported count = %d, want 1", codes[agent.WarnSkillsUnsupported])
+	}
+}
+
+func TestCollectWarnings_ExpandsWildcard(t *testing.T) {
+	// "*" must surface claude-desktop's behaviour warnings on linux.
+	got := agent.CollectWarnings("linux",
+		agent.Group{Scope: agent.ScopeSkillGlobal, Agents: []string{"*"}},
+	)
+	foundSkills := false
+	foundPlatform := false
+	for _, w := range got {
+		if w.Agent == "claude-desktop" {
+			switch w.Code {
+			case agent.WarnSkillsUnsupported:
+				foundSkills = true
+			case agent.WarnUnsupportedPlatform:
+				foundPlatform = true
+			}
+		}
+	}
+	if !foundSkills {
+		t.Error("wildcard expansion should surface WarnSkillsUnsupported for claude-desktop")
+	}
+	if !foundPlatform {
+		t.Error("wildcard expansion should surface WarnUnsupportedPlatform for claude-desktop on linux")
+	}
+}
+
+func TestCollectWarnings_SilentForHappyAgents(t *testing.T) {
+	// claude-code on linux carries no behaviour warnings.
+	got := agent.CollectWarnings("linux",
+		agent.Group{Scope: agent.ScopeSkillProject, Agents: []string{"claude-code", "codex"}},
+		agent.Group{Scope: agent.ScopeMCPGlobal, Agents: []string{"claude-code"}},
+	)
+	if len(got) != 0 {
+		t.Errorf("expected no warnings, got %+v", got)
+	}
+}
+
+func TestCollectWarnings_UnknownAgentIgnored(t *testing.T) {
+	got := agent.CollectWarnings("linux",
+		agent.Group{Scope: agent.ScopeSkillProject, Agents: []string{"no-such-agent-xyz"}},
+	)
+	if len(got) != 0 {
+		t.Errorf("unknown agent must contribute no warnings, got %+v", got)
+	}
+}
+
+func TestCollectWarnings_StableOrder(t *testing.T) {
+	// Two runs of the same input must produce identical output. With
+	// wildcard expansion this is the riskiest sort path.
+	first := agent.CollectWarnings("linux",
+		agent.Group{Scope: agent.ScopeSkillGlobal, Agents: []string{"*"}},
+	)
+	for i := 0; i < 3; i++ {
+		next := agent.CollectWarnings("linux",
+			agent.Group{Scope: agent.ScopeSkillGlobal, Agents: []string{"*"}},
+		)
+		if len(next) != len(first) {
+			t.Fatalf("run %d: length drift %d != %d", i, len(next), len(first))
+		}
+		for j := range first {
+			if first[j].Code != next[j].Code || first[j].Agent != next[j].Agent {
+				t.Errorf("run %d slot %d: order drift first=(%s,%s) next=(%s,%s)",
+					i, j, first[j].Code, first[j].Agent, next[j].Code, next[j].Agent)
+			}
+		}
+	}
+}
