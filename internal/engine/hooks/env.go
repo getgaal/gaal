@@ -17,14 +17,14 @@ import (
 // detect "ran with no changes" by checking [[ -z "$GAAL_CHANGED_REPOS" ]].
 func planEnv(plan *render.PlanReport) map[string]string {
 	env := map[string]string{
-		"GAAL_CHANGED_REPOS":   "",
-		"GAAL_CHANGED_SKILLS":  "",
-		"GAAL_CHANGED_MCPS":    "",
-		"GAAL_PLANNED_REPOS":   "",
-		"GAAL_PLANNED_SKILLS":  "",
-		"GAAL_PLANNED_MCPS":    "",
-		"GAAL_HAS_CHANGES":     "0",
-		"GAAL_HAS_ERRORS":      "0",
+		"GAAL_CHANGED_REPOS":  "",
+		"GAAL_CHANGED_SKILLS": "",
+		"GAAL_CHANGED_MCPS":   "",
+		"GAAL_PLANNED_REPOS":  "",
+		"GAAL_PLANNED_SKILLS": "",
+		"GAAL_PLANNED_MCPS":   "",
+		"GAAL_HAS_CHANGES":    "0",
+		"GAAL_HAS_ERRORS":     "0",
 	}
 	if plan == nil {
 		return env
