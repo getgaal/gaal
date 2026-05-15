@@ -28,7 +28,7 @@ import (
 func Info(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, cfg *config.Config, home, workDir, stateDir, pkg, filter string, format render.OutputFormat) error {
 	slog.DebugContext(ctx, "info requested", "package", pkg, "filter", filter, "format", format)
 
-	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir)
+	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir, "")
 	if err != nil {
 		return err
 	}

@@ -18,7 +18,7 @@ import (
 func SyncPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string) (*render.PlanReport, error) {
 	slog.DebugContext(ctx, "computing sync plan")
 
-	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir)
+	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir, "")
 	if err != nil {
 		return nil, err
 	}

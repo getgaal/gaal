@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gaal/internal/config"
+	"gaal/internal/discover"
 	"gaal/internal/engine/ops"
 	"gaal/internal/engine/render"
 	"gaal/internal/mcp"
@@ -156,6 +157,9 @@ func (e *Engine) RunOnce(ctx context.Context) error {
 	}
 
 	slog.Debug("sync completed successfully")
+	if rebuildErr := discover.RebuildIndex(ctx, e.home, e.workDir, e.stateDir, e.cacheRoot); rebuildErr != nil {
+		slog.DebugContext(ctx, "index rebuild failed after sync", "err", rebuildErr)
+	}
 	return nil
 }
 
@@ -198,12 +202,15 @@ func (e *Engine) Prune(ctx context.Context) error {
 	if err := e.mcps.Prune(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("mcps prune: %w", err))
 	}
+	if rebuildErr := discover.RebuildIndex(ctx, e.home, e.workDir, e.stateDir, e.cacheRoot); rebuildErr != nil {
+		slog.DebugContext(ctx, "index rebuild failed after prune", "err", rebuildErr)
+	}
 	return errors.Join(errs...)
 }
 
 // Collect gathers the current status of all resources without side effects.
 func (e *Engine) Collect(ctx context.Context) (*render.StatusReport, error) {
-	return ops.Collect(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir)
+	return ops.Collect(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir, e.cacheRoot)
 }
 
 // DryRun computes what sync would do and renders the plan to os.Stdout.
@@ -223,7 +230,7 @@ func (e *Engine) Plan(ctx context.Context) (*render.PlanReport, error) {
 
 // Status collects the current resource state and renders it to os.Stdout.
 func (e *Engine) Status(ctx context.Context, format OutputFormat) error {
-	return ops.Status(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir, format)
+	return ops.Status(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir, e.cacheRoot, format)
 }
 
 // Audit discovers all skills and MCP servers installed on the machine and

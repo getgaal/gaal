@@ -18,6 +18,12 @@ var skipDirs = map[string]bool{
 	"dist":         true,
 	".cache":       true,
 	"bin":          true,
+	"Library":      true,
+	".local":       true,
+	".steam":       true,
+	".wine":        true,
+	".gem":         true,
+	"__pycache__":  true,
 }
 
 // scanWorkspace discovers repos and skills inside workDir using a depth-limited

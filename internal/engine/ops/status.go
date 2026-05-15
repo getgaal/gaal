@@ -18,13 +18,15 @@ import (
 // Collect gathers the current status of all resources without side effects.
 // It performs a FS-first scan via discover.Scan and then reconciles with any
 // config-declared resources from the managers, marking them as managed.
-func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string) (*render.StatusReport, error) {
+func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir, cacheRoot string) (*render.StatusReport, error) {
 	slog.DebugContext(ctx, "collecting status", "home", home, "workDir", workDir)
 
 	// FS-first: discover what is actually installed.
 	discovered, err := discover.Scan(ctx, home, workDir, discover.ScanOptions{
+		Mode:             discover.ScanModeIndex,
 		IncludeWorkspace: true,
 		StateDir:         stateDir,
+		CacheRoot:        cacheRoot,
 	})
 	if err != nil {
 		slog.DebugContext(ctx, "discover scan error", "err", err)
@@ -55,10 +57,10 @@ func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mc
 }
 
 // Status collects the current resource state and renders it to os.Stdout.
-func Status(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string, format render.OutputFormat) error {
+func Status(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir, cacheRoot string, format render.OutputFormat) error {
 	slog.DebugContext(ctx, "status requested", "format", format)
 
-	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir)
+	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir, cacheRoot)
 	if err != nil {
 		return err
 	}

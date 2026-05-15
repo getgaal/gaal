@@ -102,7 +102,7 @@ func TestSkillsFromDir_basic(t *testing.T) {
 	makeSkillDir(t, skillDir, "my-skill", "")
 
 	seen := make(map[string]struct{})
-	results := skillsFromDir(t.Context(), parent, ScopeGlobal, "test-agent", "", seen)
+	results := skillsFromDir(t.Context(), parent, ScopeGlobal, "test-agent", "", "", seen)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -121,8 +121,8 @@ func TestSkillsFromDir_dedup(t *testing.T) {
 	makeSkillDir(t, skillDir, "my-skill", "")
 
 	seen := make(map[string]struct{})
-	r1 := skillsFromDir(t.Context(), parent, ScopeGlobal, "agent-a", "", seen)
-	r2 := skillsFromDir(t.Context(), parent, ScopeGlobal, "agent-b", "", seen)
+	r1 := skillsFromDir(t.Context(), parent, ScopeGlobal, "agent-a", "", "", seen)
+	r2 := skillsFromDir(t.Context(), parent, ScopeGlobal, "agent-b", "", "", seen)
 	if len(r1) != 1 || len(r2) != 0 {
 		t.Errorf("dedup failed: r1=%d r2=%d", len(r1), len(r2))
 	}
@@ -134,7 +134,7 @@ func TestSkillsFromDir_rootIsSkill(t *testing.T) {
 	makeSkillDir(t, dir, "root-skill", "")
 
 	seen := make(map[string]struct{})
-	results := skillsFromDir(t.Context(), dir, ScopeGlobal, "agent", "", seen)
+	results := skillsFromDir(t.Context(), dir, ScopeGlobal, "agent", "", "", seen)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -146,7 +146,7 @@ func TestSkillsFromDir_rootIsSkill(t *testing.T) {
 // TestSkillsFromDir_emptyDir returns nothing for a non-existent directory.
 func TestSkillsFromDir_emptyDir(t *testing.T) {
 	seen := make(map[string]struct{})
-	results := skillsFromDir(t.Context(), filepath.Join(t.TempDir(), "nope"), ScopeGlobal, "agent", "", seen)
+	results := skillsFromDir(t.Context(), filepath.Join(t.TempDir(), "nope"), ScopeGlobal, "agent", "", "", seen)
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for missing dir, got %d", len(results))
 	}
@@ -228,5 +228,43 @@ func TestWalkSkillDirs_missing(t *testing.T) {
 	}
 	if len(dirs) != 0 {
 		t.Errorf("expected 0 dirs, got %d", len(dirs))
+	}
+}
+
+// TestScanGlobal_mcpInSamePass verifies that scanGlobal returns both skill and
+// MCP resources in a single call — i.e. the MCP scan is not a separate agent
+// iteration. It creates a global MCP config file for the "claude-code" agent
+// at ~/.claude.json and asserts that the returned resources include at least one
+// ResourceMCP entry alongside any ResourceSkill entries.
+func TestScanGlobal_mcpInSamePass(t *testing.T) {
+	home := t.TempDir()
+	workDir := t.TempDir()
+
+	// Create a skill so that ResourceSkill results are also present.
+	makeSkillDir(t, filepath.Join(home, ".claude", "skills", "my-skill"), "my-skill", "")
+
+	// Create the claude-code global MCP config file.
+	mcpCfg := filepath.Join(home, ".claude.json")
+	writeFile(t, mcpCfg, `{"mcpServers":{}}`)
+
+	resources, err := scanGlobal(t.Context(), home, workDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var gotMCP, gotSkill int
+	for _, r := range resources {
+		switch r.Type {
+		case ResourceMCP:
+			gotMCP++
+		case ResourceSkill:
+			gotSkill++
+		}
+	}
+	if gotMCP == 0 {
+		t.Error("expected at least one ResourceMCP from scanGlobal, got none")
+	}
+	if gotSkill == 0 {
+		t.Error("expected at least one ResourceSkill from scanGlobal, got none")
 	}
 }
