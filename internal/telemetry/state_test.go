@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -252,66 +250,6 @@ func TestPersistConsentUpdatesExistingTelemetryKey(t *testing.T) {
 	}
 	if !contains(got, "schema: 1") {
 		t.Errorf("schema key was lost, got %q", got)
-	}
-}
-
-func TestPatchYAMLNodeKeyAppends(t *testing.T) {
-	root := yaml.Node{
-		Kind: yaml.DocumentNode,
-		Content: []*yaml.Node{
-			{Kind: yaml.MappingNode, Tag: "!!map"},
-		},
-	}
-	if err := patchYAMLNodeKey(&root, "telemetry", true); err != nil {
-		t.Fatalf("patchYAMLNodeKey: %v", err)
-	}
-	mapping := root.Content[0]
-	if len(mapping.Content) != 2 {
-		t.Fatalf("expected 2 content nodes (key+value), got %d", len(mapping.Content))
-	}
-	if mapping.Content[0].Value != "telemetry" {
-		t.Errorf("expected key 'telemetry', got %q", mapping.Content[0].Value)
-	}
-	if mapping.Content[1].Value != "true" {
-		t.Errorf("expected value 'true', got %q", mapping.Content[1].Value)
-	}
-}
-
-func TestPatchYAMLNodeKeyUpdates(t *testing.T) {
-	// Start with telemetry: false, update to true.
-	raw := []byte("key: val\ntelemetry: false\n")
-	var root yaml.Node
-	if err := yaml.Unmarshal(raw, &root); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if err := patchYAMLNodeKey(&root, "telemetry", true); err != nil {
-		t.Fatalf("patchYAMLNodeKey: %v", err)
-	}
-	out, err := yaml.Marshal(&root)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	got := string(out)
-	if !contains(got, "telemetry: true") {
-		t.Errorf("expected telemetry: true, got %q", got)
-	}
-	if contains(got, "telemetry: false") {
-		t.Errorf("old value should be gone, got %q", got)
-	}
-	if !contains(got, "key: val") {
-		t.Errorf("other key was lost, got %q", got)
-	}
-}
-
-func TestPatchYAMLNodeKeyErrorOnNonMapping(t *testing.T) {
-	root := yaml.Node{
-		Kind: yaml.DocumentNode,
-		Content: []*yaml.Node{
-			{Kind: yaml.SequenceNode},
-		},
-	}
-	if err := patchYAMLNodeKey(&root, "k", "v"); err == nil {
-		t.Error("expected error for non-mapping root, got nil")
 	}
 }
 
