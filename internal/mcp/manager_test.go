@@ -705,6 +705,9 @@ func TestLoadServers_InvalidMCPServersType(t *testing.T) {
 }
 
 func TestLoadServers_ReadError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0o000 does not block reads under Windows ACLs (tracked in #231)")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses permissions — skipping")
 	}
@@ -737,6 +740,9 @@ func TestListServers_InvalidMCPServersType(t *testing.T) {
 }
 
 func TestListServers_ReadError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0o000 does not block reads under Windows ACLs (tracked in #231)")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses permissions — skipping")
 	}
@@ -757,6 +763,9 @@ func TestListServers_ReadError(t *testing.T) {
 }
 
 func TestManager_Status_ReadError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0o000 does not block reads under Windows ACLs (tracked in #231)")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("root bypasses permissions — skipping")
 	}

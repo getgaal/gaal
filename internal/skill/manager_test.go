@@ -326,6 +326,9 @@ func TestIsLocalPath(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestManager_SourcePaths_ExpandsHomeAndKeepsAbsolute(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("expectations hard-code POSIX absolute paths; needs filepath.Join/ToSlash port (tracked in #231)")
+	}
 	skills := []config.ConfigSkill{
 		{Source: "~/skills/personal"},
 		{Source: "/abs/skills"},
@@ -345,6 +348,9 @@ func TestManager_SourcePaths_ExpandsHomeAndKeepsAbsolute(t *testing.T) {
 }
 
 func TestManager_SourcePaths_RemoteResolvesToCachePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HasPrefix \"/cache\" assertion uses POSIX separators; needs filepath.ToSlash port (tracked in #231)")
+	}
 	skills := []config.ConfigSkill{
 		{Source: "owner/repo"},
 		{Source: "https://github.com/owner/repo2"},
@@ -1036,6 +1042,9 @@ func TestEmitConfigWarnings_FiresOncePerManager(t *testing.T) {
 // aggregated error must mention both source paths to prove the loop did not
 // bail after the first failure.
 func TestManager_Sync_AggregatesErrorsAcrossSources(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("t.TempDir() returns the long-form path but the mkdir error uses the 8.3 short name, so strings.Contains misses; needs EvalSymlinks or basename comparison (tracked in #231)")
+	}
 	tmp := t.TempDir()
 	workDirAsFile := filepath.Join(tmp, "not-a-dir")
 	if err := os.WriteFile(workDirAsFile, []byte("file"), 0o644); err != nil {

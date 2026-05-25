@@ -58,6 +58,15 @@ func TestValidateRepoURL(t *testing.T) {
 		{"scp-style with user ok", "alice@host.example:foo/bar", false},
 		{"plain local path ok", "/srv/local/repo", false},
 		{"plain relative path ok", "./local/repo", false},
+		// Windows local paths: net/url parses "C:\..." as scheme="c". Without
+		// special handling, Windows tests and Windows users get a bogus
+		// "scheme c is not allowed" rejection. Both separators must work
+		// because Go's filepath returns native backslashes but users sometimes
+		// write forward slashes in config.
+		{"windows drive backslash ok", `C:\Users\me\repo`, false},
+		{"windows drive forward slash ok", "C:/Users/me/repo", false},
+		{"windows drive lowercase ok", `d:\src\repo`, false},
+		{"windows drive bare ok", `Z:\`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -67,6 +76,35 @@ func TestValidateRepoURL(t *testing.T) {
 			}
 			if !tt.wantErr && err != nil {
 				t.Errorf("unexpected error for %q: %v", tt.in, err)
+			}
+		})
+	}
+}
+
+func TestIsWindowsDrivePath(t *testing.T) {
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{`C:\Users\me`, true},
+		{"C:/Users/me", true},
+		{`d:\src`, true},
+		{"Z:", true},
+		{"", false},
+		{"C", false},
+		{"C:", true},
+		{"CC:\\x", false},    // multi-char "scheme"
+		{":\\path", false},   // missing letter
+		{"1:\\path", false},  // digit, not a letter
+		{"https://x", false}, // real URL
+		{"/srv/repo", false}, // unix path
+		{"./repo", false},    // relative
+		{"git@host:repo", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := isWindowsDrivePath(tt.in); got != tt.want {
+				t.Errorf("isWindowsDrivePath(%q) = %v, want %v", tt.in, got, tt.want)
 			}
 		})
 	}
