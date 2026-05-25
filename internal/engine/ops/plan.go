@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 
+	"gaal/internal/content"
 	"gaal/internal/engine/render"
 	"gaal/internal/mcp"
 	"gaal/internal/repo"
@@ -15,10 +16,10 @@ import (
 // The returned PlanReport describes every action that RunOnce would take.
 // This is the shared planner used by both `sync --dry-run` and the future
 // `diff` command.
-func SyncPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string) (*render.PlanReport, error) {
+func SyncPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, contentMgr *content.Manager, mcps *mcp.Manager, home, workDir, stateDir string) (*render.PlanReport, error) {
 	slog.DebugContext(ctx, "computing sync plan")
 
-	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir)
+	report, err := Collect(ctx, repos, skills, contentMgr, mcps, home, workDir, stateDir)
 	if err != nil {
 		return nil, err
 	}
@@ -27,6 +28,7 @@ func SyncPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, m
 
 	plan.Repositories = planRepos(report.Repositories)
 	plan.Skills = planSkills(report.Skills)
+	plan.Content = planContent(report.Content)
 	plan.MCPs = planMCPs(report.MCPs)
 
 	for _, r := range plan.Repositories {
@@ -45,6 +47,14 @@ func SyncPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, m
 			plan.HasChanges = true
 		}
 	}
+	for _, c := range plan.Content {
+		if c.Action == render.PlanError {
+			plan.HasErrors = true
+		}
+		if c.Action != render.PlanNoOp && c.Action != render.PlanError {
+			plan.HasChanges = true
+		}
+	}
 	for _, m := range plan.MCPs {
 		if m.Action == render.PlanError {
 			plan.HasErrors = true
@@ -58,8 +68,8 @@ func SyncPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, m
 }
 
 // RenderPlan computes and renders the sync plan to stdout.
-func RenderPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string, format render.OutputFormat) (*render.PlanReport, error) {
-	plan, err := SyncPlan(ctx, repos, skills, mcps, home, workDir, stateDir)
+func RenderPlan(ctx context.Context, repos *repo.Manager, skills *skill.Manager, contentMgr *content.Manager, mcps *mcp.Manager, home, workDir, stateDir string, format render.OutputFormat) (*render.PlanReport, error) {
+	plan, err := SyncPlan(ctx, repos, skills, contentMgr, mcps, home, workDir, stateDir)
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +144,31 @@ func planSkills(entries []render.SkillEntry) []render.PlanSkillEntry {
 		default:
 			p.Action = render.PlanNoOp
 			p.NoOp = append([]string(nil), e.Installed...)
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func planContent(entries []render.ContentEntry) []render.PlanContentEntry {
+	out := make([]render.PlanContentEntry, 0, len(entries))
+	for _, e := range entries {
+		p := render.PlanContentEntry{
+			Source: e.Source,
+			Agent:  e.Agent,
+			Path:   e.Path,
+			Target: e.Target,
+		}
+		switch e.Status {
+		case render.StatusError:
+			p.Action = render.PlanError
+			p.Error = e.Error
+		case render.StatusAbsent:
+			p.Action = render.PlanCreate
+		case render.StatusDirty:
+			p.Action = render.PlanUpdate
+		default:
+			p.Action = render.PlanNoOp
 		}
 		out = append(out, p)
 	}

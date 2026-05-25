@@ -35,7 +35,7 @@ const planTargetSoftLimit = 60
 func (pr *planTextRenderer) Render(w io.Writer, r *PlanReport) error {
 	slog.Debug("rendering plan text output")
 
-	if len(r.Repositories) == 0 && len(r.Skills) == 0 && len(r.MCPs) == 0 && len(r.Hooks) == 0 {
+	if len(r.Repositories) == 0 && len(r.Skills) == 0 && len(r.Content) == 0 && len(r.MCPs) == 0 && len(r.Hooks) == 0 {
 		fmt.Fprintln(w, "nothing to do")
 		return nil
 	}
@@ -43,6 +43,7 @@ func (pr *planTextRenderer) Render(w io.Writer, r *PlanReport) error {
 	fmt.Fprintln(w, "plan:")
 	pr.writeRepos(w, r.Repositories)
 	pr.writeSkills(w, r.Skills)
+	pr.writeContent(w, r.Content)
 	pr.writeMCPs(w, r.MCPs)
 	pr.writeHooks(w, r.Hooks)
 
@@ -227,6 +228,23 @@ func (pr *planTextRenderer) writeMCPs(w io.Writer, entries []PlanMCPEntry) {
 	pr.writeSection(w, "mcps", rows)
 }
 
+func (pr *planTextRenderer) writeContent(w io.Writer, entries []PlanContentEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	rows := make([]planRow, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, planRow{
+			marker: planMarker(e.Action),
+			verb:   planVerb(e.Action, "content"),
+			name:   e.Path,
+			detail: contentPlanDetail(e),
+			action: e.Action,
+		})
+	}
+	pr.writeSection(w, "content", rows)
+}
+
 func (pr *planTextRenderer) writeHooks(w io.Writer, entries []PlanHookEntry) {
 	if len(entries) == 0 {
 		return
@@ -359,6 +377,15 @@ func planVerb(a PlanAction, kind string) string {
 		case PlanError:
 			return "error"
 		}
+	case "content":
+		switch a {
+		case PlanCreate:
+			return "copy"
+		case PlanUpdate:
+			return "update"
+		case PlanError:
+			return "error"
+		}
 	case "hook":
 		switch a {
 		case PlanRun:
@@ -405,6 +432,23 @@ func repoPlanDetail(e PlanRepoEntry) string {
 	default:
 		return ""
 	}
+}
+
+func contentPlanDetail(e PlanContentEntry) string {
+	if e.Action == PlanError {
+		return "(" + e.Error + ")"
+	}
+	parts := []string{}
+	if e.Agent != "" {
+		parts = append(parts, e.Agent)
+	}
+	if e.Target != "" {
+		parts = append(parts, displayTarget(e.Target, planTargetSoftLimit))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "→ " + strings.Join(parts, " · ")
 }
 
 func mcpPlanDetail(e PlanMCPEntry) string {

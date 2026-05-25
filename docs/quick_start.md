@@ -118,6 +118,10 @@ Quick reference:
 | `skills` | `global` | `true` = user-wide, `false` = project-local (default) |
 | `skills` | `target_subdir` | Optional subdirectory under the resolved agent skills dir |
 | `skills` | `select` | Specific skill names to install (empty = all) |
+| `content` | `source` | GitHub shorthand, full URL, SSH URL, or local path |
+| `content` | `targets` | Per-agent destination mappings for arbitrary files/directories |
+| `content.targets` | `root` | `workspace` for project root, `agent` for agent config root |
+| `content.targets` | `paths` | Source-relative to destination-relative mappings |
 | `mcps` | `agents` | Agent names or `["*"]` to target all agents with a non-empty MCP config |
 | `mcps` | `global` | `true` = user-wide agent config, `false` = project-scoped (default) |
 | `mcps` | `target` | _(deprecated)_ Explicit path to the agent JSON config file; prefer `agents` + `global` |
@@ -142,7 +146,8 @@ This single command:
 
 1. **Clones or updates** every repository listed under `repositories`.
 2. **Downloads and installs** every skill collection into the correct agent directories.
-3. **Upserts** every MCP server entry into the target JSON config files.
+3. **Copies** generic content mappings such as `AGENTS.md` → `CLAUDE.md`.
+4. **Upserts** every MCP server entry into the target JSON config files.
 
 That's it — your repos, skills, and MCP servers are now configured and centralised.
 

@@ -31,6 +31,7 @@ type Config struct {
 	Schema       *int                  `yaml:"schema,omitempty" json:"schema,omitempty" jsonschema:"description=gaal config schema version. Currently must be 1."`
 	Repositories map[string]ConfigRepo `yaml:"repositories" json:"repositories,omitempty" jsonschema:"description=Map of workspace-relative paths to repository entries" validate:"dive"`
 	Skills       []ConfigSkill         `yaml:"skills"       json:"skills,omitempty"       jsonschema:"description=Skill sources to install into agent skill directories"   validate:"dive"`
+	Content      []ConfigContent       `yaml:"content,omitempty" json:"content,omitempty" jsonschema:"description=Generic source path to destination path content sync entries" validate:"dive"`
 	MCPs         []ConfigMcp           `yaml:"mcps"         json:"mcps,omitempty"         jsonschema:"description=MCP server configuration entries to merge"             validate:"dive"`
 	Tools        []ConfigTool          `yaml:"tools,omitempty" json:"tools,omitempty"    jsonschema:"description=CLI tools expected to be on PATH; gaal doctor/sync report any missing ones" validate:"dive"`
 	Hooks        *ConfigHooks          `yaml:"hooks,omitempty" json:"hooks,omitempty" jsonschema:"description=User-defined commands to run before and after sync"`
@@ -106,6 +107,25 @@ type ConfigSkill struct {
 type ConfigTool struct {
 	Name string `yaml:"name"           json:"name"           jsonschema:"description=Executable name to look up on PATH (e.g. gh, fnm, rtk)" validate:"required"`
 	Hint string `yaml:"hint,omitempty" json:"hint,omitempty" jsonschema:"description=Free-form install hint shown when the tool is missing"`
+}
+
+// ConfigContent maps arbitrary files or directories from a source repository
+// into one or more agent/workspace destinations.
+type ConfigContent struct {
+	Source  string                `yaml:"source" json:"source" jsonschema:"description=Content source: GitHub shorthand (owner/repo), HTTPS URL, SSH URL, or local path" validate:"required"`
+	Agents  []string              `yaml:"agents,omitempty" json:"agents,omitempty" jsonschema:"description=Shorthand target agents used when targets is omitted"`
+	Global  bool                  `yaml:"global,omitempty" json:"global,omitempty" jsonschema:"description=Shorthand target scope used when targets is omitted"`
+	Root    string                `yaml:"root,omitempty" json:"root,omitempty" jsonschema:"description=Shorthand destination root used when targets is omitted,enum=agent,enum=workspace"`
+	Paths   map[string]string     `yaml:"paths,omitempty" json:"paths,omitempty" jsonschema:"description=Shorthand source-relative to destination-relative path mappings"`
+	Targets []ConfigContentTarget `yaml:"targets,omitempty" json:"targets,omitempty" jsonschema:"description=Concrete content deployment targets" validate:"dive"`
+}
+
+// ConfigContentTarget is one concrete destination fan-out for a content entry.
+type ConfigContentTarget struct {
+	Agents []string          `yaml:"agents,omitempty" json:"agents,omitempty" jsonschema:"description=Agent identifiers that receive this content"`
+	Scope  string            `yaml:"scope,omitempty" json:"scope,omitempty" jsonschema:"description=Destination scope,enum=project,enum=global"`
+	Root   string            `yaml:"root,omitempty" json:"root,omitempty" jsonschema:"description=Destination root,enum=agent,enum=workspace"`
+	Paths  map[string]string `yaml:"paths" json:"paths" jsonschema:"description=Source-relative to destination-relative path mappings" validate:"required"`
 }
 
 // ConfigMcp defines an MCP server configuration entry.
@@ -378,10 +398,12 @@ func (Config) JSONSchemaExtend(s *jsonschema.Schema) {
 //   - repositories: map merge — src wins on key conflict.
 //   - skills: upsert by Source + TargetSubdir — src entry replaces any
 //     existing entry with the same install identity.
+//   - content: append entries; path mappings are identity-bearing enough that
+//     users may intentionally repeat sources for different targets.
 //   - mcps: upsert by Name — src entry replaces any existing entry with the
 //     same Name.
 func (c *Config) mergeFrom(src *Config, scope ConfigScope) {
-	slog.Debug("merging config", "scope", scope, "repos", len(src.Repositories), "skills", len(src.Skills), "mcps", len(src.MCPs))
+	slog.Debug("merging config", "scope", scope, "repos", len(src.Repositories), "skills", len(src.Skills), "content", len(src.Content), "mcps", len(src.MCPs))
 
 	if src.Schema != nil {
 		c.Schema = src.Schema
@@ -407,6 +429,8 @@ func (c *Config) mergeFrom(src *Config, scope ConfigScope) {
 			c.Skills = append(c.Skills, sk)
 		}
 	}
+
+	c.Content = append(c.Content, src.Content...)
 
 	for _, mc := range src.MCPs {
 		if i := indexOf(c.MCPs, func(m ConfigMcp) bool { return m.Name == mc.Name }); i >= 0 {
@@ -438,10 +462,11 @@ func (c *Config) mergeFrom(src *Config, scope ConfigScope) {
 }
 
 // deduplicate removes duplicate entries within this Config, keeping the first
-// occurrence. Skills are keyed by Source + TargetSubdir; MCPs are keyed by
-// Name; Tools are keyed by Name.
+// occurrence. Skills are keyed by Source + TargetSubdir; content entries are
+// keyed by their full mapping identity; MCPs and Tools are keyed by Name.
 func (c *Config) deduplicate() {
 	c.Skills = deduplicate(c.Skills, skillIdentity)
+	c.Content = deduplicate(c.Content, contentIdentity)
 	c.MCPs = deduplicate(c.MCPs, func(m ConfigMcp) string { return m.Name })
 	c.Tools = deduplicate(c.Tools, func(t ConfigTool) string { return t.Name })
 }
@@ -451,12 +476,20 @@ func skillIdentity(s ConfigSkill) string {
 	return s.Source + "\x00" + filepath.ToSlash(filepath.Clean(s.TargetSubdir))
 }
 
+func contentIdentity(c ConfigContent) string {
+	slog.Debug("building content identity", "source", c.Source, "targets", len(c.Targets), "paths", len(c.Paths))
+	return c.Source + "\x00" + fmt.Sprint(c.Agents) + "\x00" + c.Root + "\x00" + fmt.Sprint(c.Global) + "\x00" + fmt.Sprint(c.Paths) + "\x00" + fmt.Sprint(c.Targets)
+}
+
 func (c *Config) validate() error {
-	slog.Debug("validating config", "repos", len(c.Repositories), "skills", len(c.Skills), "mcps", len(c.MCPs))
+	slog.Debug("validating config", "repos", len(c.Repositories), "skills", len(c.Skills), "content", len(c.Content), "mcps", len(c.MCPs))
 	if err := schema.Validate(c); err != nil {
 		return err
 	}
 	if err := c.validateSkillTargetSubdirs(); err != nil {
+		return err
+	}
+	if err := c.validateContent(); err != nil {
 		return err
 	}
 	if err := c.validateMCPItems(); err != nil {
@@ -478,6 +511,45 @@ func (c *Config) validateSkillTargetSubdirs() error {
 	return nil
 }
 
+func (c *Config) validateContent() error {
+	slog.Debug("validating content config", "entries", len(c.Content))
+	for _, entry := range c.Content {
+		if len(entry.Targets) == 0 {
+			if len(entry.Paths) == 0 {
+				return fmt.Errorf("content %q: paths must be set when targets is omitted", entry.Source)
+			}
+			if len(entry.Agents) == 0 {
+				return fmt.Errorf("content %q: agents must be set when targets is omitted", entry.Source)
+			}
+			if err := validateContentRoot(entry.Root); err != nil {
+				return fmt.Errorf("content %q: %w", entry.Source, err)
+			}
+			if err := validateContentPaths(entry.Paths); err != nil {
+				return fmt.Errorf("content %q: %w", entry.Source, err)
+			}
+			continue
+		}
+		for i, target := range entry.Targets {
+			if len(target.Agents) == 0 {
+				return fmt.Errorf("content %q target %d: agents must be set", entry.Source, i)
+			}
+			if len(target.Paths) == 0 {
+				return fmt.Errorf("content %q target %d: paths must be set", entry.Source, i)
+			}
+			if err := validateContentScope(target.Scope); err != nil {
+				return fmt.Errorf("content %q target %d: %w", entry.Source, i, err)
+			}
+			if err := validateContentRoot(target.Root); err != nil {
+				return fmt.Errorf("content %q target %d: %w", entry.Source, i, err)
+			}
+			if err := validateContentPaths(target.Paths); err != nil {
+				return fmt.Errorf("content %q target %d: %w", entry.Source, i, err)
+			}
+		}
+	}
+	return nil
+}
+
 func safeRelativeSubdir(path string) bool {
 	slog.Debug("checking relative subdirectory", "path", path)
 	slashed := strings.ReplaceAll(path, `\`, "/")
@@ -494,6 +566,58 @@ func safeRelativeSubdir(path string) bool {
 		return false
 	}
 	return true
+}
+
+func validateContentScope(scope string) error {
+	slog.Debug("validating content scope", "scope", scope)
+	switch scope {
+	case "", "project", "global":
+		return nil
+	default:
+		return fmt.Errorf("scope must be project or global, got %q", scope)
+	}
+}
+
+func validateContentRoot(root string) error {
+	slog.Debug("validating content root", "root", root)
+	switch root {
+	case "", "agent", "workspace":
+		return nil
+	default:
+		return fmt.Errorf("root must be agent or workspace, got %q", root)
+	}
+}
+
+func validateContentPaths(paths map[string]string) error {
+	slog.Debug("validating content paths", "count", len(paths))
+	for src, dst := range paths {
+		if !safeRelativeContentPath(src) {
+			return fmt.Errorf("source path must be relative and must not contain '..', got %q", src)
+		}
+		if !safeRelativeContentPath(dst) {
+			return fmt.Errorf("destination path must be relative and must not contain '..', got %q", dst)
+		}
+	}
+	return nil
+}
+
+func safeRelativeContentPath(path string) bool {
+	slog.Debug("checking relative content path", "path", path)
+	slashed := strings.ReplaceAll(path, `\`, "/")
+	if path == "" || filepath.IsAbs(path) || strings.HasPrefix(slashed, "/") || strings.Contains(slashed, ":") {
+		return false
+	}
+	trimmed := strings.TrimSuffix(slashed, "/")
+	if trimmed == "" {
+		return false
+	}
+	for _, seg := range strings.Split(trimmed, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+	}
+	clean := filepath.Clean(path)
+	return clean != "." && clean != ".." && !strings.HasPrefix(filepath.ToSlash(clean), "../")
 }
 
 // validHookOS enumerates the GOOS values gaal will match against runtime.GOOS

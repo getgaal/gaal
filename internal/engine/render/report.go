@@ -39,6 +39,18 @@ type SkillEntry struct {
 	Error        string     `json:"error,omitempty"`
 }
 
+// ContentEntry holds the status of one generic content path mapping.
+type ContentEntry struct {
+	Source string     `json:"source"`
+	Agent  string     `json:"agent"`
+	Scope  string     `json:"scope"`
+	Root   string     `json:"root"`
+	Path   string     `json:"path"`
+	Target string     `json:"target"`
+	Status StatusCode `json:"status"`
+	Error  string     `json:"error,omitempty"`
+}
+
 // AgentEntry holds the registry information for a supported agent.
 type AgentEntry struct {
 	Name                    string `json:"name"`
@@ -83,10 +95,11 @@ type MCPEntry struct {
 
 // StatusReport aggregates the status of all managed resources.
 type StatusReport struct {
-	Repositories []RepoEntry  `json:"repositories"`
-	Skills       []SkillEntry `json:"skills"`
-	MCPs         []MCPEntry   `json:"mcps"`
-	Agents       []AgentEntry `json:"agents"`
+	Repositories []RepoEntry    `json:"repositories"`
+	Skills       []SkillEntry   `json:"skills"`
+	Content      []ContentEntry `json:"content,omitempty"`
+	MCPs         []MCPEntry     `json:"mcps"`
+	Agents       []AgentEntry   `json:"agents"`
 }
 
 // PlanAction describes what sync would do for a given resource.
@@ -151,6 +164,16 @@ type PlanSkillEntry struct {
 	Error        string     `json:"error,omitempty"`
 }
 
+// PlanContentEntry describes the planned action for a generic content path.
+type PlanContentEntry struct {
+	Source string     `json:"source"`
+	Agent  string     `json:"agent"`
+	Path   string     `json:"path"`
+	Target string     `json:"target"`
+	Action PlanAction `json:"action"`
+	Error  string     `json:"error,omitempty"`
+}
+
 // PlanMCPEntry describes the planned action for a single MCP entry.
 type PlanMCPEntry struct {
 	Name   string     `json:"name"`
@@ -161,12 +184,13 @@ type PlanMCPEntry struct {
 
 // PlanReport aggregates the planned actions for all managed resources.
 type PlanReport struct {
-	Repositories []PlanRepoEntry  `json:"repositories"`
-	Skills       []PlanSkillEntry `json:"skills"`
-	MCPs         []PlanMCPEntry   `json:"mcps"`
-	Hooks        []PlanHookEntry  `json:"hooks,omitempty"`
-	HasChanges   bool             `json:"has_changes"`
-	HasErrors    bool             `json:"has_errors"`
+	Repositories []PlanRepoEntry    `json:"repositories"`
+	Skills       []PlanSkillEntry   `json:"skills"`
+	Content      []PlanContentEntry `json:"content,omitempty"`
+	MCPs         []PlanMCPEntry     `json:"mcps"`
+	Hooks        []PlanHookEntry    `json:"hooks,omitempty"`
+	HasChanges   bool               `json:"has_changes"`
+	HasErrors    bool               `json:"has_errors"`
 }
 
 // AuditSkillEntry holds the metadata of a single skill discovered during audit.

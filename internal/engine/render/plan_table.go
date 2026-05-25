@@ -62,6 +62,9 @@ func (pr *planTableRenderer) Render(w io.Writer, r *PlanReport) error {
 	if err := pr.skillTable(w, tr, r.Skills, termW); err != nil {
 		return err
 	}
+	if err := pr.contentTable(w, tr, r.Content, termW); err != nil {
+		return err
+	}
 	if err := pr.mcpTable(w, tr, r.MCPs, termW); err != nil {
 		return err
 	}
@@ -159,6 +162,24 @@ func (pr *planTableRenderer) mcpTable(w io.Writer, tr *tableRenderer, entries []
 			e.Name,
 			actionCell(e.Action, e.Error),
 			trunc(e.Target, vw),
+		})
+	}
+	return tr.ptermTable(w, data)
+}
+
+func (pr *planTableRenderer) contentTable(w io.Writer, tr *tableRenderer, entries []PlanContentEntry, termW int) error {
+	tr.section(w, "Content", len(entries))
+	vw := varColWidth(termW, 5, 3, 24)
+	if vw < 14 {
+		vw = 14
+	}
+	data := pterm.TableData{{"PATH", "AGENT", "ACTION", "TARGET"}}
+	for _, e := range entries {
+		data = append(data, []string{
+			trunc(e.Path, vw),
+			trunc(e.Agent, vw),
+			actionCell(e.Action, e.Error),
+			trunc(e.Target, vw*2),
 		})
 	}
 	return tr.ptermTable(w, data)

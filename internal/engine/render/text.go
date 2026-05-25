@@ -30,6 +30,7 @@ func (tr *textRenderer) Render(w io.Writer, r *StatusReport) error {
 
 	write(func() bool { return tr.repoSection(w, r.Repositories) })
 	write(func() bool { return tr.skillSection(w, r.Skills) })
+	write(func() bool { return tr.contentSection(w, r.Content) })
 	write(func() bool { return tr.mcpSection(w, r.MCPs) })
 	write(func() bool { return tr.agentSection(w, r.Agents) })
 
@@ -128,6 +129,32 @@ func displayName(s string) string {
 		return "—"
 	}
 	return s
+}
+
+func (tr *textRenderer) contentSection(w io.Writer, entries []ContentEntry) bool {
+	if len(entries) == 0 {
+		return false
+	}
+	fmt.Fprintln(w, "content")
+	nameWidth := maxWidth(entries, func(i int) string { return entries[i].Path })
+	for _, e := range entries {
+		suffix := ""
+		switch e.Status {
+		case StatusDirty:
+			suffix = " (dirty)"
+		case StatusAbsent:
+			suffix = " (absent)"
+		case StatusError:
+			if e.Error != "" {
+				suffix = " (error: " + e.Error + ")"
+			} else {
+				suffix = " (error)"
+			}
+		}
+		fmt.Fprintf(w, "  %s  %s → %s%s\n", padText(e.Path, nameWidth), e.Agent, e.Target, suffix)
+	}
+	fmt.Fprintln(w)
+	return true
 }
 
 func (tr *textRenderer) mcpSection(w io.Writer, entries []MCPEntry) bool {

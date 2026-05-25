@@ -40,6 +40,7 @@ Per-package detail below; per-command flows in
 
 | Package | Page | Role |
 |---------|------|------|
+| `internal/content` | [content.md](content.md) | Generic file/directory content sync into agent or workspace roots |
 | `internal/httpx` | [httpx.md](httpx.md) | Hardened outbound HTTP client (TLS min, redirect SSRF, body cap, UA) |
 | `internal/installscript` | [installscript.md](installscript.md) | `curl \| sh` installer payload generation |
 | `internal/logger` | [logger.md](logger.md) | Console + JSON file slog handlers |

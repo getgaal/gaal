@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gaal/internal/config"
+	"gaal/internal/content"
 	"gaal/internal/engine/hooks"
 	"gaal/internal/engine/ops"
 	"gaal/internal/engine/render"
@@ -75,6 +76,7 @@ type Engine struct {
 	cfg       *config.Config
 	repos     *repo.Manager
 	skills    *skill.Manager
+	content   *content.Manager
 	mcps      *mcp.Manager
 	hooks     *hooks.Manager
 	home      string
@@ -105,6 +107,7 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 		cacheRoot = filepath.Join(home, ".cache")
 	}
 	cacheDir := filepath.Join(cacheRoot, "gaal", "skills")
+	contentCacheDir := filepath.Join(cacheRoot, "gaal", "content")
 
 	stateDir := filepath.Join(cacheRoot, "gaal", "state")
 	if opts.StateDir != "" {
@@ -117,6 +120,7 @@ func NewWithOptions(cfg *config.Config, opts Options) *Engine {
 		cfg:       cfg,
 		repos:     repo.NewManager(cfg.Repositories, stateDir),
 		skills:    skill.NewManager(cfg.Skills, cacheDir, home, workDir, stateDir, opts.Force),
+		content:   content.NewManager(cfg.Content, contentCacheDir, home, workDir, stateDir, opts.Force),
 		mcps:      mcp.NewManager(cfg.MCPs, home, stateDir),
 		hooks:     hooks.NewManager(cfg.Hooks, workDir, home, ""),
 		home:      home,
@@ -148,6 +152,13 @@ func (e *Engine) RunOnce(ctx context.Context) error {
 		slog.Debug("syncing skills", "count", len(e.cfg.Skills))
 		if err := e.skills.Sync(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("skills: %w", err))
+		}
+	}
+
+	if len(e.cfg.Content) > 0 {
+		slog.Debug("syncing content", "count", len(e.cfg.Content))
+		if err := e.content.Sync(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("content: %w", err))
 		}
 	}
 
@@ -228,7 +239,7 @@ func (e *Engine) Prune(ctx context.Context) error {
 
 // Collect gathers the current status of all resources without side effects.
 func (e *Engine) Collect(ctx context.Context) (*render.StatusReport, error) {
-	return ops.Collect(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir)
+	return ops.Collect(ctx, e.repos, e.skills, e.content, e.mcps, e.home, e.workDir, e.stateDir)
 }
 
 // DryRun computes what sync would do and renders the plan to os.Stdout.
@@ -254,7 +265,7 @@ func (e *Engine) DryRun(ctx context.Context, format OutputFormat) (*render.PlanR
 // summary can report past-tense verbs ("cloned", "installed", "upserted")
 // for each managed resource.
 func (e *Engine) Plan(ctx context.Context) (*render.PlanReport, error) {
-	plan, err := ops.SyncPlan(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir)
+	plan, err := ops.SyncPlan(ctx, e.repos, e.skills, e.content, e.mcps, e.home, e.workDir, e.stateDir)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +275,7 @@ func (e *Engine) Plan(ctx context.Context) (*render.PlanReport, error) {
 
 // Status collects the current resource state and renders it to os.Stdout.
 func (e *Engine) Status(ctx context.Context, format OutputFormat) error {
-	return ops.Status(ctx, e.repos, e.skills, e.mcps, e.home, e.workDir, e.stateDir, format)
+	return ops.Status(ctx, e.repos, e.skills, e.content, e.mcps, e.home, e.workDir, e.stateDir, format)
 }
 
 // Audit discovers all skills and MCP servers installed on the machine and
@@ -275,7 +286,7 @@ func (e *Engine) Audit(ctx context.Context, format OutputFormat) error {
 
 // Info renders a detailed view for the given package type to stdout.
 func (e *Engine) Info(ctx context.Context, pkg, filter string, format OutputFormat) error {
-	return ops.Info(ctx, e.repos, e.skills, e.mcps, e.cfg, e.home, e.workDir, e.stateDir, pkg, filter, format)
+	return ops.Info(ctx, e.repos, e.skills, e.content, e.mcps, e.cfg, e.home, e.workDir, e.stateDir, pkg, filter, format)
 }
 
 // ListAgents returns all registered agents with installed-detection.
