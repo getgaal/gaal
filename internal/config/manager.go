@@ -13,6 +13,7 @@ import (
 
 	"gaal/internal/config/platform"
 	"gaal/internal/config/schema"
+	ioyaml "gaal/internal/core/io/yaml"
 )
 
 // DefaultHookTimeout is the timeout applied when a hook does not declare one.
@@ -237,7 +238,7 @@ func loadOne(path string, enforceContainment bool) (*Config, error) {
 	}
 
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := ioyaml.UnmarshalStrict(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing YAML: %w", err)
 	}
 
