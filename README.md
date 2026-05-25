@@ -1,6 +1,14 @@
 # gaal
 
+[![Release](https://img.shields.io/github/v/release/getgaal/gaal)](https://github.com/getgaal/gaal/releases)
+[![CI](https://github.com/getgaal/gaal/actions/workflows/ci.yml/badge.svg)](https://github.com/getgaal/gaal/actions/workflows/ci.yml)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![Go 1.26+](https://img.shields.io/badge/go-1.26%2B-00ADD8.svg)](go.mod)
+[![GitHub stars](https://img.shields.io/github/stars/getgaal/gaal?style=social)](https://github.com/getgaal/gaal/stargazers)
+
 > **G**overned **A**gent **A**ccess **L**ayer — a single CLI to keep your local repositories, AI agent skills, and MCP server configurations in sync.
+
+📚 Full docs: [docs.getgaal.com](https://docs.getgaal.com)
 
 ```
   ██████╗  █████╗  █████╗ ██╗
@@ -14,12 +22,7 @@
 
 ---
 
-> [!IMPORTANT]
-> ## 📚 Full documentation lives at [**docs.getgaal.com**](https://docs.getgaal.com)
->
-> This README covers the essentials. For complete guides, configuration reference, agent integrations, and tutorials, head over to **[docs.getgaal.com](https://docs.getgaal.com)**.
-
----
+If you use more than one AI coding agent (Claude Code, Cursor, Codex, GitHub Copilot, …) across more than one machine, gaal keeps your skills, MCP servers, and repositories in one YAML and reconciles every agent on every machine to match.
 
 ## What it does
 
@@ -28,7 +31,79 @@
 | **Repositories** | Clone or update multi-protocol repos (git, hg, svn, bzr, tar, zip) from a single YAML file |
 | **Skills** | Download and install `SKILL.md` collections into your local AI agent directories (Claude, Copilot, Cursor, …) |
 | **MCPs** | Upsert MCP server entries into agent JSON config files without overwriting your existing configuration |
-| **Tools** | Check that required CLI binaries (e.g. `gh`, `fnm`) are on PATH and surface install hints when they are missing |
+
+Plus a lightweight **tools** check: `gaal doctor` and `gaal sync` verify that required CLI binaries (e.g. `gh`, `fnm`) are on PATH and surface install hints when they are missing.
+
+---
+
+## The YAML
+
+One file. Three resources. Every agent.
+
+```yaml
+schema: 1
+
+repositories:
+  - source: github.com/getgaal/gaal
+    path: ~/code/gaal
+
+skills:
+  - source: github.com/obra/superpowers
+    agents: ["*"]
+    global: true
+
+mcps:
+  - inline:
+      mcpServers:
+        context7:
+          command: npx
+          args: ["-y", "@upstash/context7-mcp"]
+    agents: ["claude-code", "cursor", "codex"]
+```
+
+Run `gaal sync`. gaal figures out which agents are installed and writes to the right place for each.
+
+---
+
+## Install
+
+### Quick install (macOS / Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/getgaal/gaal/main/scripts/install.sh | sh
+```
+
+Installs the latest release binary to `~/.local/bin/gaal`. Pin a specific
+version with `VERSION=v0.1.2`, or pick a different directory with
+`INSTALL_DIR=/usr/local/bin`.
+
+Pass `GAAL_INSTALL_DEBUG=1` for verbose output, or run
+`curl -fsSL https://raw.githubusercontent.com/getgaal/gaal/main/scripts/install.sh | sh -s -- --help`
+to see all options.
+
+### With Go
+
+```bash
+go install github.com/getgaal/gaal@latest
+```
+
+### From source
+
+**Prerequisites:** Go 1.26+
+
+```bash
+git clone https://github.com/getgaal/gaal.git
+cd gaal
+make build
+```
+
+The binary is written to `dist/gaal`. Copy it to your `$PATH`:
+
+```bash
+sudo cp dist/gaal /usr/local/bin/gaal
+# or, user-local:
+cp dist/gaal ~/.local/bin/gaal
+```
 
 ---
 
@@ -71,42 +146,38 @@ when stdin is not a TTY.
 ### Manual setup
 
 If you would rather hand-write your configuration, copy `example.gaal.yaml`
-and edit it. A minimal file looks like this:
-
-```yaml
-repositories:
-  src/myrepo:
-    type: git
-    url: https://github.com/example/myrepo.git
-    version: main
-
-skills:
-  - source: vercel-labs/agent-skills
-    agents: ["*"]
-
-mcps:
-  - name: filesystem
-    target: ~/.config/claude/claude_desktop_config.json
-    inline:
-      command: uvx
-      args: [mcp-server-filesystem, /home/user/projects]
-
-tools:
-  - gh                       # bare string — required on PATH, no install hint
-  - name: rtk                # full form with an install hint
-    hint: "cargo install rtk"
-```
-
-The `tools:` block can also appear inside an individual `skills:` entry to
-document tools required by that specific skill. `gaal doctor` reports each
-tool as `✓` (on PATH) or `⚠` (missing); `gaal sync` prints a one-line
-banner per missing tool but never blocks.
+and edit it. See [Configuration reference](#configuration-reference) for the
+full data model, including the `tools:` block (bare strings or `{name, hint}`
+objects) that documents required CLI binaries.
 
 Then run:
 
 ```bash
 gaal sync
 ```
+
+---
+
+## Why I built this
+
+Last December I set up a new laptop and it took me half a day. Not because the OS was slow. Because I was re-cloning repos, re-installing the same fifteen skills into Claude Code, then doing it again into Cursor, then registering the same four MCP servers into three different JSON files because each agent reads config from a different place.
+
+I had four config locations across two machines. Eight places where one source of truth should have lived. That's the problem gaal solves.
+
+---
+
+## Supported agents
+
+gaal auto-detects 17 coding agents. Use `agents: ["*"]` and a skill or MCP lands in every detected agent. Extend the registry yourself for anything missing, see [Configuration reference](#configuration-reference).
+
+| | | |
+|---|---|---|
+| Claude Code | Cursor | Codex |
+| GitHub Copilot | Amp | Cline |
+| Roo | Continue | Gemini CLI |
+| Goose | Kilo | Kiro CLI |
+| OpenCode | OpenHands | Trae |
+| Warp | Windsurf | |
 
 ---
 
@@ -355,7 +426,8 @@ configuration file.
 
 ### Agent registry customization
 
-gaal ships with a built-in registry of supported coding agents (claude-code, github-copilot, cursor, windsurf, …). You can extend it with your own agent definitions by creating a file at:
+gaal ships with a built-in registry of supported coding agents. You can extend
+it with your own agent definitions by creating a file at:
 
 | OS | Path |
 |----|------|
@@ -407,98 +479,8 @@ make lint      # gofmt + go vet
 make sandbox   # one-shot sync in an isolated /tmp directory
 ```
 
-### End-to-end tests
-
-The e2e suite runs gaal inside a hermetic Docker container so it can clone
-real repos, write to agent skill dirs, and merge MCP configs without
-touching your real `$HOME`.
-
-```bash
-make test-e2e        # Layer 1: filesystem assertions only (fast, ~45s)
-make test-e2e-cli    # Layer 2: also installs claude-code + codex CLIs and
-                     # verifies the configs gaal writes are accepted
-                     # (~2 min; runs nightly in CI, not on every PR)
-```
-
-Requires Docker on the host. The Makefile builds gaal for `linux/<host-arch>`
-(amd64 on x86_64, arm64 on Apple Silicon) and forwards `--platform` to
-docker so the binary and image always match. Override with
-`make test-e2e GOARCH=amd64`.
-
-The fixture image (`alpine + git + mercurial + python3 + node`) is published
-to ghcr on every Dockerfile change. Pull it once to skip the slow `apk` and
-`npm install` on your first local run:
-
-```bash
-docker pull ghcr.io/getgaal/gaal-e2e:base-latest
-docker tag  ghcr.io/getgaal/gaal-e2e:base-latest gaal-e2e:base-latest
-make test-e2e   # reuses the cached base layers; only the binary COPY re-runs
-```
-
-CI uploads the JUnit report (`report/e2e-tests.xml`) plus
-`docker logs`/`docker inspect` diagnostics on failure as workflow artifacts.
-
-For interactive debugging — watching every `docker exec` invocation
-(banner) and gaal's stdout/stderr stream live to the terminal:
-
-```bash
-GAAL_E2E_VERBOSE=1 go test -v -tags e2e -run TestVCS_GitBackend_CloneAndCheckout ./test/e2e/...
-```
-
-Off by default so the per-PR run stays clean; the captured `ExecResult`
-fields are unchanged either way so existing assertions keep working.
-
-See [`docs/architecture.md`](docs/architecture.md) for a full description of the internals.
-
----
-
-## Install
-
-### Quick install (macOS / Linux)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/getgaal/gaal/main/scripts/install.sh | sh
-```
-
-Installs the latest release binary to `~/.local/bin/gaal`. Pin a specific
-version with `VERSION=v0.1.2`, or pick a different directory with
-`INSTALL_DIR=/usr/local/bin`.
-
-Pass `GAAL_INSTALL_DEBUG=1` for verbose output, or run
-`curl -fsSL https://raw.githubusercontent.com/getgaal/gaal/main/scripts/install.sh | sh -s -- --help`
-to see all options.
-
-### With Go
-
-```bash
-go install github.com/getgaal/gaal@latest
-```
-
-### From source
-
-**Prerequisites:** Go 1.26+
-
-```bash
-git clone https://github.com/getgaal/gaal.git
-cd gaal
-make build
-```
-
-The binary is written to `dist/gaal`. Copy it to your `$PATH`:
-
-```bash
-sudo cp dist/gaal /usr/local/bin/gaal
-# or, user-local:
-cp dist/gaal ~/.local/bin/gaal
-```
-
----
-
-## Privacy
-
-gaal collects **no data by default**. You can opt in to anonymous usage
-telemetry on first run. See the [Privacy Policy](PRIVACY_POLICY.md) for
-full details on what is and isn't collected.
+See [`docs/testing.md`](docs/testing.md) for the e2e test suite, and
+[`docs/architecture.md`](docs/architecture.md) for a full description of the internals.
 
 ---
 
@@ -512,3 +494,11 @@ This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU Affero General Public License as published by the Free
 Software Foundation, either version 3 of the License, or (at your option) any
 later version. See the [LICENSE](LICENSE) file for the full text.
+
+---
+
+## Privacy
+
+gaal collects **no data by default**. You can opt in to anonymous usage
+telemetry on first run. See the [Privacy Policy](PRIVACY_POLICY.md) for
+full details on what is and isn't collected.
