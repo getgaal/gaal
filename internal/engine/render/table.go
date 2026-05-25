@@ -97,6 +97,9 @@ func (tr *tableRenderer) Render(w io.Writer, r *StatusReport) error {
 	if err := tr.skillTable(w, r.Skills, termW); err != nil {
 		return err
 	}
+	if err := tr.contentTable(w, r.Content, termW); err != nil {
+		return err
+	}
 	if err := tr.mcpTable(w, r.MCPs, termW); err != nil {
 		return err
 	}
@@ -447,6 +450,25 @@ func (tr *tableRenderer) mcpTable(w io.Writer, entries []MCPEntry, termW int) er
 			e.Name,
 			statusCell(e.Status, e.Error),
 			target,
+		})
+	}
+	return tr.ptermTable(w, data)
+}
+
+func (tr *tableRenderer) contentTable(w io.Writer, entries []ContentEntry, termW int) error {
+	tr.section(w, "Content", len(entries))
+	vw := varColWidth(termW, 5, 3, 28)
+	if vw < 16 {
+		vw = 16
+	}
+	data := pterm.TableData{{"PATH", "AGENT", "SCOPE", "STATUS", "TARGET"}}
+	for _, e := range entries {
+		data = append(data, []string{
+			trunc(e.Path, vw),
+			e.Agent,
+			e.Scope,
+			statusCell(e.Status, e.Error),
+			trunc(e.Target, vw),
 		})
 	}
 	return tr.ptermTable(w, data)

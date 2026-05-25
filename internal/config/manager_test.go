@@ -1396,6 +1396,72 @@ tools:
 	}
 }
 
+func TestLoad_ContentTargets(t *testing.T) {
+	p := writeYAML(t, `
+content:
+  - source: ./agent-guidance
+    targets:
+      - agents: ["claude-code"]
+        scope: project
+        root: workspace
+        paths:
+          AGENTS.md: CLAUDE.md
+      - agents: ["codex"]
+        scope: project
+        root: workspace
+        paths:
+          AGENTS.md: AGENTS.md
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Content) != 1 || len(cfg.Content[0].Targets) != 2 {
+		t.Fatalf("unexpected content config: %+v", cfg.Content)
+	}
+	if cfg.Content[0].Targets[0].Paths["AGENTS.md"] != "CLAUDE.md" {
+		t.Errorf("unexpected first path mapping: %+v", cfg.Content[0].Targets[0].Paths)
+	}
+}
+
+func TestLoad_ContentShorthand(t *testing.T) {
+	p := writeYAML(t, `
+content:
+  - source: owner/dotclaude
+    agents: ["claude-code"]
+    global: true
+    paths:
+      commands/: commands/
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Content) != 1 || !cfg.Content[0].Global {
+		t.Fatalf("unexpected content config: %+v", cfg.Content)
+	}
+}
+
+func TestLoad_ContentRejectsUnsafePaths(t *testing.T) {
+	cases := []struct {
+		name string
+		yaml string
+	}{
+		{"source parent", "content:\n  - source: owner/repo\n    agents: [codex]\n    paths:\n      ../AGENTS.md: AGENTS.md\n"},
+		{"dest parent", "content:\n  - source: owner/repo\n    agents: [codex]\n    paths:\n      AGENTS.md: ../AGENTS.md\n"},
+		{"bad root", "content:\n  - source: owner/repo\n    agents: [codex]\n    root: nowhere\n    paths:\n      AGENTS.md: AGENTS.md\n"},
+		{"missing agents", "content:\n  - source: owner/repo\n    paths:\n      AGENTS.md: AGENTS.md\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := writeYAML(t, tc.yaml)
+			if _, err := Load(p); err == nil {
+				t.Fatal("expected content config to be rejected")
+			}
+		})
+	}
+}
+
 func TestLoad_RejectsUnknownKeysInCustomYAMLTypes(t *testing.T) {
 	cases := []struct {
 		name string

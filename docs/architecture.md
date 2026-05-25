@@ -2,12 +2,13 @@
 
 ## Overview
 
-`gaal` is a Go (1.26) CLI tool that manages three types of local resources from a single YAML configuration file:
+`gaal` is a Go (1.26) CLI tool that manages four types of local resources from a single YAML configuration file:
 
 | Resource | Description |
 |----------|-------------|
 | **Repositories** | Multi-protocol repositories (git, hg, svn, bzr, tar, zip) |
 | **Skills** | `SKILL.md` file collections installed into AI agent directories |
+| **Content** | Generic file/directory mappings for agent instructions, commands, rules, and settings |
 | **MCPs** | MCP (*Model Context Protocol*) server configuration entries injected into JSON files |
 
 ---

@@ -13,6 +13,7 @@ import (
 	"github.com/pterm/pterm"
 
 	"gaal/internal/config"
+	"gaal/internal/content"
 	"gaal/internal/core/agent"
 	"gaal/internal/engine/render"
 	"gaal/internal/mcp"
@@ -25,10 +26,10 @@ import (
 // filter is an optional name/source substring; if non-empty only matching
 // entries are shown. Matching is case-insensitive.
 // format controls the output: FormatTable (pterm) or FormatJSON.
-func Info(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, cfg *config.Config, home, workDir, stateDir, pkg, filter string, format render.OutputFormat) error {
+func Info(ctx context.Context, repos *repo.Manager, skills *skill.Manager, contentMgr *content.Manager, mcps *mcp.Manager, cfg *config.Config, home, workDir, stateDir, pkg, filter string, format render.OutputFormat) error {
 	slog.DebugContext(ctx, "info requested", "package", pkg, "filter", filter, "format", format)
 
-	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir)
+	report, err := Collect(ctx, repos, skills, contentMgr, mcps, home, workDir, stateDir)
 	if err != nil {
 		return err
 	}

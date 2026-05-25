@@ -109,6 +109,7 @@ Config
 ├── Schema        *int
 ├── Repositories  map[string]ConfigRepo
 ├── Skills        []ConfigSkill
+├── Content       []ConfigContent
 ├── MCPs          []ConfigMcp
 │                   └── Inline  *ConfigMcpItem
 ├── Hooks         *ConfigHooks
@@ -141,6 +142,7 @@ Per-field merge rules:
 | `telemetry` | Source wins if non-nil **and** `scope ≤ maxscope=user` (workspace is silently ignored — see below) |
 | `repositories` | Map merge — source entry wins on key conflict |
 | `skills` | Upsert by `Source` + `target_subdir` — source entry replaces the existing entry with the same install identity |
+| `content` | Append, then deduplicate exact duplicate entries — repeated sources may intentionally target different agents or paths |
 | `mcps` | Upsert by `Name` — source entry replaces the existing entry with the same `Name` |
 | `hooks` | Append — higher-priority hooks run *after* lower-priority ones at the same phase, so workspace-level hooks fire last |
 

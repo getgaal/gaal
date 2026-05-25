@@ -172,6 +172,13 @@ func (c *Config) expandPaths(baseDir string) {
 		}
 	}
 
+	for i := range c.Content {
+		src := c.Content[i].Source
+		if !isRemoteURL(src) && !isGitHubShorthand(src) {
+			c.Content[i].Source = expandPath(src)
+		}
+	}
+
 	for i := range c.MCPs {
 		if c.MCPs[i].Target == "" {
 			continue

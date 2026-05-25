@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gaal/internal/content"
 	"gaal/internal/discover"
 	"gaal/internal/engine/render"
 	"gaal/internal/mcp"
@@ -18,7 +19,7 @@ import (
 // Collect gathers the current status of all resources without side effects.
 // It performs a FS-first scan via discover.Scan and then reconciles with any
 // config-declared resources from the managers, marking them as managed.
-func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string) (*render.StatusReport, error) {
+func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, contentMgr *content.Manager, mcps *mcp.Manager, home, workDir, stateDir string) (*render.StatusReport, error) {
 	slog.DebugContext(ctx, "collecting status", "home", home, "workDir", workDir)
 
 	// FS-first: discover what is actually installed.
@@ -38,6 +39,7 @@ func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mc
 	// Config-driven status (may add managed resources absent from FS scan).
 	configRepos := collectRepos(repos.Status(ctx))
 	configSkills := collectSkills(skills.Status(ctx))
+	configContent := collectContent(contentMgr.Status(ctx))
 	configMCPs := collectMCPs(mcps.Status(ctx))
 
 	// Reconcile: mark config-declared resources as managed and merge
@@ -49,16 +51,17 @@ func Collect(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mc
 	return &render.StatusReport{
 		Repositories: repoEntries,
 		Skills:       skillEntries,
+		Content:      configContent,
 		MCPs:         mcpEntries,
 		Agents:       agents,
 	}, nil
 }
 
 // Status collects the current resource state and renders it to os.Stdout.
-func Status(ctx context.Context, repos *repo.Manager, skills *skill.Manager, mcps *mcp.Manager, home, workDir, stateDir string, format render.OutputFormat) error {
+func Status(ctx context.Context, repos *repo.Manager, skills *skill.Manager, contentMgr *content.Manager, mcps *mcp.Manager, home, workDir, stateDir string, format render.OutputFormat) error {
 	slog.DebugContext(ctx, "status requested", "format", format)
 
-	report, err := Collect(ctx, repos, skills, mcps, home, workDir, stateDir)
+	report, err := Collect(ctx, repos, skills, contentMgr, mcps, home, workDir, stateDir)
 	if err != nil {
 		return err
 	}
@@ -274,6 +277,47 @@ func collectSkills(stats []skill.Status) []render.SkillEntry {
 			e.Status = render.StatusOK
 		}
 		entries = append(entries, e)
+	}
+	return entries
+}
+
+func collectContent(stats []content.Status) []render.ContentEntry {
+	slog.Debug("collecting content status entries", "count", len(stats))
+	var entries []render.ContentEntry
+	for _, st := range stats {
+		if st.Err != nil {
+			entries = append(entries, render.ContentEntry{
+				Source: st.Source,
+				Agent:  st.Agent,
+				Scope:  st.Scope,
+				Root:   st.Root,
+				Status: render.StatusError,
+				Error:  st.Err.Error(),
+			})
+			continue
+		}
+		for _, p := range st.Paths {
+			e := render.ContentEntry{
+				Source: st.Source,
+				Agent:  st.Agent,
+				Scope:  st.Scope,
+				Root:   st.Root,
+				Path:   p.Source,
+				Target: p.Target,
+			}
+			switch {
+			case p.Error != "":
+				e.Status = render.StatusError
+				e.Error = p.Error
+			case !p.Present:
+				e.Status = render.StatusAbsent
+			case p.Dirty:
+				e.Status = render.StatusDirty
+			default:
+				e.Status = render.StatusPresent
+			}
+			entries = append(entries, e)
+		}
 	}
 	return entries
 }
