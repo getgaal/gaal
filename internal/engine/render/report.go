@@ -97,7 +97,32 @@ const (
 	PlanUpdate PlanAction = "update"
 	PlanCreate PlanAction = "create"
 	PlanError  PlanAction = "error"
+	// PlanRun marks a hook whose command would be invoked.
+	PlanRun PlanAction = "run"
+	// PlanSkip marks a hook excluded from this run (e.g. by an OS filter).
+	PlanSkip PlanAction = "skip"
 )
+
+// HookPhase identifies when in the sync pipeline a hook fires.
+type HookPhase string
+
+const (
+	HookPreSync  HookPhase = "pre-sync"
+	HookPostSync HookPhase = "post-sync"
+)
+
+// PlanHookEntry describes a single hook that would run (or would be skipped)
+// during the current sync. Hooks live outside the StatusReport because they
+// have no on-disk state to query; they are computed straight from the loaded
+// config plus the current GOOS.
+type PlanHookEntry struct {
+	Phase   HookPhase  `json:"phase"`
+	Name    string     `json:"name,omitempty"`
+	Command string     `json:"command"`
+	Args    []string   `json:"args,omitempty"`
+	Action  PlanAction `json:"action"`
+	Reason  string     `json:"reason,omitempty"` // populated when Action == PlanSkip
+}
 
 // PlanRepoEntry describes the planned action for a single repository.
 type PlanRepoEntry struct {
@@ -137,6 +162,7 @@ type PlanReport struct {
 	Repositories []PlanRepoEntry  `json:"repositories"`
 	Skills       []PlanSkillEntry `json:"skills"`
 	MCPs         []PlanMCPEntry   `json:"mcps"`
+	Hooks        []PlanHookEntry  `json:"hooks,omitempty"`
 	HasChanges   bool             `json:"has_changes"`
 	HasErrors    bool             `json:"has_errors"`
 }

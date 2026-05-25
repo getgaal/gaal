@@ -190,6 +190,50 @@ func TestRunOnce_ErrorAccumulation(t *testing.T) {
 	}
 }
 
+func TestPlan_IncludesHookEntries(t *testing.T) {
+	cfg := &config.Config{
+		Hooks: &config.ConfigHooks{
+			PreSync: []config.ConfigHook{
+				{Name: "pre", Command: "true"},
+			},
+			PostSync: []config.ConfigHook{
+				{Name: "post", Command: "true"},
+			},
+		},
+	}
+	e := NewWithOptions(cfg, Options{StateDir: t.TempDir()})
+	plan, err := e.Plan(context.Background())
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(plan.Hooks) != 2 {
+		t.Fatalf("expected 2 hook entries in plan, got %d (%+v)", len(plan.Hooks), plan.Hooks)
+	}
+	var names []string
+	for _, h := range plan.Hooks {
+		names = append(names, h.Name)
+	}
+	wantSet := map[string]bool{"pre": false, "post": false}
+	for _, n := range names {
+		if _, ok := wantSet[n]; ok {
+			wantSet[n] = true
+		}
+	}
+	for n, seen := range wantSet {
+		if !seen {
+			t.Errorf("hook %q missing from plan (got %v)", n, names)
+		}
+	}
+}
+
+func TestHooks_ReturnsManager(t *testing.T) {
+	cfg := &config.Config{}
+	e := New(cfg)
+	if e.Hooks() == nil {
+		t.Fatal("Hooks() returned nil")
+	}
+}
+
 func TestStatus_WithRepoError(t *testing.T) {
 	// Unknown repo type causes repos.Status to return an error status entry.
 	cfg := &config.Config{

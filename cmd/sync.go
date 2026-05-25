@@ -101,6 +101,15 @@ func runSync(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
+	if err := eng.Hooks().RunPreSync(ctx, plan); err != nil {
+		fmt.Fprintln(os.Stderr, "⚠ pre-sync hook failed; aborting sync")
+		telemetry.TrackError("sync-hook-pre", err)
+		return err
+	}
+	if err := checkInterrupted(ctx); err != nil {
+		return err
+	}
+
 	start := time.Now()
 	if err := eng.RunOnce(ctx); err != nil {
 		telemetry.TrackError("sync", err)
@@ -134,6 +143,12 @@ func runSync(_ *cobra.Command, _ []string) error {
 		if rerr != nil {
 			slog.Debug("rendering sync summary failed", "err", rerr)
 		}
+	}
+
+	if err := eng.Hooks().RunPostSync(ctx, plan); err != nil {
+		fmt.Fprintln(os.Stderr, "⚠ post-sync hook failed")
+		telemetry.TrackError("sync-hook-post", err)
+		return err
 	}
 
 	telemetry.Track("sync")

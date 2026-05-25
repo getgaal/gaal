@@ -294,6 +294,96 @@ silently filling logs forever. Successful iterations reset the counter.
 
 ---
 
+## Hooks
+
+User-defined commands can run before and after sync. The shape is
+**exec-form**: `command + args[]`, no shell. The same `gaal.yaml`
+therefore works on Linux, macOS, and Windows; users who need pipes or
+redirection invoke a script by path instead.
+
+```yaml
+hooks:
+  pre-sync:
+    - name: "snapshot working copies"
+      command: ./scripts/backup.sh
+      os: [linux, darwin]
+      timeout: 1m
+      continue_on_error: true
+  post-sync:
+    - command: git
+      args: ["-C", "~/.claude", "pull"]
+```
+
+### Execution order
+
+```mermaid
+flowchart LR
+    A[gaal sync] --> B[plan]
+    B --> C[pre-sync hooks]
+    C --> D{ok?}
+    D -- no --> Z1([abort: pre-sync failed])
+    D -- yes --> E[RunOnce]
+    E --> F{ok?}
+    F -- no --> Z2([exit 2: sync error, skip post-sync])
+    F -- yes --> G[--prune?]
+    G --> H[summary]
+    H --> I[post-sync hooks]
+    I --> J([exit 0])
+```
+
+- **pre-sync** runs before any resource is touched. A non-zero exit
+  aborts the sync, unless the hook sets `continue_on_error: true`.
+- **post-sync** runs only when sync and any `--prune` succeeded.
+  Skipped on every error path — the issue requirement that hooks fire
+  strictly on success.
+- Hooks run sequentially in declared order. Cross-config-level layering
+  is concat: workspace-level hooks fire after user-level hooks at the
+  same phase.
+
+### Cross-platform notes
+
+- Tokens `~/`, `$VAR`, `${VAR}` in `args`, `cwd`, and `env` values are
+  expanded against the host environment at run time, so a single config
+  file can target multiple machines.
+- The optional `os: [linux, darwin, windows]` filter skips a hook on
+  platforms where it doesn't apply. Values are matched case-insensitively
+  against Go's `runtime.GOOS`.
+- The `command` field is **not** shell-interpolated. Use a script if you
+  need pipes, redirections, or globs.
+
+### Hook environment payload
+
+Every hook inherits gaal's environment plus:
+
+| Variable | Value |
+|----------|-------|
+| `GAAL_HOOK_PHASE` | `pre-sync` or `post-sync` |
+| `GAAL_PLANNED_REPOS` / `GAAL_CHANGED_REPOS` | newline-separated repo paths that would change / did change |
+| `GAAL_PLANNED_SKILLS` / `GAAL_CHANGED_SKILLS` | newline-separated `agent:source` rows |
+| `GAAL_PLANNED_MCPS` / `GAAL_CHANGED_MCPS` | newline-separated MCP names |
+| `GAAL_HAS_CHANGES` | `1` if the plan touches any resource, else `0` |
+| `GAAL_HAS_ERRORS` | `1` if the plan saw errors, else `0` |
+
+Both the `PLANNED_*` and `CHANGED_*` variables carry the same payload —
+the framing exists so a hook can self-document whether it cares about
+intent vs. outcome. An empty list is the empty string, so shells can
+test with `[[ -z "$GAAL_CHANGED_MCPS" ]] && exit 0`.
+
+### Service mode
+
+Hooks fire on every iteration. A failing hook never breaks the daemon
+loop — pre-sync failure skips that iteration's sync; post-sync failure
+is logged but the loop continues. This matches the rest of service-mode
+error handling: log and recover, don't exit.
+
+### Dry-run
+
+`gaal sync --dry-run` lists hooks under `pre-sync hooks` and `post-sync
+hooks` sections with one row per hook, marker `>` for "would run" and
+`-` for "skipped" (e.g. by an `os:` filter). The hook is never invoked.
+
+---
+
 ## Tooling probe
 
 Before running, `warnMissingTools(cfg)` prints a stderr banner listing
@@ -325,6 +415,7 @@ that would otherwise come later. See [`packages/tools.md`](../packages/tools.md)
 | Agent MCP config (e.g. `~/.claude.json`, `~/.codex/config.toml`, `~/.cursor/mcp.json`) | upsert (atomic 0o600 write) | `internal/mcp` |
 | `~/.cache/gaal/state/<key>.json` (snapshot index) | write | `internal/discover` |
 | `~/.local/state/gaal/telemetry.jsonl` (when consented) | append (0o600) | `internal/telemetry` |
+| arbitrary, via `hooks:` declarations | exec subprocess | `internal/engine/hooks` |
 
 In `--sandbox <dir>` mode, every `~/...` path above is rewritten under
 `<dir>/...` via `applyOptions`. Real user state is untouched.

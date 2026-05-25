@@ -34,12 +34,13 @@ type planSummaryRow struct {
 func (r *summaryPlanRenderer) Render(w io.Writer, report *PlanReport) error {
 	slog.Debug("rendering summary plan output")
 
-	if len(report.Repositories) == 0 && len(report.Skills) == 0 && len(report.MCPs) == 0 {
+	if len(report.Repositories) == 0 && len(report.Skills) == 0 && len(report.MCPs) == 0 && len(report.Hooks) == 0 {
 		fmt.Fprintln(w, "nothing to do")
 		return nil
 	}
 
 	rows, noopCount := buildSummaryPlanRows(report)
+	rows = append(rows, hookSummaryRows(report.Hooks)...)
 
 	fmt.Fprintln(w, "Plan:")
 
@@ -230,4 +231,41 @@ func pluralise(n int, one, many string) string {
 		return fmt.Sprintf("%d %s", n, one)
 	}
 	return fmt.Sprintf("%d %s", n, many)
+}
+
+// hookSummaryRows compresses planned hooks into one row per phase per action.
+// We don't expand every hook — for v1 the summary stays one line per "N
+// pre-sync hooks would run" so the rest of the plan output isn't drowned out
+// by long hook lists.
+func hookSummaryRows(entries []PlanHookEntry) []planSummaryRow {
+	var rows []planSummaryRow
+	var preRun, postRun, preSkip, postSkip int
+	for _, e := range entries {
+		switch {
+		case e.Phase == HookPreSync && e.Action == PlanRun:
+			preRun++
+		case e.Phase == HookPostSync && e.Action == PlanRun:
+			postRun++
+		case e.Phase == HookPreSync && e.Action == PlanSkip:
+			preSkip++
+		case e.Phase == HookPostSync && e.Action == PlanSkip:
+			postSkip++
+		}
+	}
+	add := func(verb string, n int, action PlanAction, label string) {
+		if n == 0 {
+			return
+		}
+		rows = append(rows, planSummaryRow{
+			marker: planMarker(action),
+			verb:   verb,
+			name:   pluralise(n, label, label+"s"),
+			action: action,
+		})
+	}
+	add("pre-sync", preRun, PlanRun, "hook")
+	add("post-sync", postRun, PlanRun, "hook")
+	add("pre-sync", preSkip, PlanSkip, "hook")
+	add("post-sync", postSkip, PlanSkip, "hook")
+	return rows
 }

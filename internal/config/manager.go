@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/invopop/jsonschema"
 	"gopkg.in/yaml.v3"
@@ -13,6 +14,11 @@ import (
 	"gaal/internal/config/platform"
 	"gaal/internal/config/schema"
 )
+
+// DefaultHookTimeout is the timeout applied when a hook does not declare one.
+// Long enough to cover slow git pulls and most install scripts, short enough
+// that a wedged hook does not stall an interactive sync indefinitely.
+const DefaultHookTimeout = 5 * time.Minute
 
 // ── Structures ────────────────────────────────────────────────────────────────
 
@@ -25,11 +31,54 @@ type Config struct {
 	Skills       []ConfigSkill         `yaml:"skills"       json:"skills,omitempty"       jsonschema:"description=Skill sources to install into agent skill directories"   validate:"dive"`
 	MCPs         []ConfigMcp           `yaml:"mcps"         json:"mcps,omitempty"         jsonschema:"description=MCP server configuration entries to merge"             validate:"dive"`
 	Tools        []ConfigTool          `yaml:"tools,omitempty" json:"tools,omitempty"    jsonschema:"description=CLI tools expected to be on PATH; gaal doctor/sync report any missing ones" validate:"dive"`
+	Hooks        *ConfigHooks          `yaml:"hooks,omitempty" json:"hooks,omitempty" jsonschema:"description=User-defined commands to run before and after sync"`
 	Telemetry    *bool                 `yaml:"telemetry,omitempty" json:"telemetry,omitempty" jsonschema:"description=Opt-in anonymous usage telemetry (true/false)" gaal:"maxscope=user"`
 
 	// SourcePath is populated at runtime by Load and never written to disk.
 	// It holds the path of the file this Config was loaded from.
 	SourcePath string `yaml:"-" json:"-" jsonschema:"-"`
+}
+
+// ConfigHooks groups user-defined commands that gaal runs around the sync
+// pipeline. pre-sync hooks run before any resource is touched; post-sync hooks
+// run only after a successful sync.
+type ConfigHooks struct {
+	PreSync  []ConfigHook `yaml:"pre-sync,omitempty"  json:"pre-sync,omitempty"  jsonschema:"description=Commands to run before sync. A non-zero exit aborts the sync (unless continue_on_error is true)." validate:"dive"`
+	PostSync []ConfigHook `yaml:"post-sync,omitempty" json:"post-sync,omitempty" jsonschema:"description=Commands to run after a successful sync. Skipped when sync had errors."                          validate:"dive"`
+}
+
+// ConfigHook is one user-defined command invoked by gaal at a hook point.
+//
+// Hooks use exec-form (command + args[]) so they remain portable across
+// Linux, macOS, and Windows. No shell is involved: tokens are passed
+// verbatim, and metacharacters like '|' or '>' are not interpreted. Users
+// who need shell features should invoke a script by path.
+//
+// Path-like tokens ('~/...', '$VAR', '${VAR}') in Args, Cwd, and Env values
+// are expanded at run time against the host environment.
+type ConfigHook struct {
+	Name            string            `yaml:"name,omitempty"              json:"name,omitempty"              jsonschema:"description=Optional human-readable label shown in logs and dry-run output"`
+	Command         string            `yaml:"command"                     json:"command"                     jsonschema:"description=Executable to run. Looked up on PATH unless an absolute or ~-rooted path is given." validate:"required"`
+	Args            []string          `yaml:"args,omitempty"              json:"args,omitempty"              jsonschema:"description=Arguments passed to command. Tokens beginning with ~ are home-expanded; $VAR and ${VAR} are env-expanded."`
+	Cwd             string            `yaml:"cwd,omitempty"               json:"cwd,omitempty"               jsonschema:"description=Working directory for the hook process. Defaults to gaal's working directory."`
+	OS              []string          `yaml:"os,omitempty"                json:"os,omitempty"                jsonschema:"description=Restrict to these GOOS values; empty list means all platforms,enum=linux,enum=darwin,enum=windows"`
+	Timeout         string            `yaml:"timeout,omitempty"           json:"timeout,omitempty"           jsonschema:"description=Per-hook timeout as a Go duration string (e.g. \"30s\", \"2m\"). Default 5m."`
+	ContinueOnError bool              `yaml:"continue_on_error,omitempty" json:"continue_on_error,omitempty" jsonschema:"description=When true a non-zero exit logs a warning and does not abort the remaining hooks or, for pre-sync, the sync itself."`
+	Env             map[string]string `yaml:"env,omitempty"               json:"env,omitempty"               jsonschema:"description=Extra environment variables for this hook. Merged on top of the inherited environment."`
+}
+
+// EffectiveTimeout returns the hook's parsed timeout, or DefaultHookTimeout
+// when Timeout is empty. Callers should only invoke this after validateHooks
+// has run, which guarantees the value parses cleanly.
+func (h ConfigHook) EffectiveTimeout() time.Duration {
+	if h.Timeout == "" {
+		return DefaultHookTimeout
+	}
+	d, err := time.ParseDuration(h.Timeout)
+	if err != nil || d <= 0 {
+		return DefaultHookTimeout
+	}
+	return d
 }
 
 // ConfigRepo is a vcstool-compatible repository entry.
@@ -368,6 +417,18 @@ func (c *Config) mergeFrom(src *Config, scope ConfigScope) {
 			c.Tools = append(c.Tools, tl)
 		}
 	}
+
+	if src.Hooks != nil {
+		if c.Hooks == nil {
+			c.Hooks = &ConfigHooks{}
+		}
+		// Higher-priority levels append their hooks after lower-priority ones.
+		// Pre-sync from a higher level still runs after pre-sync from a lower
+		// level; users layering a workspace config can rely on their hooks
+		// firing last. No keyed dedup: hook commands are not identity-bearing.
+		c.Hooks.PreSync = append(c.Hooks.PreSync, src.Hooks.PreSync...)
+		c.Hooks.PostSync = append(c.Hooks.PostSync, src.Hooks.PostSync...)
+	}
 }
 
 // deduplicate removes duplicate entries within this Config, keeping the first
@@ -384,7 +445,56 @@ func (c *Config) validate() error {
 	if err := schema.Validate(c); err != nil {
 		return err
 	}
-	return c.validateMCPItems()
+	if err := c.validateMCPItems(); err != nil {
+		return err
+	}
+	return c.validateHooks()
+}
+
+// validHookOS enumerates the GOOS values gaal will match against runtime.GOOS
+// when deciding whether to run a hook. Values from the user's YAML are
+// lower-cased before comparison.
+var validHookOS = map[string]struct{}{
+	"linux":   {},
+	"darwin":  {},
+	"windows": {},
+}
+
+func (c *Config) validateHooks() error {
+	if c.Hooks == nil {
+		return nil
+	}
+	if err := validateHookList("pre-sync", c.Hooks.PreSync); err != nil {
+		return err
+	}
+	return validateHookList("post-sync", c.Hooks.PostSync)
+}
+
+func validateHookList(phase string, hooks []ConfigHook) error {
+	for i, h := range hooks {
+		label := fmt.Sprintf("hooks.%s[%d]", phase, i)
+		if h.Name != "" {
+			label = fmt.Sprintf("hooks.%s[%d] (%s)", phase, i, h.Name)
+		}
+		if h.Command == "" {
+			return fmt.Errorf("%s: command is required", label)
+		}
+		for _, osName := range h.OS {
+			if _, ok := validHookOS[osName]; !ok {
+				return fmt.Errorf("%s: os value %q is not one of [linux darwin windows]", label, osName)
+			}
+		}
+		if h.Timeout != "" {
+			d, err := time.ParseDuration(h.Timeout)
+			if err != nil {
+				return fmt.Errorf("%s: timeout %q is not a valid Go duration (e.g. \"30s\", \"2m\"): %w", label, h.Timeout, err)
+			}
+			if d < 0 {
+				return fmt.Errorf("%s: timeout must be non-negative (got %s)", label, d)
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Config) validateMCPItems() error {

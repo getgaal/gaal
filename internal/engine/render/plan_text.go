@@ -35,7 +35,7 @@ const planTargetSoftLimit = 60
 func (pr *planTextRenderer) Render(w io.Writer, r *PlanReport) error {
 	slog.Debug("rendering plan text output")
 
-	if len(r.Repositories) == 0 && len(r.Skills) == 0 && len(r.MCPs) == 0 {
+	if len(r.Repositories) == 0 && len(r.Skills) == 0 && len(r.MCPs) == 0 && len(r.Hooks) == 0 {
 		fmt.Fprintln(w, "nothing to do")
 		return nil
 	}
@@ -44,6 +44,7 @@ func (pr *planTextRenderer) Render(w io.Writer, r *PlanReport) error {
 	pr.writeRepos(w, r.Repositories)
 	pr.writeSkills(w, r.Skills)
 	pr.writeMCPs(w, r.MCPs)
+	pr.writeHooks(w, r.Hooks)
 
 	switch {
 	case r.HasErrors:
@@ -226,19 +227,80 @@ func (pr *planTextRenderer) writeMCPs(w io.Writer, entries []PlanMCPEntry) {
 	pr.writeSection(w, "mcps", rows)
 }
 
+func (pr *planTextRenderer) writeHooks(w io.Writer, entries []PlanHookEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	// Group by phase so the user sees "pre-sync" then "post-sync".
+	pre, post := splitHooksByPhase(entries)
+	if len(pre) > 0 {
+		pr.writeSection(w, "pre-sync hooks", hookRows(pre))
+	}
+	if len(post) > 0 {
+		pr.writeSection(w, "post-sync hooks", hookRows(post))
+	}
+}
+
+func splitHooksByPhase(entries []PlanHookEntry) (pre, post []PlanHookEntry) {
+	for _, e := range entries {
+		if e.Phase == HookPreSync {
+			pre = append(pre, e)
+		} else {
+			post = append(post, e)
+		}
+	}
+	return pre, post
+}
+
+func hookRows(entries []PlanHookEntry) []planRow {
+	rows := make([]planRow, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, planRow{
+			marker: planMarker(e.Action),
+			verb:   planVerb(e.Action, "hook"),
+			name:   hookDisplayName(e),
+			detail: hookPlanDetail(e),
+			action: e.Action,
+		})
+	}
+	return rows
+}
+
+func hookDisplayName(e PlanHookEntry) string {
+	if e.Name != "" {
+		return e.Name
+	}
+	return e.Command
+}
+
+func hookPlanDetail(e PlanHookEntry) string {
+	if e.Action == PlanSkip {
+		if e.Reason != "" {
+			return "(" + e.Reason + ")"
+		}
+		return "(skipped)"
+	}
+	if len(e.Args) == 0 {
+		return ""
+	}
+	return "[" + strings.Join(e.Args, " ") + "]"
+}
+
 // actionRank orders plan actions within a section: errors first (most
-// urgent), then creates/updates, then no-ops (passive / already done).
-// Stable sorts preserve input order within each rank.
+// urgent), then creates/updates/runs, then no-ops, then skips. Stable sorts
+// preserve input order within each rank — hooks keep declared order this way.
 func actionRank(a PlanAction) int {
 	switch a {
 	case PlanError:
 		return 0
-	case PlanClone, PlanCreate, PlanUpdate:
+	case PlanClone, PlanCreate, PlanUpdate, PlanRun:
 		return 1
 	case PlanNoOp:
 		return 2
-	default:
+	case PlanSkip:
 		return 3
+	default:
+		return 4
 	}
 }
 
@@ -253,6 +315,10 @@ func planMarker(a PlanAction) string {
 		return "~"
 	case PlanError:
 		return "✗"
+	case PlanRun:
+		return ">"
+	case PlanSkip:
+		return "-"
 	default:
 		return "·"
 	}
@@ -290,6 +356,15 @@ func planVerb(a PlanAction, kind string) string {
 			return "upsert"
 		case PlanUpdate:
 			return "update"
+		case PlanError:
+			return "error"
+		}
+	case "hook":
+		switch a {
+		case PlanRun:
+			return "run"
+		case PlanSkip:
+			return "skip"
 		case PlanError:
 			return "error"
 		}
