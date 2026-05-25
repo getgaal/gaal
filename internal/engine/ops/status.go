@@ -115,6 +115,9 @@ func reconcileSkills(config []render.SkillEntry, resources []discover.Resource, 
 		if !e.Global && !filepath.IsAbs(dir) {
 			dir = filepath.Join(workDir, dir)
 		}
+		if e.TargetSubdir != "" {
+			dir = filepath.Join(dir, e.TargetSubdir)
+		}
 		managedDirs[filepath.Clean(dir)] = struct{}{}
 	}
 	slog.Debug("reconcileSkills managed dirs", "count", len(managedDirs))
@@ -251,12 +254,13 @@ func collectSkills(stats []skill.Status) []render.SkillEntry {
 	entries := make([]render.SkillEntry, 0, len(stats))
 	for _, st := range stats {
 		e := render.SkillEntry{
-			Source:    st.Source,
-			Agent:     st.AgentName,
-			Global:    st.Global,
-			Installed: nonNil(st.Installed),
-			Missing:   nonNil(st.Missing),
-			Modified:  nonNil(st.Modified),
+			Source:       st.Source,
+			Agent:        st.AgentName,
+			Global:       st.Global,
+			TargetSubdir: st.TargetSubdir,
+			Installed:    nonNil(st.Installed),
+			Missing:      nonNil(st.Missing),
+			Modified:     nonNil(st.Modified),
 		}
 		switch {
 		case st.Err != nil:

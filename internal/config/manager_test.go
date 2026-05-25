@@ -129,6 +129,47 @@ skills:
 	}
 }
 
+func TestLoad_SkillTargetSubdir(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    target_subdir: personal-writing
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Skills[0].TargetSubdir; got != "personal-writing" {
+		t.Errorf("TargetSubdir = %q, want personal-writing", got)
+	}
+}
+
+func TestLoad_SkillTargetSubdirRejectsUnsafePaths(t *testing.T) {
+	cases := []struct {
+		name string
+		path string
+	}{
+		{"absolute", "/tmp/skills"},
+		{"parent", "../skills"},
+		{"nested parent", "personal/../skills"},
+		{"windows parent", `personal\..\skills`},
+		{"windows absolute", `C:\Users\me\skills`},
+		{"dot", "."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := writeYAML(t, fmt.Sprintf(`
+skills:
+  - source: owner/repo
+    target_subdir: %q
+`, tc.path))
+			if _, err := Load(p); err == nil {
+				t.Fatal("expected unsafe target_subdir to be rejected")
+			}
+		})
+	}
+}
+
 func TestLoad_SkillAgents_NestedListIsFlattened(t *testing.T) {
 	// Regression for https://github.com/getgaal/gaal/issues/13
 	// A list-of-lists is a common hand-written mistake (mentally copying the
@@ -918,6 +959,28 @@ skills:
 	// First occurrence must be kept.
 	if len(cfg.Skills[0].Agents) == 0 || cfg.Skills[0].Agents[0] != "*" {
 		t.Errorf("expected first occurrence (agents=[*]) to be kept, got %v", cfg.Skills[0].Agents)
+	}
+}
+
+func TestLoad_SkillsWithDifferentTargetSubdirsAreDistinct(t *testing.T) {
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    target_subdir: personal-writing
+    select: [linkedin-writer]
+  - source: owner/repo
+    target_subdir: personal-workflow
+    select: [crm-update]
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Skills) != 2 {
+		t.Fatalf("expected 2 skill entries, got %d", len(cfg.Skills))
+	}
+	if cfg.Skills[0].TargetSubdir == cfg.Skills[1].TargetSubdir {
+		t.Errorf("expected distinct target subdirectories, got %+v", cfg.Skills)
 	}
 }
 

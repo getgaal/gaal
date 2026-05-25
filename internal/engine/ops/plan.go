@@ -114,8 +114,9 @@ func planSkills(entries []render.SkillEntry) []render.PlanSkillEntry {
 			continue
 		}
 		p := render.PlanSkillEntry{
-			Source: e.Source,
-			Agent:  e.Agent,
+			Source:       e.Source,
+			Agent:        e.Agent,
+			TargetSubdir: e.TargetSubdir,
 		}
 		switch e.Status {
 		case render.StatusError:
