@@ -148,6 +148,32 @@ Intra-file duplicates (same `Source` or `Name` within a single file) are
 silently dropped, keeping the first occurrence. Cross-level deduplication
 follows the upsert rules above.
 
+### Repositories: remote URL precedence
+
+When `repositories.<path>` points at an existing git working copy, gaal
+**honors the working copy's existing `origin` URL** during `gaal sync`. The
+`url:` declared in `gaal.yaml` is used only on the initial clone; subsequent
+fetches go to whatever `origin` currently points at. gaal never rewrites
+`origin` — the working copy is yours.
+
+If the two URLs disagree — for example, `gaal.yaml` says
+`https://github.com/owner/repo.git` but `origin` is
+`git@github.com:owner/repo.git` — `gaal sync` returns a
+`RemoteURLMismatchError` instead of attempting the fetch. The error names
+both URLs and the working copy path, so users hit a clear precedence message
+instead of a leaked SSH-agent or HTTPS-auth error. URL comparison is
+normalised: scheme, credentials, trailing `.git`, and trailing slashes are
+ignored, so syntactic-only variants do not trigger the error.
+
+To resolve a real mismatch, pick one source of truth:
+
+- Change the remote to match `gaal.yaml`: `git remote set-url origin <gaal.yaml URL>`.
+- Or update `url:` in `gaal.yaml` to match the working copy's remote.
+
+This rule applies to the `git` backend only; archive (`tar` / `zip`) backends
+have no remote URL, and `hg` / `svn` / `bzr` checkouts are not currently
+inspected.
+
 ---
 
 ## Scope Restriction Policy

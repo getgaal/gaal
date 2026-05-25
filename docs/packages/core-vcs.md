@@ -11,11 +11,24 @@
 
 | Symbol | Description |
 |--------|-------------|
-| `VCS` | Interface: `Clone`, `Update`, `IsCloned`, `CurrentVersion`, `HasChanges` |
+| `VCS` | Interface: `Clone(ctx, url, path, version)`, `Update(ctx, url, path, version)`, `IsCloned`, `CurrentVersion`, `HasChanges` |
 | `New(vcsType string) (VCS, error)` | Factory by type string |
 | `NewShallow(vcsType string) (VCS, error)` | Same, but git is `depth=1` (used for skill caches) |
 | `DetectType(source string) string` | Auto-detect from URL or local path |
 | `VcsGit`, `VcsMercurial`, `VcsSVN`, `VcsBazaar`, `VcsArchive` | Backend types |
+| `RemoteURLMismatchError` | Typed error returned by `VcsGit.Update` when the working copy's `origin` URL disagrees with the configured URL (#220) |
+
+### URL parameter on `Update`
+
+`Update` accepts the configured URL alongside `path` and `version`. Today
+only `VcsGit` consumes it: when non-empty, the backend reads `origin`'s
+URL and returns a `*RemoteURLMismatchError` if it does not match. The
+comparison strips scheme, credentials, trailing `.git`, and trailing
+slashes; the host is lowercased while the path segment preserves case so
+case-sensitive forges are handled correctly. Pass `""` to skip the
+check — the skill manager does this for both local-path skills and
+gaal-owned cache clones, because it owns the remote in the cache case
+and cannot know the original URL in the local-path case.
 
 ## Backends
 
@@ -99,6 +112,7 @@ options.
 |----|-------|--------|
 | #117 | scheme allowlist | `ValidateRepoURL` enforces https/ssh/git + loopback-only http/svn/bzr |
 | #116 | argv injection | `--` separator + operand validation across all subprocess backends |
+| #220 | remote URL precedence | `VcsGit.Update` returns `*RemoteURLMismatchError` when the working copy's `origin` disagrees with the configured URL — `Update` signature gains a leading `url` parameter (other backends ignore it) |
 | (open) #207 | partial-clone recovery | `VcsGit.IsCloned` validates HEAD; `Clone` stages + atomically swaps |
 | (open) #206 | archive update | `VcsArchive.Update` re-fetches and atomically replaces; interface gains `url` parameter |
 

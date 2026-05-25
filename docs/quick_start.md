@@ -100,6 +100,8 @@ mcps:
           env: CF_ACCESS_CLIENT_SECRET
 ```
 
+> **Repositories — remote URL precedence.** For an existing git working copy, `url:` is used only on the initial clone — subsequent fetches go to the working copy's `origin`. If the two disagree, `gaal sync` stops with an explicit `RemoteURLMismatchError`. See [config.md — Repositories: remote URL precedence](config.md#repositories-remote-url-precedence).
+
 ### Configuration reference
 
 For the complete field reference, merge rules, scope restriction policy, and

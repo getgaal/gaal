@@ -65,6 +65,17 @@ completion; errors are collected via the buffered channel and joined
 via `errors.Join`. The caller (`engine.RunOnce`) surfaces the joined
 error to the user along with the partial-success summary.
 
+### `RemoteURLMismatchError` (git only)
+
+When `repositories.<path>` points at an existing git working copy whose
+`origin` URL disagrees with `url:` in `gaal.yaml`, `VcsGit.Update`
+returns a typed `*vcs.RemoteURLMismatchError` **before** any fetch — so
+the user gets a precedence message instead of a leaked SSH-agent or
+HTTPS-auth error. Manager wraps with
+`fmt.Errorf("repo %q: %w", path, err)`; `errors.As` still matches the
+typed error through the wrap. See
+[Repositories: remote URL precedence](../config.md#repositories-remote-url-precedence).
+
 ## Related
 
 - [`packages/core-vcs.md`](core-vcs.md) — backends.
