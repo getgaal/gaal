@@ -76,6 +76,18 @@ HTTPS-auth error. Manager wraps with
 typed error through the wrap. See
 [Repositories: remote URL precedence](../config.md#repositories-remote-url-precedence).
 
+### `NonEmptyDestinationError` (all backends)
+
+Before delegating to any backend's `Clone`, `Manager.syncOne` calls
+`vcs.CheckEmptyDestination(path)`. If the destination directory already
+contains any entries (hidden files included), the manager returns a typed
+`*vcs.NonEmptyDestinationError` and skips the clone entirely. This is the
+mechanism behind the
+[non-empty destination refusal](../config.md#repositories-non-empty-destination-refusal)
+policy — it guarantees that no backend can wipe pre-existing untracked
+content on the initial `Clone` path. As with the URL-mismatch error, the
+manager wraps via `errors.Join`; `errors.As` still matches.
+
 ## Related
 
 - [`packages/core-vcs.md`](core-vcs.md) — backends.

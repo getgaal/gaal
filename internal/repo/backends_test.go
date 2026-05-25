@@ -121,6 +121,107 @@ func TestManager_Status_DirtyFalse_Archive(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Manager.Sync - refuses to clone into a non-empty destination (#217)
+// ---------------------------------------------------------------------------
+
+// makeLocalGitSource initialises a tiny on-disk git repo with one commit, so
+// tests can exercise the git backend without network access. Mirrors the
+// helper in the vcs package's own tests.
+func makeLocalGitSource(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	r, err := gogit.PlainInit(dir, false)
+	if err != nil {
+		t.Fatalf("PlainInit: %v", err)
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		t.Fatalf("Worktree: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("hi"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if _, err := w.Add("README.md"); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if _, err := w.Commit("initial", &gogit.CommitOptions{
+		Author: &object.Signature{Name: "t", Email: "t@t", When: time.Now()},
+	}); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	return dir
+}
+
+func TestManager_Sync_RefusesNonEmptyCloneDestination(t *testing.T) {
+	src := makeLocalGitSource(t)
+
+	// Simulate the #217 scenario: a directory the user has been populating
+	// (live runtime state under ~/.claude/, secrets, etc.) into which a
+	// `repositories:` entry is now pointed for the first time.
+	dest := t.TempDir()
+	keepPath := filepath.Join(dest, ".credentials.json")
+	if err := os.WriteFile(keepPath, []byte("secret"), 0o600); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+
+	repos := map[string]config.ConfigRepo{
+		dest: {Type: "git", URL: src},
+	}
+	m := NewManager(repos, "")
+	err := m.Sync(context.Background())
+	if err == nil {
+		t.Fatal("expected Sync to refuse non-empty destination")
+	}
+	var ne *vcs.NonEmptyDestinationError
+	if !errors.As(err, &ne) {
+		t.Fatalf("expected wrapped *vcs.NonEmptyDestinationError, got %T: %v", err, err)
+	}
+	if ne.Path != dest {
+		t.Errorf("Path = %q, want %q", ne.Path, dest)
+	}
+	// Pre-existing content must survive unchanged.
+	got, readErr := os.ReadFile(keepPath)
+	if readErr != nil {
+		t.Fatalf("seed file was removed: %v", readErr)
+	}
+	if string(got) != "secret" {
+		t.Errorf("seed file modified: got %q, want %q", got, "secret")
+	}
+}
+
+func TestManager_Sync_AllowsEmptyCloneDestination(t *testing.T) {
+	src := makeLocalGitSource(t)
+	dest := t.TempDir() // exists, empty
+
+	repos := map[string]config.ConfigRepo{
+		dest: {Type: "git", URL: src},
+	}
+	m := NewManager(repos, "")
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync into empty destination: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, ".git")); err != nil {
+		t.Errorf("expected .git in cloned destination: %v", err)
+	}
+}
+
+func TestManager_Sync_AllowsMissingCloneDestination(t *testing.T) {
+	src := makeLocalGitSource(t)
+	dest := filepath.Join(t.TempDir(), "child") // does not exist yet
+
+	repos := map[string]config.ConfigRepo{
+		dest: {Type: "git", URL: src},
+	}
+	m := NewManager(repos, "")
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync into missing destination: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, ".git")); err != nil {
+		t.Errorf("expected .git in cloned destination: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Manager.Sync - URL mismatch wraps *vcs.RemoteURLMismatchError (#220)
 // ---------------------------------------------------------------------------
 

@@ -73,6 +73,13 @@ func (m *Manager) syncOne(ctx context.Context, path string, cfg config.ConfigRep
 	}
 
 	if !backend.IsCloned(path) {
+		// Refuse to clone into a directory that already has content (#217).
+		// go-git's PlainClone would otherwise silently overwrite tracked files
+		// and expose untracked siblings to checkout reset, wiping live state
+		// the user did not intend to lose.
+		if err := vcs.CheckEmptyDestination(path); err != nil {
+			return err
+		}
 		slog.Debug("cloning repository", "path", path, "url", urlx.Redact(cfg.URL), "version", cfg.Version)
 		return backend.Clone(ctx, cfg.URL, path, cfg.Version)
 	}
