@@ -68,6 +68,12 @@ func ValidateRepoURL(rawurl string) error {
 	if isSCPStyleGitURL(rawurl) {
 		return nil
 	}
+	// "C:\path" and "C:/path" are local Windows paths, not URLs — but net/url
+	// parses them with scheme="c" and would fall through to the rejection
+	// branch below. Treat them like any other local path (empty-scheme case).
+	if isWindowsDrivePath(rawurl) {
+		return nil
+	}
 	u, err := url.Parse(rawurl)
 	if err != nil {
 		return fmt.Errorf("parsing url: %w", err)
@@ -104,6 +110,32 @@ func isLoopbackHost(hostport string) bool {
 		return ip.IsLoopback()
 	}
 	return false
+}
+
+// isWindowsDrivePath reports whether s starts with a Windows drive-letter
+// prefix (e.g. "C:\", "d:/", or bare "Z:"). Such strings are local
+// filesystem paths, but net/url parses the leading letter as a URL scheme
+// and the result drops into ValidateRepoURL's default-reject branch with a
+// misleading "scheme c is not allowed" error.
+//
+// Detection is host-OS-agnostic on purpose: a Windows path string is the
+// same shape whether the running process is on Windows or not, and gaal
+// configs are sometimes authored on one OS and consumed on another.
+func isWindowsDrivePath(s string) bool {
+	if len(s) < 2 {
+		return false
+	}
+	c := s[0]
+	if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+		return false
+	}
+	if s[1] != ':' {
+		return false
+	}
+	if len(s) == 2 {
+		return true
+	}
+	return s[2] == '\\' || s[2] == '/'
 }
 
 // isSCPStyleGitURL detects the user@host:path syntax that git accepts in
