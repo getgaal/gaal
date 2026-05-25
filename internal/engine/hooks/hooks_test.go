@@ -3,6 +3,7 @@ package hooks
 import (
 	"context"
 	"errors"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -207,6 +208,9 @@ func TestRunPostSync_PassesChangedEnv(t *testing.T) {
 }
 
 func TestResolve_HomeAndEnvExpansion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("expectations hard-code POSIX absolute paths; needs filepath.Join/ToSlash port (tracked in #231)")
+	}
 	t.Setenv("FOO_VALUE", "bar")
 	cfg := &config.ConfigHooks{
 		PreSync: []config.ConfigHook{
