@@ -158,11 +158,13 @@ gaal sync
 
 ---
 
-## Why I built this
+## Why we built this
 
-Last December I set up a new laptop and it took me half a day. Not because the OS was slow. Because I was re-cloning repos, re-installing the same fifteen skills into Claude Code, then doing it again into Cursor, then registering the same four MCP servers into three different JSON files because each agent reads config from a different place.
+Three of us built gaal: @Theosakamg, @gmoigneu, and @gregqualls. We all do a lot of agentic coding across several machines and several agents (Claude Code, Cursor, Codex, Copilot, plus whatever launched this week), and we all kept hitting the same wall.
 
-I had four config locations across two machines. Eight places where one source of truth should have lived. That's the problem gaal solves.
+Install an MCP server in one agent, you install it again in the next. Update a skill, you update it everywhere or it rots. Try a new agent and the whole setup has to be rebuilt from scratch. Each agent reads config from a different file in a different format, so even copying between them is manual. The setups drift the moment you stop babysitting them.
+
+This is not a personal frustration. Search "MCP configuration drift" or "syncing skills across agents" and you'll find the same complaint from a long line of developers running more than one tool. We were tired of solving it with shell scripts and chezmoi templates and wanted one source of truth that knew about every agent on every machine.
 
 ---
 
