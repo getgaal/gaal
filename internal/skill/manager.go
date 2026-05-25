@@ -71,13 +71,14 @@ type SkillMeta struct {
 
 // Status describes the installation state of a skill configuration entry.
 type Status struct {
-	Source    string
-	AgentName string
-	Global    bool
-	Installed []string // names of installed skills
-	Missing   []string // names of skills not yet installed
-	Modified  []string // names of installed skills whose local files differ from source
-	Err       error
+	Source       string
+	AgentName    string
+	Global       bool
+	TargetSubdir string
+	Installed    []string // names of installed skills
+	Missing      []string // names of skills not yet installed
+	Modified     []string // names of installed skills whose local files differ from source
+	Err          error
 }
 
 // Manager handles skill installation and updates.
@@ -206,15 +207,14 @@ func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
 	//    does not skip every later install.
 	var errs []error
 	for _, agent := range agents {
-		skillsDir, ok := SkillDir(agent, sc.Global, m.home)
+		skillsDir, ok, err := m.targetSkillsDir(agent, sc)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("resolving skills dir for agent %q: %w", agent, err))
+			continue
+		}
 		if !ok {
 			slog.Warn("unknown agent, skipping", "agent", agent)
 			continue
-		}
-
-		// Project-relative path needs workDir prefix.
-		if !sc.Global && !filepath.IsAbs(skillsDir) {
-			skillsDir = filepath.Join(m.workDir, skillsDir)
 		}
 
 		// Create the skills directory if it does not exist yet.
@@ -235,6 +235,34 @@ func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func (m *Manager) targetSkillsDir(agentName string, sc config.ConfigSkill) (string, bool, error) {
+	slog.Debug("resolving target skills dir", "agent", agentName, "global", sc.Global, "targetSubdir", sc.TargetSubdir)
+	skillsDir, ok := SkillDir(agentName, sc.Global, m.home)
+	if !ok {
+		return "", false, nil
+	}
+	if !sc.Global && !filepath.IsAbs(skillsDir) {
+		skillsDir = filepath.Join(m.workDir, skillsDir)
+	}
+	if sc.TargetSubdir != "" {
+		slashed := strings.ReplaceAll(sc.TargetSubdir, `\`, "/")
+		if strings.HasPrefix(slashed, "/") || strings.Contains(slashed, ":") {
+			return "", true, fmt.Errorf("unsafe target_subdir %q", sc.TargetSubdir)
+		}
+		for _, seg := range strings.Split(slashed, "/") {
+			if seg == "" || seg == "." || seg == ".." {
+				return "", true, fmt.Errorf("unsafe target_subdir %q", sc.TargetSubdir)
+			}
+		}
+		clean := filepath.Clean(sc.TargetSubdir)
+		if filepath.IsAbs(sc.TargetSubdir) || clean == "." || clean == ".." || strings.HasPrefix(filepath.ToSlash(clean), "../") {
+			return "", true, fmt.Errorf("unsafe target_subdir %q", sc.TargetSubdir)
+		}
+		skillsDir = filepath.Join(skillsDir, sc.TargetSubdir)
+	}
+	return skillsDir, true, nil
 }
 
 // resolveSource ensures the source is available locally and returns its path.
@@ -345,16 +373,18 @@ func (m *Manager) Status(ctx context.Context) []Status {
 	for _, sc := range m.skills {
 		agents := m.resolveAgents(sc)
 		for _, agent := range agents {
-			st := Status{Source: sc.Source, AgentName: agent, Global: sc.Global}
+			st := Status{Source: sc.Source, AgentName: agent, Global: sc.Global, TargetSubdir: sc.TargetSubdir}
 
-			skillsDir, ok := SkillDir(agent, sc.Global, m.home)
+			skillsDir, ok, err := m.targetSkillsDir(agent, sc)
+			if err != nil {
+				st.Err = err
+				statuses = append(statuses, st)
+				continue
+			}
 			if !ok {
 				st.Err = fmt.Errorf("unknown agent %q", agent)
 				statuses = append(statuses, st)
 				continue
-			}
-			if !sc.Global && !filepath.IsAbs(skillsDir) {
-				skillsDir = filepath.Join(m.workDir, skillsDir)
 			}
 
 			// Resolve local source (may not be downloaded yet).
@@ -745,12 +775,9 @@ func (m *Manager) Prune(ctx context.Context) error {
 		selected := filterSkills(available, sc.Select)
 
 		for _, agent := range m.syncAgents(sc) {
-			skillsDir, ok := SkillDir(agent, sc.Global, m.home)
-			if !ok {
+			skillsDir, ok, err := m.targetSkillsDir(agent, sc)
+			if err != nil || !ok {
 				continue
-			}
-			if !sc.Global && !filepath.IsAbs(skillsDir) {
-				skillsDir = filepath.Join(m.workDir, skillsDir)
 			}
 			if expected[skillsDir] == nil {
 				expected[skillsDir] = make(map[string]struct{})

@@ -107,6 +107,22 @@ Sandbox-aware: in `--sandbox <dir>` mode, the entire cache lives under
 | `<workDir>/<agent.ProjectSkillsDir>/` | `<home>/<agent.GlobalSkillsDir>/` |
 | Versionable alongside the project | Shared across all projects |
 
+When a skill entry sets `target_subdir`, gaal installs beneath that
+subdirectory instead:
+
+```yaml
+skills:
+  - source: ~/personal-skills
+    agents: ["aya"]
+    global: true
+    target_subdir: personal-writing
+    select: [linkedin-writer, blog-writer]
+```
+
+The selected skills land in
+`<agent skills dir>/personal-writing/<skill-name>/`. `target_subdir`
+must be a relative path without `..` segments.
+
 The agent path is resolved via `agent.SkillDir(name, global, home)` —
 see [`packages/core-agent.md`](core-agent.md). Some agents share a
 `generic` skills tree (`.agents/skills`) — the redirect happens

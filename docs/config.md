@@ -140,13 +140,13 @@ Per-field merge rules:
 | `schema` | Source wins if non-nil; otherwise destination is preserved |
 | `telemetry` | Source wins if non-nil **and** `scope ≤ maxscope=user` (workspace is silently ignored — see below) |
 | `repositories` | Map merge — source entry wins on key conflict |
-| `skills` | Upsert by `Source` — source entry replaces the existing entry with the same `Source` |
+| `skills` | Upsert by `Source` + `target_subdir` — source entry replaces the existing entry with the same install identity |
 | `mcps` | Upsert by `Name` — source entry replaces the existing entry with the same `Name` |
 | `hooks` | Append — higher-priority hooks run *after* lower-priority ones at the same phase, so workspace-level hooks fire last |
 
-Intra-file duplicates (same `Source` or `Name` within a single file) are
-silently dropped, keeping the first occurrence. Cross-level deduplication
-follows the upsert rules above.
+Intra-file duplicates (same skill install identity, MCP `Name`, or tool
+`Name` within a single file) are silently dropped, keeping the first
+occurrence. Cross-level deduplication follows the upsert rules above.
 
 ### Repositories: remote URL precedence
 

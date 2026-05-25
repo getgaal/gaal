@@ -116,6 +116,7 @@ Quick reference:
 | `skills` | `source` | GitHub shorthand, full URL, SSH URL, or local path |
 | `skills` | `agents` | Agent names or `["*"]` to auto-detect |
 | `skills` | `global` | `true` = user-wide, `false` = project-local (default) |
+| `skills` | `target_subdir` | Optional subdirectory under the resolved agent skills dir |
 | `skills` | `select` | Specific skill names to install (empty = all) |
 | `mcps` | `agents` | Agent names or `["*"]` to target all agents with a non-empty MCP config |
 | `mcps` | `global` | `true` = user-wide agent config, `false` = project-scoped (default) |

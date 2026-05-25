@@ -28,14 +28,15 @@ type RepoEntry struct {
 
 // SkillEntry holds the status of a single skill configuration.
 type SkillEntry struct {
-	Source    string     `json:"source"`
-	Agent     string     `json:"agent"`
-	Global    bool       `json:"global"`
-	Status    StatusCode `json:"status"`
-	Installed []string   `json:"installed"`
-	Missing   []string   `json:"missing"`
-	Modified  []string   `json:"modified,omitempty"`
-	Error     string     `json:"error,omitempty"`
+	Source       string     `json:"source"`
+	Agent        string     `json:"agent"`
+	Global       bool       `json:"global"`
+	TargetSubdir string     `json:"target_subdir,omitempty"`
+	Status       StatusCode `json:"status"`
+	Installed    []string   `json:"installed"`
+	Missing      []string   `json:"missing"`
+	Modified     []string   `json:"modified,omitempty"`
+	Error        string     `json:"error,omitempty"`
 }
 
 // AgentEntry holds the registry information for a supported agent.
@@ -140,13 +141,14 @@ type PlanRepoEntry struct {
 // covers — they are disjoint lists that let the plan renderer aggregate
 // rows by skill name across (source, agent) pairs.
 type PlanSkillEntry struct {
-	Source  string     `json:"source"`
-	Agent   string     `json:"agent"`
-	Action  PlanAction `json:"action"`
-	Install []string   `json:"install,omitempty"`
-	Update  []string   `json:"update,omitempty"`
-	NoOp    []string   `json:"no_op,omitempty"`
-	Error   string     `json:"error,omitempty"`
+	Source       string     `json:"source"`
+	Agent        string     `json:"agent"`
+	TargetSubdir string     `json:"target_subdir,omitempty"`
+	Action       PlanAction `json:"action"`
+	Install      []string   `json:"install,omitempty"`
+	Update       []string   `json:"update,omitempty"`
+	NoOp         []string   `json:"no_op,omitempty"`
+	Error        string     `json:"error,omitempty"`
 }
 
 // PlanMCPEntry describes the planned action for a single MCP entry.

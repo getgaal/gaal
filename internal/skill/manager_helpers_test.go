@@ -106,6 +106,88 @@ func TestManager_Sync_LocalSource_WithSkills(t *testing.T) {
 	}
 }
 
+func TestManager_Sync_LocalSource_WithTargetSubdir(t *testing.T) {
+	sourceDir := t.TempDir()
+	skillDir := filepath.Join(sourceDir, "linkedin-writer")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: linkedin-writer\n---\n"), 0o644)
+
+	home := t.TempDir()
+	os.MkdirAll(filepath.Join(home, ".claude"), 0o755)
+	skills := []config.ConfigSkill{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: true, TargetSubdir: "personal-writing"},
+	}
+	m := NewManager(skills, t.TempDir(), home, t.TempDir(), "", false)
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	destDir := filepath.Join(home, ".claude", "skills", "personal-writing", "linkedin-writer")
+	if _, err := os.Stat(destDir); err != nil {
+		t.Errorf("expected skill installed at %q: %v", destDir, err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "linkedin-writer")); !os.IsNotExist(err) {
+		t.Errorf("expected root skills dir not to receive skill, got err=%v", err)
+	}
+}
+
+func TestManager_Status_TargetSubdir(t *testing.T) {
+	sourceDir := t.TempDir()
+	skillDir := filepath.Join(sourceDir, "crm-update")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: crm-update\n---\n"), 0o644)
+
+	home := t.TempDir()
+	installed := filepath.Join(home, ".claude", "skills", "personal-workflow", "crm-update")
+	if err := installSkill(skillDir, installed); err != nil {
+		t.Fatalf("installSkill: %v", err)
+	}
+	skills := []config.ConfigSkill{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: true, TargetSubdir: "personal-workflow"},
+	}
+	m := NewManager(skills, t.TempDir(), home, t.TempDir(), "", false)
+	statuses := m.Status(context.Background())
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].TargetSubdir != "personal-workflow" {
+		t.Errorf("TargetSubdir = %q, want personal-workflow", statuses[0].TargetSubdir)
+	}
+	if len(statuses[0].Installed) != 1 || statuses[0].Installed[0] != "crm-update" {
+		t.Errorf("Installed = %v, want [crm-update]", statuses[0].Installed)
+	}
+}
+
+func TestManager_Prune_TargetSubdir(t *testing.T) {
+	sourceDir := t.TempDir()
+	skillDir := filepath.Join(sourceDir, "kept")
+	os.MkdirAll(skillDir, 0o755)
+	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: kept\n---\n"), 0o644)
+
+	home := t.TempDir()
+	targetRoot := filepath.Join(home, ".claude", "skills", "personal-workflow")
+	if err := installSkill(skillDir, filepath.Join(targetRoot, "kept")); err != nil {
+		t.Fatalf("install kept: %v", err)
+	}
+	stale := filepath.Join(targetRoot, "stale")
+	os.MkdirAll(stale, 0o755)
+	os.WriteFile(filepath.Join(stale, "SKILL.md"), []byte("---\nname: stale\n---\n"), 0o644)
+
+	skills := []config.ConfigSkill{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: true, TargetSubdir: "personal-workflow"},
+	}
+	m := NewManager(skills, t.TempDir(), home, t.TempDir(), "", false)
+	if err := m.Prune(context.Background()); err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(targetRoot, "kept")); err != nil {
+		t.Errorf("expected kept skill to remain: %v", err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("expected stale skill to be pruned, got err=%v", err)
+	}
+}
+
 func TestManager_Sync_NoSkillsFound(t *testing.T) {
 	sourceDir := t.TempDir()
 	skills := []config.ConfigSkill{

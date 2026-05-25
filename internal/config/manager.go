@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/invopop/jsonschema"
@@ -91,11 +92,12 @@ type ConfigRepo struct {
 
 // ConfigSkill defines a skill source to install.
 type ConfigSkill struct {
-	Source string       `yaml:"source"           json:"source"           jsonschema:"description=Skill source: GitHub shorthand (owner/repo), HTTPS URL, or local path" validate:"required"`
-	Agents []string     `yaml:"agents,omitempty" json:"agents,omitempty" jsonschema:"description=Target agent identifiers; use [\"*\"] to target all detected agents"`
-	Global bool         `yaml:"global,omitempty" json:"global,omitempty" jsonschema:"description=When true the skill is installed globally under ~/.<agent>/skills/ instead of the project directory"`
-	Select []string     `yaml:"select,omitempty" json:"select,omitempty" jsonschema:"description=Specific skill names to include; empty list installs all skills from the source"`
-	Tools  []ConfigTool `yaml:"tools,omitempty"  json:"tools,omitempty"  jsonschema:"description=CLI tools required by this skill; gaal doctor reports any missing ones"                             validate:"dive"`
+	Source       string       `yaml:"source"                 json:"source"                 jsonschema:"description=Skill source: GitHub shorthand (owner/repo), HTTPS URL, or local path" validate:"required"`
+	Agents       []string     `yaml:"agents,omitempty"       json:"agents,omitempty"       jsonschema:"description=Target agent identifiers; use [\"*\"] to target all detected agents"`
+	Global       bool         `yaml:"global,omitempty"       json:"global,omitempty"       jsonschema:"description=When true the skill is installed globally under ~/.<agent>/skills/ instead of the project directory"`
+	TargetSubdir string       `yaml:"target_subdir,omitempty" json:"target_subdir,omitempty" jsonschema:"description=Optional subdirectory under the resolved agent skills directory where selected skills are installed"`
+	Select       []string     `yaml:"select,omitempty"       json:"select,omitempty"       jsonschema:"description=Specific skill names to include; empty list installs all skills from the source"`
+	Tools        []ConfigTool `yaml:"tools,omitempty"        json:"tools,omitempty"        jsonschema:"description=CLI tools required by this skill; gaal doctor reports any missing ones"                             validate:"dive"`
 }
 
 // ConfigTool declares a CLI executable that is expected to be present on PATH.
@@ -374,8 +376,8 @@ func (Config) JSONSchemaExtend(s *jsonschema.Schema) {
 //   - telemetry: src wins when explicitly set (non-nil) and scope ≤ maxscope
 //     declared on the field (currently ScopeUser — workspace cannot override).
 //   - repositories: map merge — src wins on key conflict.
-//   - skills: upsert by Source — src entry replaces any existing entry with
-//     the same Source.
+//   - skills: upsert by Source + TargetSubdir — src entry replaces any
+//     existing entry with the same install identity.
 //   - mcps: upsert by Name — src entry replaces any existing entry with the
 //     same Name.
 func (c *Config) mergeFrom(src *Config, scope ConfigScope) {
@@ -399,7 +401,7 @@ func (c *Config) mergeFrom(src *Config, scope ConfigScope) {
 	}
 
 	for _, sk := range src.Skills {
-		if i := indexOf(c.Skills, func(s ConfigSkill) bool { return s.Source == sk.Source }); i >= 0 {
+		if i := indexOf(c.Skills, func(s ConfigSkill) bool { return skillIdentity(s) == skillIdentity(sk) }); i >= 0 {
 			c.Skills[i] = sk // higher-priority src wins
 		} else {
 			c.Skills = append(c.Skills, sk)
@@ -436,12 +438,17 @@ func (c *Config) mergeFrom(src *Config, scope ConfigScope) {
 }
 
 // deduplicate removes duplicate entries within this Config, keeping the first
-// occurrence. Skills are keyed by Source; MCPs are keyed by Name; Tools are
-// keyed by Name.
+// occurrence. Skills are keyed by Source + TargetSubdir; MCPs are keyed by
+// Name; Tools are keyed by Name.
 func (c *Config) deduplicate() {
-	c.Skills = deduplicate(c.Skills, func(s ConfigSkill) string { return s.Source })
+	c.Skills = deduplicate(c.Skills, skillIdentity)
 	c.MCPs = deduplicate(c.MCPs, func(m ConfigMcp) string { return m.Name })
 	c.Tools = deduplicate(c.Tools, func(t ConfigTool) string { return t.Name })
+}
+
+func skillIdentity(s ConfigSkill) string {
+	slog.Debug("building skill identity", "source", s.Source, "targetSubdir", s.TargetSubdir)
+	return s.Source + "\x00" + filepath.ToSlash(filepath.Clean(s.TargetSubdir))
 }
 
 func (c *Config) validate() error {
@@ -449,10 +456,44 @@ func (c *Config) validate() error {
 	if err := schema.Validate(c); err != nil {
 		return err
 	}
+	if err := c.validateSkillTargetSubdirs(); err != nil {
+		return err
+	}
 	if err := c.validateMCPItems(); err != nil {
 		return err
 	}
 	return c.validateHooks()
+}
+
+func (c *Config) validateSkillTargetSubdirs() error {
+	slog.Debug("validating skill target subdirectories", "skills", len(c.Skills))
+	for _, sk := range c.Skills {
+		if sk.TargetSubdir == "" {
+			continue
+		}
+		if !safeRelativeSubdir(sk.TargetSubdir) {
+			return fmt.Errorf("skill %q: target_subdir must be a relative subdirectory without '..', got %q", sk.Source, sk.TargetSubdir)
+		}
+	}
+	return nil
+}
+
+func safeRelativeSubdir(path string) bool {
+	slog.Debug("checking relative subdirectory", "path", path)
+	slashed := strings.ReplaceAll(path, `\`, "/")
+	if path == "" || filepath.IsAbs(path) || strings.HasPrefix(slashed, "/") || strings.Contains(slashed, ":") {
+		return false
+	}
+	for _, seg := range strings.Split(slashed, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+	}
+	clean := filepath.Clean(path)
+	if clean == "." || strings.HasPrefix(filepath.ToSlash(clean), "../") || clean == ".." {
+		return false
+	}
+	return true
 }
 
 // validHookOS enumerates the GOOS values gaal will match against runtime.GOOS
@@ -551,15 +592,16 @@ func (c *Config) validateMCPItems() error {
 // []string so downstream code does not need to care.
 func (s *ConfigSkill) UnmarshalYAML(node *yaml.Node) error {
 	slog.Debug("decoding config skill", "line", node.Line, "kind", node.Kind)
-	if err := ioyaml.ValidateMappingKeys(node, "source", "agents", "global", "select", "tools"); err != nil {
+	if err := ioyaml.ValidateMappingKeys(node, "source", "agents", "global", "target_subdir", "select", "tools"); err != nil {
 		return err
 	}
 	type rawSkill struct {
-		Source string       `yaml:"source"`
-		Agents yaml.Node    `yaml:"agents,omitempty"`
-		Global bool         `yaml:"global,omitempty"`
-		Select []string     `yaml:"select,omitempty"`
-		Tools  []ConfigTool `yaml:"tools,omitempty"`
+		Source       string       `yaml:"source"`
+		Agents       yaml.Node    `yaml:"agents,omitempty"`
+		Global       bool         `yaml:"global,omitempty"`
+		TargetSubdir string       `yaml:"target_subdir,omitempty"`
+		Select       []string     `yaml:"select,omitempty"`
+		Tools        []ConfigTool `yaml:"tools,omitempty"`
 	}
 	var raw rawSkill
 	if err := node.Decode(&raw); err != nil {
@@ -568,6 +610,7 @@ func (s *ConfigSkill) UnmarshalYAML(node *yaml.Node) error {
 
 	s.Source = raw.Source
 	s.Global = raw.Global
+	s.TargetSubdir = raw.TargetSubdir
 	s.Select = raw.Select
 	s.Tools = raw.Tools
 
