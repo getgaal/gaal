@@ -93,12 +93,12 @@ func TestIsWindowsDrivePath(t *testing.T) {
 		{"", false},
 		{"C", false},
 		{"C:", true},
-		{"CC:\\x", false},      // multi-char "scheme"
-		{":\\path", false},     // missing letter
-		{"1:\\path", false},    // digit, not a letter
-		{"https://x", false},   // real URL
-		{"/srv/repo", false},   // unix path
-		{"./repo", false},      // relative
+		{"CC:\\x", false},    // multi-char "scheme"
+		{":\\path", false},   // missing letter
+		{"1:\\path", false},  // digit, not a letter
+		{"https://x", false}, // real URL
+		{"/srv/repo", false}, // unix path
+		{"./repo", false},    // relative
 		{"git@host:repo", false},
 	}
 	for _, tt := range tests {
