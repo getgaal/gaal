@@ -7,9 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"gopkg.in/yaml.v3"
-
 	"gaal/internal/core/agent"
+	ioyaml "gaal/internal/core/io/yaml"
 	"gaal/internal/core/vcs"
 )
 
@@ -180,7 +179,7 @@ func parseSkillFrontmatter(path string) (name, desc string, err error) {
 		Name        string `yaml:"name"`
 		Description string `yaml:"description"`
 	}
-	if err := yaml.Unmarshal(fm, &meta); err != nil {
+	if err := ioyaml.Unmarshal(fm, &meta); err != nil {
 		// Bad frontmatter degrades to empty — caller falls back to dir name.
 		return "", "", nil
 	}

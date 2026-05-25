@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"gopkg.in/yaml.v3"
+	ioyaml "gaal/internal/core/io/yaml"
 )
 
 // Meta holds the discovered metadata of a single skill (a directory that
@@ -41,7 +41,7 @@ func ParseSkillMeta(filePath string) (name, desc string, err error) {
 		Description string `yaml:"description"`
 	}
 	if len(fm) > 0 {
-		if err := yaml.Unmarshal(fm, &meta); err != nil {
+		if err := ioyaml.Unmarshal(fm, &meta); err != nil {
 			// Bad frontmatter is degraded to "no metadata" — the caller
 			// gets the dir-name fallback. Logged so the user knows.
 			slog.Warn("skill: invalid YAML frontmatter", "path", filePath, "err", err)
