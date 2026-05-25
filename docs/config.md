@@ -176,6 +176,26 @@ This rule applies to the `git` backend only; archive (`tar` / `zip`) backends
 have no remote URL, and `hg` / `svn` / `bzr` checkouts are not currently
 inspected.
 
+### Repositories: non-empty destination refusal
+
+When `repositories.<path>` resolves to a directory that already exists and
+contains any entries (tracked or untracked, hidden files included) but is not
+already a working copy, `gaal sync` refuses to clone and returns a
+`NonEmptyDestinationError` naming the destination and the entries it found.
+The pre-existing content is not touched.
+
+This protects the canonical "manage my agent config directory" use case
+(`repositories: { ~/.claude: ... }`) from a sync that would otherwise let
+`git clone` overwrite tracked files and expose untracked siblings to checkout
+reset — wiping live runtime state, per-machine secrets, and any auxiliary
+content the agent manages itself.
+
+To opt in to a clone, point the entry at an empty or non-existent path, or
+remove the existing content first. The check is uniform across backends
+(`git`, `hg`, `svn`, `bzr`, `tar`, `zip`): all clones go through the same
+refusal. Once the directory contains the backend's marker (`.git`, `.hg`,
+etc.), subsequent syncs take the `Update` path and are unaffected.
+
 ---
 
 ## Scope Restriction Policy
