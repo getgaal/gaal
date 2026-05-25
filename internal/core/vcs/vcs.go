@@ -12,7 +12,13 @@ type VCS interface {
 	Clone(ctx context.Context, url, path, version string) error
 
 	// Update fetches and checks out version in an already-cloned repo at path.
-	Update(ctx context.Context, path, version string) error
+	// If version is empty the default branch is used.
+	//
+	// url is the URL declared in gaal.yaml. Backends that track a remote URL
+	// (currently only git) compare it against the working copy's existing
+	// remote and return a *RemoteURLMismatchError on disagreement. Pass "" to
+	// skip the check.
+	Update(ctx context.Context, url, path, version string) error
 
 	// IsCloned reports whether path contains a valid local working copy.
 	IsCloned(path string) bool

@@ -43,7 +43,7 @@ func TestVcsMercurial_Clone_NoBinary(t *testing.T) {
 func TestVcsMercurial_Update_NoBinary(t *testing.T) {
 	t.Setenv("PATH", "")
 	m := &VcsMercurial{}
-	err := m.Update(context.Background(), t.TempDir(), "")
+	err := m.Update(context.Background(), "", t.TempDir(), "")
 	if err == nil {
 		t.Fatal("expected error when hg binary missing")
 	}
@@ -86,7 +86,7 @@ func TestVcsMercurial_Update_FakeBin(t *testing.T) {
 	binDir := makeFakeBin(t, "hg", "exit 0")
 	t.Setenv("PATH", binDir)
 	m := &VcsMercurial{}
-	if err := m.Update(context.Background(), t.TempDir(), ""); err != nil {
+	if err := m.Update(context.Background(), "", t.TempDir(), ""); err != nil {
 		t.Fatalf("Update with fake hg: %v", err)
 	}
 }
@@ -95,7 +95,7 @@ func TestVcsMercurial_Update_FakeBin_WithVersion(t *testing.T) {
 	binDir := makeFakeBin(t, "hg", "exit 0")
 	t.Setenv("PATH", binDir)
 	m := &VcsMercurial{}
-	if err := m.Update(context.Background(), t.TempDir(), "tip"); err != nil {
+	if err := m.Update(context.Background(), "", t.TempDir(), "tip"); err != nil {
 		t.Fatalf("Update with fake hg + version: %v", err)
 	}
 }
@@ -104,7 +104,7 @@ func TestVcsMercurial_Update_PullFails(t *testing.T) {
 	binDir := makeFakeBin(t, "hg", "exit 1")
 	t.Setenv("PATH", binDir)
 	m := &VcsMercurial{}
-	err := m.Update(context.Background(), t.TempDir(), "")
+	err := m.Update(context.Background(), "", t.TempDir(), "")
 	if err == nil {
 		t.Fatal("expected error when hg pull fails")
 	}

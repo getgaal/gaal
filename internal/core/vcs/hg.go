@@ -43,7 +43,7 @@ func (m *VcsMercurial) Clone(ctx context.Context, url, path, version string) err
 	return runner.Run(ctx, "cloning "+shortPath(path), "", "hg", args...)
 }
 
-func (m *VcsMercurial) Update(ctx context.Context, path, version string) error {
+func (m *VcsMercurial) Update(ctx context.Context, _, path, version string) error {
 	if err := requireBinary("hg"); err != nil {
 		return err
 	}

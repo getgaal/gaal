@@ -74,7 +74,7 @@ func (a *VcsArchive) Clone(ctx context.Context, url, path, version string) error
 }
 
 // Update re-downloads and extracts the archive (no incremental update possible).
-func (a *VcsArchive) Update(ctx context.Context, path, version string) error {
+func (a *VcsArchive) Update(_ context.Context, _, _, _ string) error {
 	// Archives have no "version" concept — just re-extract.
 	// We need the URL: it is not stored in the struct, so Update is a no-op
 	// for archives. The manager should call Clone instead.

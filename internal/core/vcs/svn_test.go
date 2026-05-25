@@ -43,7 +43,7 @@ func TestVcsSVN_Clone_NoBinary(t *testing.T) {
 func TestVcsSVN_Update_NoBinary(t *testing.T) {
 	t.Setenv("PATH", "")
 	s := &VcsSVN{}
-	err := s.Update(context.Background(), t.TempDir(), "")
+	err := s.Update(context.Background(), "", t.TempDir(), "")
 	if err == nil {
 		t.Fatal("expected error when svn binary missing")
 	}
@@ -86,7 +86,7 @@ func TestVcsSVN_Update_FakeBin(t *testing.T) {
 	binDir := makeFakeBin(t, "svn", "exit 0")
 	t.Setenv("PATH", binDir)
 	s := &VcsSVN{}
-	if err := s.Update(context.Background(), t.TempDir(), ""); err != nil {
+	if err := s.Update(context.Background(), "", t.TempDir(), ""); err != nil {
 		t.Fatalf("Update with fake svn: %v", err)
 	}
 }
@@ -95,7 +95,7 @@ func TestVcsSVN_Update_FakeBin_WithVersion(t *testing.T) {
 	binDir := makeFakeBin(t, "svn", "exit 0")
 	t.Setenv("PATH", binDir)
 	s := &VcsSVN{}
-	if err := s.Update(context.Background(), t.TempDir(), "42"); err != nil {
+	if err := s.Update(context.Background(), "", t.TempDir(), "42"); err != nil {
 		t.Fatalf("Update with fake svn + version: %v", err)
 	}
 }

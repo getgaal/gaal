@@ -85,7 +85,7 @@ func TestVcsArchive_CurrentVersion(t *testing.T) {
 
 func TestVcsArchive_Update_NoOp(t *testing.T) {
 	a := &VcsArchive{Format: "tar"}
-	err := a.Update(context.Background(), t.TempDir(), "")
+	err := a.Update(context.Background(), "", t.TempDir(), "")
 	if err != nil {
 		t.Errorf("Update should be a no-op, got error: %v", err)
 	}

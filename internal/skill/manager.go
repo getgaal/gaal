@@ -250,7 +250,7 @@ func (m *Manager) resolveSource(ctx context.Context, source string) (string, err
 		backend, err := vcs.NewShallow(vcsType)
 		if err == nil && backend.IsCloned(expanded) {
 			slog.DebugContext(ctx, "updating local source", "path", expanded, "vcs", vcsType)
-			if err := backend.Update(ctx, expanded, ""); err != nil {
+			if err := backend.Update(ctx, "", expanded, ""); err != nil {
 				slog.Warn("could not update local source", "path", expanded, "err", err)
 			}
 		}
@@ -275,7 +275,7 @@ func (m *Manager) resolveSource(ctx context.Context, source string) (string, err
 		}
 	} else {
 		slog.Debug("updating skill source", "path", localPath)
-		if err := backend.Update(ctx, localPath, ""); err != nil {
+		if err := backend.Update(ctx, "", localPath, ""); err != nil {
 			slog.Warn("could not update skill source", "path", localPath, "err", err)
 		}
 	}

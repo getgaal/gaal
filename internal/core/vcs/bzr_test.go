@@ -43,7 +43,7 @@ func TestVcsBazaar_Clone_NoBinary(t *testing.T) {
 func TestVcsBazaar_Update_NoBinary(t *testing.T) {
 	t.Setenv("PATH", "")
 	b := &VcsBazaar{}
-	err := b.Update(context.Background(), t.TempDir(), "")
+	err := b.Update(context.Background(), "", t.TempDir(), "")
 	if err == nil {
 		t.Fatal("expected error when bzr binary missing")
 	}
@@ -86,7 +86,7 @@ func TestVcsBazaar_Update_FakeBin(t *testing.T) {
 	binDir := makeFakeBin(t, "bzr", "exit 0")
 	t.Setenv("PATH", binDir)
 	b := &VcsBazaar{}
-	if err := b.Update(context.Background(), t.TempDir(), ""); err != nil {
+	if err := b.Update(context.Background(), "", t.TempDir(), ""); err != nil {
 		t.Fatalf("Update with fake bzr: %v", err)
 	}
 }
@@ -95,7 +95,7 @@ func TestVcsBazaar_Update_FakeBin_WithVersion(t *testing.T) {
 	binDir := makeFakeBin(t, "bzr", "exit 0")
 	t.Setenv("PATH", binDir)
 	b := &VcsBazaar{}
-	if err := b.Update(context.Background(), t.TempDir(), "2"); err != nil {
+	if err := b.Update(context.Background(), "", t.TempDir(), "2"); err != nil {
 		t.Fatalf("Update with fake bzr + version: %v", err)
 	}
 }
@@ -104,7 +104,7 @@ func TestVcsBazaar_Update_PullFails(t *testing.T) {
 	binDir := makeFakeBin(t, "bzr", "exit 1")
 	t.Setenv("PATH", binDir)
 	b := &VcsBazaar{}
-	err := b.Update(context.Background(), t.TempDir(), "")
+	err := b.Update(context.Background(), "", t.TempDir(), "")
 	if err == nil {
 		t.Fatal("expected error when bzr pull fails")
 	}
