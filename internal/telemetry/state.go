@@ -12,7 +12,7 @@ import (
 
 	"gaal/internal/config"
 	configtemplate "gaal/internal/config/template"
-	"gaal/internal/secfile"
+	"gaal/internal/core/io/secfile"
 )
 
 // consentState represents the resolved telemetry consent.

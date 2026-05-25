@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"os"
 
-	"gaal/internal/secfile"
+	"gaal/internal/core/io/secfile"
 )
 
 // Setup initialises the global slog logger.

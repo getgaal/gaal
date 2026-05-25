@@ -13,7 +13,7 @@ import (
 
 	"gaal/internal/config"
 	"gaal/internal/core/agent"
-	"gaal/internal/secfile"
+	"gaal/internal/core/io/secfile"
 	"gaal/internal/skill"
 )
 

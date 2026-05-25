@@ -13,7 +13,7 @@ import (
 
 	"gaal/internal/config"
 	configtemplate "gaal/internal/config/template"
-	"gaal/internal/secfile"
+	"gaal/internal/core/io/secfile"
 )
 
 // Init writes the documented gaal.yaml skeleton to dest.
