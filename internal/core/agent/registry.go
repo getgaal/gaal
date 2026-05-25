@@ -12,7 +12,7 @@ import (
 
 	"gaal/internal/config/platform"
 
-	"gopkg.in/yaml.v3"
+	ioyaml "gaal/internal/core/io/yaml"
 )
 
 // Info describes the file-system layout for a coding agent.
@@ -138,7 +138,7 @@ func init() {
 // When allowOverride is false, duplicate names cause an error.
 func loadInto(data []byte, dst map[string]Info, allowOverride bool) error {
 	var af agentsFile
-	if err := yaml.Unmarshal(data, &af); err != nil {
+	if err := ioyaml.Unmarshal(data, &af); err != nil {
 		return fmt.Errorf("parsing YAML: %w", err)
 	}
 	for name, e := range af.Agents {
