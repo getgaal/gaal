@@ -72,6 +72,54 @@ func TestUnmarshalStrict_RejectsUnknownKey(t *testing.T) {
 	}
 }
 
+func TestValidateMappingKeys(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		allowed []string
+		wantErr string
+	}{
+		{
+			name:    "allowed keys",
+			raw:     "name: gaal\ncount: 1\n",
+			allowed: []string{"name", "count"},
+		},
+		{
+			name:    "unknown key",
+			raw:     "name: gaal\nmystery: 1\n",
+			allowed: []string{"name"},
+			wantErr: "mystery",
+		},
+		{
+			name:    "non mapping",
+			raw:     "- gaal\n",
+			allowed: []string{"name"},
+			wantErr: "expected mapping",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var node yaml.Node
+			if err := yaml.Unmarshal([]byte(tc.raw), &node); err != nil {
+				t.Fatalf("seed unmarshal: %v", err)
+			}
+			err := ioyaml.ValidateMappingKeys(node.Content[0], tc.allowed...)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateMappingKeys: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error %q should contain %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
 func TestMarshal_RoundTrip(t *testing.T) {
 	in := sample{Name: "gaal", Count: 7, On: true}
 	out, err := ioyaml.Marshal(in)
@@ -149,6 +197,13 @@ func TestPatchNodeKey_RejectsNonMapping(t *testing.T) {
 	err := ioyaml.PatchNodeKey(&root, "k", "v")
 	if err == nil {
 		t.Fatal("expected error for non-mapping root, got nil")
+	}
+}
+
+func TestPatchNodeKey_RejectsNilRoot(t *testing.T) {
+	err := ioyaml.PatchNodeKey(nil, "k", "v")
+	if err == nil {
+		t.Fatal("expected error for nil root, got nil")
 	}
 }
 

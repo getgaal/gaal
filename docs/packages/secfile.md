@@ -1,4 +1,4 @@
-# `internal/secfile`
+# `internal/core/io/secfile`
 
 > Atomic 0o600 file writes for anything that may hold secrets — MCP env
 > tokens, telemetry state, log records, gaal config.

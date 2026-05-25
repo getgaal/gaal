@@ -16,6 +16,7 @@ package ioyaml
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 
 	"gopkg.in/yaml.v3"
 )
@@ -25,6 +26,7 @@ import (
 // documents whose schema may legitimately carry extra fields (e.g.
 // SKILL.md frontmatter, third-party YAML).
 func Unmarshal(data []byte, v any) error {
+	slog.Debug("unmarshaling yaml", "bytes", len(data))
 	return yaml.Unmarshal(data, v)
 }
 
@@ -33,6 +35,7 @@ func Unmarshal(data []byte, v any) error {
 // Use this for documents whose schema is owned by gaal so that typos and
 // experimental keys surface as load errors rather than silent drops.
 func UnmarshalStrict(data []byte, v any) error {
+	slog.Debug("strictly unmarshaling yaml", "bytes", len(data))
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	if err := dec.Decode(v); err != nil {
@@ -45,7 +48,34 @@ func UnmarshalStrict(data []byte, v any) error {
 // kept here so call sites do not need to import gopkg.in/yaml.v3 just
 // to serialise.
 func Marshal(v any) ([]byte, error) {
+	slog.Debug("marshaling yaml", "type", fmt.Sprintf("%T", v))
 	return yaml.Marshal(v)
+}
+
+// ValidateMappingKeys rejects keys in node that are not explicitly allowed.
+// It is intended for custom UnmarshalYAML methods, where yaml.Node.Decode
+// does not inherit the parent decoder's KnownFields(true) setting.
+func ValidateMappingKeys(node *yaml.Node, allowed ...string) error {
+	if node == nil {
+		slog.Debug("validating yaml mapping keys", "line", 0, "allowed", len(allowed))
+		return fmt.Errorf("line 0: expected mapping node, got <nil>")
+	}
+	slog.Debug("validating yaml mapping keys", "line", node.Line, "allowed", len(allowed))
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: expected mapping node, got kind=%v", node.Line, node.Kind)
+	}
+
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, key := range allowed {
+		allowedSet[key] = struct{}{}
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		keyNode := node.Content[i]
+		if _, ok := allowedSet[keyNode.Value]; !ok {
+			return fmt.Errorf("line %d: unknown field %q", keyNode.Line, keyNode.Value)
+		}
+	}
+	return nil
 }
 
 // PatchNodeKey sets or replaces key in a yaml.Node mapping.
@@ -57,6 +87,10 @@ func Marshal(v any) ([]byte, error) {
 // Moved verbatim from internal/telemetry/state.go:patchYAMLNodeKey
 // (#211).
 func PatchNodeKey(root *yaml.Node, key string, value any) error {
+	slog.Debug("patching yaml node key", "key", key)
+	if root == nil {
+		return fmt.Errorf("yaml root is nil")
+	}
 	mapping := root
 	if mapping.Kind == yaml.DocumentNode && len(mapping.Content) == 1 {
 		mapping = mapping.Content[0]

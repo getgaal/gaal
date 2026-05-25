@@ -1333,6 +1333,60 @@ tools:
 	}
 }
 
+func TestLoad_RejectsUnknownKeysInCustomYAMLTypes(t *testing.T) {
+	cases := []struct {
+		name string
+		yaml string
+		key  string
+	}{
+		{
+			name: "skill",
+			yaml: `
+skills:
+  - source: owner/repo
+    typo: true
+`,
+			key: "typo",
+		},
+		{
+			name: "tool",
+			yaml: `
+tools:
+  - name: gh
+    typo: true
+`,
+			key: "typo",
+		},
+		{
+			name: "mcp header",
+			yaml: `
+mcps:
+  - name: memory-mcp
+    target: /tmp/mcp.toml
+    inline:
+      type: http
+      url: https://memory.example.com/mcp
+      headers:
+        Authorization:
+          typo: token
+`,
+			key: "typo",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := writeYAML(t, tc.yaml)
+			_, err := Load(p)
+			if err == nil {
+				t.Fatal("expected error for unknown key, got nil")
+			}
+			if !strings.Contains(err.Error(), tc.key) {
+				t.Errorf("error %q should name the unknown key %q", err, tc.key)
+			}
+		})
+	}
+}
+
 // Ensure fmt is used (suppress unused import).
 var _ = fmt.Sprintf
 

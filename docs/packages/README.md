@@ -44,7 +44,7 @@ Per-package detail below; per-command flows in
 | `internal/installscript` | [installscript.md](installscript.md) | `curl \| sh` installer payload generation |
 | `internal/logger` | [logger.md](logger.md) | Console + JSON file slog handlers |
 | `internal/runner` | [runner.md](runner.md) | Subprocess execution adapter (TTY spinner) |
-| `internal/secfile` | [secfile.md](secfile.md) | Atomic 0o600 writes (temp + fsync + rename) |
+| `internal/core/io/secfile` | [secfile.md](secfile.md) | Atomic 0o600 writes (temp + fsync + rename) |
 | `internal/telemetry` | [telemetry.md](telemetry.md) | Anonymous usage telemetry, consent-gated |
 | `internal/tools` | [tools.md](tools.md) | External-tool PATH probe |
 | `internal/urlx` | [urlx.md](urlx.md) | URL validation + credential redaction |
