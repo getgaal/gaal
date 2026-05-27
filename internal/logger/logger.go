@@ -37,6 +37,9 @@ func Setup(level slog.Level, logFile string) (func(), error) {
 		}).WithAttrs([]slog.Attr{slog.String("host", hostname)})
 
 		handler = &teeHandler{handlers: []slog.Handler{consoleH, jsonH}}
+		// Wrap once at the top so credentials are scrubbed before reaching
+		// either the console or the JSON file sink.
+		handler = &redactingHandler{inner: handler}
 		slog.SetDefault(slog.New(handler))
 		// Return a teardown that closes the file and resets slog.
 		// Required on Windows where open file handles prevent TempDir cleanup.
@@ -46,6 +49,7 @@ func Setup(level slog.Level, logFile string) (func(), error) {
 		}, nil
 	}
 
+	handler = &redactingHandler{inner: handler}
 	slog.SetDefault(slog.New(handler))
 	return noop, nil
 }
