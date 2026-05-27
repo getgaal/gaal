@@ -1,0 +1,83 @@
+# .understandignore — patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+# Lines below are suggestions — uncomment to activate.
+# Use ! prefix to force-include something excluded by defaults.
+#
+# Built-in defaults (always excluded unless negated):
+#   node_modules/, .git/, dist/, build/, obj/, *.lock, *.min.js, etc.
+#
+# --- From .gitignore (uncomment to exclude) ---
+
+# *.exe
+# *.exe~
+# *.dll
+# *.so
+# *.dylib
+# *.test
+# *.out
+# go.work
+# *~
+# .fuse_hidden*
+# .directory
+# .Trash-*
+# .nfs*
+# .DS_Store
+# .AppleDouble
+# .LSOverride
+# Icon
+# ._*
+# .DocumentRevisions-V100
+# .fseventsd
+# .Spotlight-V100
+# .TemporaryItems
+# .Trashes
+# .VolumeIcon.icns
+# .com.apple.timemachine.donotpresent
+# .AppleDB
+# .AppleDesktop
+# Network Trash Folder
+# Temporary Items
+# .apdisk
+# *.icloud
+# .vscode/*
+# !.vscode/settings.json
+# !.vscode/tasks.json
+# !.vscode/launch.json
+# !.vscode/extensions.json
+# !.vscode/*.code-snippets
+# .history/
+# *.vsix
+# .history
+# .ionide
+# Thumbs.db
+# Thumbs.db:encryptable
+# ehthumbs.db
+# ehthumbs_vista.db
+# *.stackdump
+# [Dd]esktop.ini
+# $RECYCLE.BIN/
+# *.cab
+# *.msi
+# *.msix
+# *.msm
+# *.msp
+# *.lnk
+# schema.json
+# gaal.yaml
+# .sandbox/
+# report/
+# tmp/
+# docs/superpowers/
+# .worktrees/
+
+# --- Detected directories (uncomment to exclude) ---
+
+# test/
+# docs/
+# scripts/
+
+# --- Test file patterns (uncomment to exclude) ---
+
+# *.test.*
+# *.spec.*
+# *.snap

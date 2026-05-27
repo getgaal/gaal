@@ -127,3 +127,8 @@ report/
 tmp/
 docs/superpowers/
 .worktrees/
+
+# /understand-anything auto-generated artifacts (knowledge-graph.json + meta.json are committed)
+.understand-anything/fingerprints.json
+.understand-anything/intermediate/
+.understand-anything/tmp/
