@@ -191,8 +191,12 @@ func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
 
 	// 3. Filter by the "select" list.
 	selected := filterSkills(available, sc.Select)
-	if len(selected) == 0 {
+	if len(available) == 0 {
 		slog.Warn("no skills found in source", "source", sc.Source)
+		return nil
+	}
+	if len(selected) == 0 {
+		slog.Warn("no selected skills found in source", "source", sc.Source, "select", sc.Select)
 		return nil
 	}
 
@@ -497,9 +501,10 @@ func parseSkillMeta(path string) (SkillMeta, error) {
 	return SkillMeta{Name: name, Description: desc}, nil
 }
 
-// filterSkills returns the skills whose names match the select list.
-// An empty select list means "all".
+// filterSkills returns the skills whose names or directory names match the
+// select list. An empty select list means "all".
 func filterSkills(all []SkillMeta, selectNames []string) []SkillMeta {
+	slog.Debug("filtering skills", "available", len(all), "select", selectNames)
 	if len(selectNames) == 0 {
 		return all
 	}
@@ -510,6 +515,10 @@ func filterSkills(all []SkillMeta, selectNames []string) []SkillMeta {
 	var out []SkillMeta
 	for _, sk := range all {
 		if _, ok := set[sk.Name]; ok {
+			out = append(out, sk)
+			continue
+		}
+		if _, ok := set[filepath.Base(sk.Dir)]; ok {
 			out = append(out, sk)
 		}
 	}

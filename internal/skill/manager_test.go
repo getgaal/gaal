@@ -1,6 +1,7 @@
 package skill
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"os"
@@ -141,11 +142,51 @@ func TestFilterSkills_Select_Subset(t *testing.T) {
 	}
 }
 
+func TestFilterSkills_Select_DirectoryName(t *testing.T) {
+	all := []SkillMeta{{Name: "firecrawl", Dir: filepath.Join(t.TempDir(), "firecrawl-cli")}}
+	got := filterSkills(all, []string{"firecrawl-cli"})
+	if len(got) != 1 {
+		t.Fatalf("expected 1, got %d", len(got))
+	}
+	if got[0].Name != "firecrawl" {
+		t.Errorf("expected selected skill name firecrawl, got %q", got[0].Name)
+	}
+}
+
 func TestFilterSkills_Select_NoMatch(t *testing.T) {
 	all := []SkillMeta{{Name: "a"}, {Name: "b"}}
 	got := filterSkills(all, []string{"z"})
 	if len(got) != 0 {
 		t.Errorf("expected 0, got %d", len(got))
+	}
+}
+
+func TestSyncOne_WarnsWhenSelectMatchesNoSkill(t *testing.T) {
+	root := t.TempDir()
+	skillDir := filepath.Join(root, "firecrawl-cli")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: firecrawl\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	oldLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(oldLogger) })
+
+	m := NewManager(nil, t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir(), false)
+	if err := m.syncOne(context.Background(), config.ConfigSkill{Source: root, Select: []string{"missing"}}); err != nil {
+		t.Fatalf("syncOne: %v", err)
+	}
+
+	log := buf.String()
+	if !strings.Contains(log, "no selected skills found in source") {
+		t.Fatalf("expected no-selected warning, got %q", log)
+	}
+	if strings.Contains(log, "msg=\"no skills found in source\"") {
+		t.Fatalf("expected no generic no-skills warning, got %q", log)
 	}
 }
 
