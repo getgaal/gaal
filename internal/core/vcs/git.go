@@ -36,14 +36,30 @@ func (g *VcsGit) Clone(ctx context.Context, url, path, version string) error {
 	if err := urlx.ValidateRepoURL(url); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	parent := filepath.Dir(path)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return fmt.Errorf("creating parent directory: %w", err)
 	}
 
 	safeURL := urlx.Redact(url)
 	slog.DebugContext(ctx, "cloning", "url", safeURL, "path", shortPath(path), "version", version)
 
-	r, err := gogit.PlainCloneContext(ctx, path, false, &gogit.CloneOptions{
+	// Stage into a sibling temp dir then atomically rename. Defends
+	// against partial-clone leftovers (Ctrl-C, network drop, full disk):
+	// the destination is either the previous tree or the new one, never
+	// a half-written .git. #125.
+	staging, err := os.MkdirTemp(parent, ".gaal-git-tmp-*")
+	if err != nil {
+		return fmt.Errorf("creating clone staging dir: %w", err)
+	}
+	cleanupStage := true
+	defer func() {
+		if cleanupStage {
+			_ = os.RemoveAll(staging)
+		}
+	}()
+
+	r, err := gogit.PlainCloneContext(ctx, staging, false, &gogit.CloneOptions{
 		URL:               url,
 		RecurseSubmodules: gogit.DefaultSubmoduleRecursionDepth,
 		Tags:              gogit.AllTags,
@@ -54,8 +70,24 @@ func (g *VcsGit) Clone(ctx context.Context, url, path, version string) error {
 	}
 
 	if version != "" {
-		return checkoutVersion(r, version)
+		if err := checkoutVersion(r, version); err != nil {
+			return err
+		}
 	}
+
+	// If path exists (e.g. a previously broken clone left behind), remove
+	// it — the manager only calls Clone when IsCloned reports false, which
+	// now means the previous content is invalid as a git repo.
+	if _, statErr := os.Stat(path); statErr == nil {
+		slog.DebugContext(ctx, "removing previous broken clone", "path", shortPath(path))
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("removing previous clone: %w", err)
+		}
+	}
+	if err := os.Rename(staging, path); err != nil {
+		return fmt.Errorf("renaming staging clone: %w", err)
+	}
+	cleanupStage = false
 	return nil
 }
 
@@ -143,9 +175,30 @@ func (g *VcsGit) resetToRemoteHEAD(ctx context.Context, r *gogit.Repository) err
 	})
 }
 
+// IsCloned reports whether path holds a valid git working copy. Older
+// versions only checked for the existence of a .git entry, which would
+// also succeed for half-cloned destinations (Ctrl-C, network drop) and
+// for non-git directories that happened to have a .git file/dir inside.
+// We now open the repository and verify it has a HEAD reference; on
+// failure the caller (repo.Manager.syncOne) will fall back to Clone,
+// which atomically replaces the broken tree. #125.
 func (g *VcsGit) IsCloned(path string) bool {
-	_, err := os.Stat(filepath.Join(path, ".git"))
-	return err == nil
+	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
+		return false
+	}
+	r, err := gogit.PlainOpen(path)
+	if err != nil {
+		slog.Debug("git: IsCloned: PlainOpen failed, treating as not cloned", "path", shortPath(path), "err", err)
+		return false
+	}
+	if _, err := r.Head(); err != nil {
+		// A repo with no HEAD is either freshly initialised (no commits
+		// yet) or partially fetched. Either way it is not in a state
+		// where Update would succeed; force a re-clone.
+		slog.Debug("git: IsCloned: HEAD missing, treating as not cloned", "path", shortPath(path), "err", err)
+		return false
+	}
+	return true
 }
 
 func (g *VcsGit) CurrentVersion(_ context.Context, path string) (string, error) {

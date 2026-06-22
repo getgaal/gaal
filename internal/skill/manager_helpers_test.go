@@ -5,9 +5,43 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"gaal/internal/config"
 )
+
+// mustInitGitRepoWithCommit creates a git repository at path with one
+// initial commit so VcsGit.IsCloned (which validates HEAD) reports
+// true. Used by tests that pre-populate the skill cache and don't want
+// to hit the network for a real clone.
+func mustInitGitRepoWithCommit(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	r, err := gogit.PlainInit(path, false)
+	if err != nil {
+		t.Fatalf("PlainInit: %v", err)
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		t.Fatalf("Worktree: %v", err)
+	}
+	readme := filepath.Join(path, ".gaal-readme")
+	if err := os.WriteFile(readme, []byte("init\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if _, err := w.Add(".gaal-readme"); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	sig := &object.Signature{Name: "test", Email: "t@example.com", When: time.Now()}
+	if _, err := w.Commit("init", &gogit.CommitOptions{Author: sig, Committer: sig}); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+}
 
 func TestToCloneURL_GitHubShorthand(t *testing.T) {
 	got := toCloneURL("owner/repo")
@@ -295,8 +329,12 @@ func TestManager_Sync_PreCachedRemoteSource(t *testing.T) {
 	cacheKey := urlToCacheKey(cloneURL)
 	localPath := filepath.Join(cacheDir, cacheKey)
 
-	// Pre-populate .git so gitVCS.isCloned returns true.
-	os.MkdirAll(filepath.Join(localPath, ".git"), 0o755)
+	// Pre-populate the cache with a real bare-initialised git repo + one
+	// commit so VcsGit.IsCloned (which now validates HEAD) returns true.
+	// Without the commit, gogit.PlainOpen succeeds but r.Head() fails,
+	// and the manager falls through to a network Clone — which is
+	// exactly what this test is designed to avoid.
+	mustInitGitRepoWithCommit(t, localPath)
 
 	// Also create a skill inside so syncOne has something to discover.
 	skillDir := filepath.Join(localPath, "demo-skill")
