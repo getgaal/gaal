@@ -122,6 +122,40 @@ func TestDiscoverSkills_NoDuplicates(t *testing.T) {
 	}
 }
 
+func TestDiscoverSkills_GroupedSkillsDirectory(t *testing.T) {
+	root := t.TempDir()
+	for _, tc := range []struct {
+		group string
+		name  string
+	}{
+		{group: "productivity", name: "teach"},
+		{group: "engineering", name: "grill-me"},
+	} {
+		skillDir := filepath.Join(root, "skills", tc.group, tc.name)
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: "+tc.name+"\n---\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	skills, err := discoverSkills(root)
+	if err != nil {
+		t.Fatalf("discoverSkills: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, sk := range skills {
+		got[sk.Name] = true
+	}
+	for _, want := range []string{"teach", "grill-me"} {
+		if !got[want] {
+			t.Errorf("expected grouped skill %q, got %+v", want, skills)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // filterSkills
 // ---------------------------------------------------------------------------
@@ -494,6 +528,41 @@ func TestManager_Status_InstalledAndMissing(t *testing.T) {
 	}
 	if !hasMissing {
 		t.Errorf("expected skill-b in Missing, got: %v", st.Missing)
+	}
+}
+
+func TestManager_Status_SelectMissReportsMissing(t *testing.T) {
+	sourceDir := t.TempDir()
+	skillDir := filepath.Join(sourceDir, "skill-a")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: skill-a\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	workDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	skills := []config.ConfigSkill{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Select: []string{"missing-skill"}},
+	}
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "", false)
+	statuses := m.Status(context.Background())
+
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status entry, got %d", len(statuses))
+	}
+	if statuses[0].Err != nil {
+		t.Fatalf("unexpected error: %v", statuses[0].Err)
+	}
+	if len(statuses[0].Installed) != 0 {
+		t.Errorf("expected no installed skills, got %v", statuses[0].Installed)
+	}
+	if len(statuses[0].Missing) != 1 || statuses[0].Missing[0] != "missing-skill" {
+		t.Errorf("expected selected miss in Missing, got %v", statuses[0].Missing)
 	}
 }
 

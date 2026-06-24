@@ -401,6 +401,11 @@ func (m *Manager) Status(ctx context.Context) []Status {
 
 			available, _ := discoverSkills(sourceDir)
 			selected := filterSkills(available, sc.Select)
+			if len(selected) == 0 && len(sc.Select) > 0 {
+				st.Missing = append(st.Missing, sc.Select...)
+				statuses = append(statuses, st)
+				continue
+			}
 
 			for _, sk := range selected {
 				dest := filepath.Join(skillsDir, filepath.Base(sk.Dir))
@@ -429,51 +434,8 @@ func discoverSkills(root string) ([]SkillMeta, error) {
 
 	for _, subdir := range buildDiscoveryDirs() {
 		base := filepath.Join(root, subdir)
-		entries, err := os.ReadDir(base)
-		if err != nil {
-			continue
-		}
-
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			// Reject directory names that would let a malicious skill
-			// source escape the install root via filepath.Join — `..`,
-			// `.`, empty, or names containing path separators after
-			// cleaning. The install path uses filepath.Base(sk.Dir) so
-			// these would otherwise walk above the agent skill dir.
-			if !isSafeSkillDirName(e.Name()) {
-				slog.Warn("skill: refusing unsafe directory name",
-					"name", e.Name(), "parent", base)
-				continue
-			}
-			skillDir := filepath.Join(base, e.Name())
-			mdPath := filepath.Join(skillDir, "SKILL.md")
-			if _, err := os.Stat(mdPath); err != nil {
-				continue
-			}
-			if _, ok := seen[skillDir]; ok {
-				continue
-			}
-			seen[skillDir] = struct{}{}
-
-			meta, err := parseSkillMeta(mdPath)
-			if err != nil {
-				slog.Warn("skipping invalid SKILL.md", "path", mdPath, "err", err)
-				continue
-			}
-			// Frontmatter `name:` is also subject to the same containment
-			// rule — a malicious source could ship `name: ../escape` and
-			// the install layer uses Name to compose select-list matches.
-			if meta.Name != "" && !isSafeSkillDirName(meta.Name) {
-				slog.Warn("skill: refusing unsafe frontmatter name",
-					"name", meta.Name, "path", mdPath)
-				continue
-			}
-			meta.Dir = skillDir
-			skills = append(skills, meta)
-		}
+		scanGrouped := strings.Contains(filepath.ToSlash(subdir), "skills")
+		scanSkillDiscoveryBase(base, scanGrouped, seen, &skills)
 	}
 
 	// Also check if root itself contains SKILL.md.
@@ -489,6 +451,81 @@ func discoverSkills(root string) ([]SkillMeta, error) {
 	}
 
 	return skills, nil
+}
+
+func scanSkillDiscoveryBase(base string, scanGrouped bool, seen map[string]struct{}, skills *[]SkillMeta) {
+	slog.Debug("scanning skill discovery base", "base", base, "scanGrouped", scanGrouped)
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if !isSafeSkillDirName(e.Name()) {
+			slog.Warn("skill: refusing unsafe directory name",
+				"name", e.Name(), "parent", base)
+			continue
+		}
+		skillDir := filepath.Join(base, e.Name())
+		mdPath := filepath.Join(skillDir, "SKILL.md")
+		if _, err := os.Stat(mdPath); err == nil {
+			addDiscoveredSkill(skillDir, mdPath, seen, skills)
+			continue
+		}
+		if scanGrouped {
+			scanGroupedSkillDir(skillDir, seen, skills)
+		}
+	}
+}
+
+func scanGroupedSkillDir(groupDir string, seen map[string]struct{}, skills *[]SkillMeta) {
+	slog.Debug("scanning grouped skill dir", "dir", groupDir)
+	entries, err := os.ReadDir(groupDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if !isSafeSkillDirName(e.Name()) {
+			slog.Warn("skill: refusing unsafe directory name",
+				"name", e.Name(), "parent", groupDir)
+			continue
+		}
+		skillDir := filepath.Join(groupDir, e.Name())
+		mdPath := filepath.Join(skillDir, "SKILL.md")
+		if _, err := os.Stat(mdPath); err == nil {
+			addDiscoveredSkill(skillDir, mdPath, seen, skills)
+		}
+	}
+}
+
+func addDiscoveredSkill(skillDir, mdPath string, seen map[string]struct{}, skills *[]SkillMeta) {
+	slog.Debug("adding discovered skill", "dir", skillDir, "manifest", mdPath)
+	if _, ok := seen[skillDir]; ok {
+		return
+	}
+	seen[skillDir] = struct{}{}
+
+	meta, err := parseSkillMeta(mdPath)
+	if err != nil {
+		slog.Warn("skipping invalid SKILL.md", "path", mdPath, "err", err)
+		return
+	}
+	// Frontmatter `name:` is also subject to the same containment rule —
+	// a malicious source could ship `name: ../escape` and the install layer
+	// uses Name to compose select-list matches.
+	if meta.Name != "" && !isSafeSkillDirName(meta.Name) {
+		slog.Warn("skill: refusing unsafe frontmatter name",
+			"name", meta.Name, "path", mdPath)
+		return
+	}
+	meta.Dir = skillDir
+	*skills = append(*skills, meta)
 }
 
 // parseSkillMeta reads the YAML frontmatter from a SKILL.md file.
