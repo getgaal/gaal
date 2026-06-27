@@ -10,6 +10,7 @@ import (
 
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"gaal/internal/urlx"
 )
@@ -18,7 +19,7 @@ import (
 // (pure Go — no git binary required).
 //
 // Authentication: HTTPS public repositories work without configuration.
-// Private repos (SSH or authenticated HTTPS) are not yet supported.
+// SSH repositories use the user's SSH agent and known_hosts files.
 type VcsGit struct {
 	// Shallow requests a depth-1 clone (suitable for skill caches that never
 	// need history). Update will hard-reset to origin/HEAD instead of pulling.
@@ -43,8 +44,14 @@ func (g *VcsGit) Clone(ctx context.Context, url, path, version string) error {
 	safeURL := urlx.Redact(url)
 	slog.DebugContext(ctx, "cloning", "url", safeURL, "path", shortPath(path), "version", version)
 
+	auth, err := sshAuthForURL(ctx, url)
+	if err != nil {
+		return err
+	}
+
 	r, err := gogit.PlainCloneContext(ctx, path, false, &gogit.CloneOptions{
 		URL:               url,
+		Auth:              auth,
 		RecurseSubmodules: gogit.DefaultSubmoduleRecursionDepth,
 		Tags:              gogit.AllTags,
 		Depth:             g.depth(),
@@ -80,8 +87,14 @@ func (g *VcsGit) Update(ctx context.Context, url, path, version string) error {
 
 	slog.DebugContext(ctx, "fetching", "path", shortPath(path))
 
+	auth, err := sshAuthForRemote(ctx, r, url)
+	if err != nil {
+		return err
+	}
+
 	fetchErr := r.FetchContext(ctx, &gogit.FetchOptions{
 		RemoteName: "origin",
+		Auth:       auth,
 		Tags:       gogit.AllTags,
 		Force:      true,
 		Prune:      true,
@@ -107,6 +120,7 @@ func (g *VcsGit) Update(ctx context.Context, url, path, version string) error {
 	}
 	if err = w.PullContext(ctx, &gogit.PullOptions{
 		RemoteName: "origin",
+		Auth:       auth,
 		Force:      true,
 	}); err != nil && !errors.Is(err, gogit.NoErrAlreadyUpToDate) {
 		return fmt.Errorf("pulling: %w", err)
@@ -141,6 +155,20 @@ func (g *VcsGit) resetToRemoteHEAD(ctx context.Context, r *gogit.Repository) err
 		Commit: hash,
 		Mode:   gogit.HardReset,
 	})
+}
+
+func sshAuthForRemote(ctx context.Context, r *gogit.Repository, configuredURL string) (transport.AuthMethod, error) {
+	slog.DebugContext(ctx, "preparing git auth for remote", "url", urlx.Redact(configuredURL))
+
+	if configuredURL != "" {
+		return sshAuthForURL(ctx, configuredURL)
+	}
+
+	remote, err := r.Remote("origin")
+	if err != nil || len(remote.Config().URLs) == 0 {
+		return nil, nil
+	}
+	return sshAuthForURL(ctx, remote.Config().URLs[0])
 }
 
 func (g *VcsGit) IsCloned(path string) bool {
