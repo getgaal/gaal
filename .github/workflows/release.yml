@@ -57,87 +57,28 @@ jobs:
           make build-cross
           BIN_CROSS=dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
-      # ── macOS code signing & notarization (rcodesign) ─────────────────────
-      #
-      # We use rcodesign (https://github.com/indygreg/apple-platform-rs)
-      # instead of Apple's `codesign` + `notarytool` because rcodesign reads
-      # the .p12 directly from a file and validates the cert chain itself —
-      # no macOS keychain manipulation, no `add-trusted-cert` UI prompts, no
-      # persistent state on the runner. Works on any Mac runner.
-      #
-      # Sign + notarize only run on semver tag pushes (actual releases),
-      # because Apple notarization adds 30-90s of waiting per binary and
-      # isn't needed for PR smoke tests. PRs still cross-compile the darwin
-      # binary so we catch build regressions, just unsigned.
+      # ── Code signing ──────────────────────────────────────────────────────
+      # Signing fires only on semver tag pushes. PRs still cross-compile the
+      # binary (build regression detection) but skip signing.
 
-      - name: Install rcodesign
+      - name: Sign Windows binary
+        if: matrix.goos == 'windows' && startsWith(github.ref, 'refs/tags/v')
+        uses: ./.github/actions/sign-windows
+        with:
+          binary:       dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}.exe
+          pfx-base64:   ${{ secrets.WINDOWS_CERTIFICATE }}
+          pfx-password: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+
+      - name: Sign and notarize macOS binary
         if: matrix.goos == 'darwin' && startsWith(github.ref, 'refs/tags/v')
-        env:
-          RCODESIGN_VERSION: "0.29.0"
-          RCODESIGN_SHA256: "d1a532150adaf90048260d76359261aa716abafc45c53c5dc18845029184334a"
-        run: |
-          # macos-latest GitHub-hosted runners are ARM64 (M-series).
-          ARCHIVE="apple-codesign-${RCODESIGN_VERSION}-aarch64-apple-darwin.tar.gz"
-          curl -fsSL -o "$RUNNER_TEMP/$ARCHIVE" \
-            "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${ARCHIVE}"
-
-          ACTUAL=$(shasum -a 256 "$RUNNER_TEMP/$ARCHIVE" | awk '{print $1}')
-          if [ "$RCODESIGN_SHA256" != "$ACTUAL" ]; then
-            echo "::error::rcodesign SHA256 mismatch (expected $RCODESIGN_SHA256, got $ACTUAL)"
-            exit 1
-          fi
-
-          tar -xzf "$RUNNER_TEMP/$ARCHIVE" -C "$RUNNER_TEMP" --strip-components=1
-          "$RUNNER_TEMP/rcodesign" --version
-
-      - name: Sign and notarize binary
-        if: matrix.goos == 'darwin' && startsWith(github.ref, 'refs/tags/v')
-        env:
-          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
-          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-          API_KEY: ${{ secrets.APPLE_API_KEY }}
-          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          BINARY="dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}"
-          P12="$RUNNER_TEMP/cert.p12"
-          API_KEY_FILE="$RUNNER_TEMP/AuthKey.p8"
-          API_KEY_JSON="$RUNNER_TEMP/api-key.json"
-          trap 'rm -f "$P12" "$API_KEY_FILE" "$API_KEY_JSON"' EXIT
-
-          echo "$P12_BASE64" | base64 --decode > "$P12"
-          echo "$API_KEY"     > "$API_KEY_FILE"
-
-          # Codesign with hardened runtime (required for notarization)
-          "$RUNNER_TEMP/rcodesign" sign \
-            --p12-file "$P12" \
-            --p12-password "$P12_PASSWORD" \
-            --code-signature-flags runtime \
-            "$BINARY"
-
-          # Encode the App Store Connect API key as the JSON form rcodesign expects
-          "$RUNNER_TEMP/rcodesign" encode-app-store-connect-api-key \
-            -o "$API_KEY_JSON" \
-            "$API_ISSUER" "$API_KEY_ID" "$API_KEY_FILE"
-
-          # Apple's notary service requires a wrapped artifact (.zip/.dmg/.pkg/.app),
-          # not a raw Mach-O. Use ditto (not plain zip) to produce an archive
-          # that Apple's notarizer accepts. --staple is omitted because Mach-O
-          # binaries cannot be stapled — Gatekeeper checks notarization online.
-          ditto -c -k --keepParent "$BINARY" "$BINARY.zip"
-          "$RUNNER_TEMP/rcodesign" notary-submit \
-            --api-key-file "$API_KEY_JSON" \
-            --wait \
-            "$BINARY.zip"
-          rm "$BINARY.zip"
-
-      - name: Verify signature
-        if: matrix.goos == 'darwin' && startsWith(github.ref, 'refs/tags/v')
-        run: |
-          codesign --verify --deep --strict --verbose=2 \
-            dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
-          # Show signing details for CI logs
-          codesign -dvv dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
+        uses: ./.github/actions/sign-macos
+        with:
+          binary:       dist/gaal-${{ matrix.goos }}-${{ matrix.goarch }}
+          p12-base64:   ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          api-key:      ${{ secrets.APPLE_API_KEY }}
+          api-key-id:   ${{ secrets.APPLE_API_KEY_ID }}
+          api-issuer:   ${{ secrets.APPLE_API_ISSUER }}
 
       # ── Upload artifact ────────────────────────────────────────────────────
 
