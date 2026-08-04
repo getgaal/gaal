@@ -269,6 +269,10 @@ declared in the merged config. Two safety gates apply:
    opt-in, manually-curated entries on the user's machine are not
    wiped (PR #199, closes #142).
 
+Skill pruning preserves hidden entries directly beneath each managed
+skills directory. Hidden descendants of an orphan skill are removed
+with the skill.
+
 Repositories are **never** pruned automatically — deletion of source
 trees requires explicit user action (`rm -rf` on the path).
 

@@ -845,6 +845,10 @@ func (m *Manager) Prune(ctx context.Context) error {
 			continue // directory may not exist
 		}
 		for _, entry := range entries {
+			// Hidden entries belong to the agent, not gaal.
+			if strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
 			if !isSkillEntry(entry) {
 				continue
 			}

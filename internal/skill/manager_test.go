@@ -924,8 +924,7 @@ func TestCopyFile_WriteError(t *testing.T) {
 // Prune
 // ---------------------------------------------------------------------------
 
-func TestPrune_RemovesOrphanSkill(t *testing.T) {
-	// Source has two skills: kept-skill and orphan-skill.
+func TestPrune_RemovesOrphansAndPreservesHiddenEntries(t *testing.T) {
 	sourceDir := t.TempDir()
 	for _, name := range []string{"kept-skill", "orphan-skill"} {
 		dir := filepath.Join(sourceDir, name)
@@ -933,40 +932,32 @@ func TestPrune_RemovesOrphanSkill(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: "+name+"\n---\n"), 0o644)
 	}
 
-	// Agent dir simulates an already-installed state: both skills are present.
-	agentSkillsDir := t.TempDir()
-	agentParent := filepath.Dir(agentSkillsDir)
-	// workDir must have a subdirectory matching the agent's project_skills_dir.
-	// Use a local-path skill with an absolute skillsDir to avoid agent registry lookup.
-	for _, name := range []string{"kept-skill", "orphan-skill"} {
-		os.MkdirAll(filepath.Join(agentSkillsDir, name), 0o755)
+	home := t.TempDir()
+	skillsDir := filepath.Join(home, ".codex", "skills")
+	for _, path := range []string{
+		filepath.Join(skillsDir, "kept-skill"),
+		filepath.Join(skillsDir, "orphan-skill", ".hidden"),
+		filepath.Join(skillsDir, ".system", "bundled-skill"),
+	} {
+		os.MkdirAll(path, 0o755)
 	}
 
-	// Config only selects kept-skill.
 	cfg := []config.ConfigSkill{
-		{Source: sourceDir, Select: []string{"kept-skill"}, Agents: []string{"claude-code"}, Global: true},
+		{Source: sourceDir, Select: []string{"kept-skill"}, Agents: []string{"codex"}, Global: true},
 	}
-
-	// Build a manager whose home points to agentParent so that SkillDir
-	// for claude-code global resolves to agentParent/.claude/skills.
-	// We pre-create the directory and redirect home to agentParent.
-	claudeSkillsDir := filepath.Join(agentParent, ".claude", "skills")
-	os.MkdirAll(claudeSkillsDir, 0o755)
-	for _, name := range []string{"kept-skill", "orphan-skill"} {
-		os.MkdirAll(filepath.Join(claudeSkillsDir, name), 0o755)
-	}
-
-	m := NewManager(cfg, t.TempDir(), agentParent, t.TempDir(), "", false)
+	m := NewManager(cfg, t.TempDir(), home, t.TempDir(), "", false)
 	if err := m.Prune(context.Background()); err != nil {
 		t.Fatalf("Prune returned error: %v", err)
 	}
 
-	// orphan-skill must be gone, kept-skill must remain.
-	if _, err := os.Stat(filepath.Join(claudeSkillsDir, "orphan-skill")); err == nil {
-		t.Error("expected orphan-skill to be removed")
-	}
-	if _, err := os.Stat(filepath.Join(claudeSkillsDir, "kept-skill")); err != nil {
+	if _, err := os.Stat(filepath.Join(skillsDir, "kept-skill")); err != nil {
 		t.Errorf("expected kept-skill to remain: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(skillsDir, ".system", "bundled-skill")); err != nil {
+		t.Errorf("expected hidden entry to remain: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(skillsDir, "orphan-skill")); !os.IsNotExist(err) {
+		t.Errorf("expected orphan-skill to be removed, got err=%v", err)
 	}
 }
 
