@@ -308,23 +308,36 @@ func mergeIntoTarget(target, name string, entry serverEntry) error {
 	return nil
 }
 
-// Prune removes mcpServers entries from each managed target file whose names
-// are no longer declared in the config for that target. Entries added manually
-// outside of gaal are also removed — callers should only use --prune on files
-// they intend to manage exclusively with gaal.
+// Prune removes mcpServers entries from each managed target file whose
+// names are no longer declared in the config for that target.
+//
+// Per #142, this is gated by an opt-in flag: a target is only pruned
+// when at least one ConfigMcp entry pointing at it sets `prune: true`.
+// Without that gate `--prune` could silently wipe MCP entries the user
+// had added by hand to a shared file (e.g. claude-code's ~/.claude.json,
+// codex's ~/.codex/config.toml).
 func (m *Manager) Prune(ctx context.Context) error {
 	slog.DebugContext(ctx, "pruning orphan mcp entries")
 
-	// Build expected name set per target path.
+	// Build expected name set + per-target prune-opt-in.
 	keepPerTarget := make(map[string]map[string]struct{})
+	pruneTarget := make(map[string]bool)
 	for _, mc := range m.resolvedMCPs() {
 		if keepPerTarget[mc.Target] == nil {
 			keepPerTarget[mc.Target] = make(map[string]struct{})
 		}
 		keepPerTarget[mc.Target][mc.Name] = struct{}{}
+		if mc.Prune {
+			pruneTarget[mc.Target] = true
+		}
 	}
 
 	for target, keep := range keepPerTarget {
+		if !pruneTarget[target] {
+			slog.Debug("mcp prune: target not opted in (set prune: true on at least one entry)",
+				"target", target)
+			continue
+		}
 		codec := codecFor(target)
 		servers, err := codec.ReadServers(target)
 		if err != nil {
