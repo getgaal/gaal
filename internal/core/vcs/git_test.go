@@ -238,12 +238,85 @@ func TestVcsGit_IsCloned_False(t *testing.T) {
 
 func TestVcsGit_IsCloned_True(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := gogit.PlainInit(dir, false); err != nil {
-		t.Fatalf("PlainInit: %v", err)
-	}
+	makeLocalRepo(t, dir)
 	g := &VcsGit{}
 	if !g.IsCloned(dir) {
-		t.Error("expected IsCloned=true for go-git initialised repo")
+		t.Error("expected IsCloned=true for repo with HEAD")
+	}
+}
+
+// TestVcsGit_IsCloned_FakeDotGit guards against the historical
+// behaviour where IsCloned returned true for any directory containing a
+// .git entry — including a non-git folder that happens to have one.
+// With the new HEAD validation the call must report false. #125.
+func TestVcsGit_IsCloned_FakeDotGit(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	g := &VcsGit{}
+	if g.IsCloned(dir) {
+		t.Error("IsCloned should return false for a fake .git directory with no HEAD")
+	}
+}
+
+// TestVcsGit_IsCloned_PartialClone guards against half-cloned states
+// (Ctrl-C, network drop): .git exists with some content but PlainOpen
+// or HEAD lookup fails. The repo manager relies on IsCloned=false so
+// the caller falls back to a fresh Clone (which now atomically
+// replaces the broken tree). #125.
+func TestVcsGit_IsCloned_PartialClone(t *testing.T) {
+	dir := t.TempDir()
+	gitDir := filepath.Join(dir, ".git")
+	if err := os.MkdirAll(filepath.Join(gitDir, "refs", "heads"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// PlainOpen needs HEAD to exist; create one but pointed at a
+	// non-existent commit so r.Head() fails — matches a half-fetched
+	// repo where refs were written before objects.
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	g := &VcsGit{}
+	if g.IsCloned(dir) {
+		t.Error("IsCloned should return false for a partial clone with no resolvable HEAD")
+	}
+}
+
+// TestVcsGit_Clone_RecoversFromBrokenDest verifies the recovery path:
+// a directory left behind by a previous failed clone (only .git) is
+// detected as not-cloned by IsCloned, and the next Clone wipes it and
+// installs a fresh tree atomically. #125.
+func TestVcsGit_Clone_RecoversFromBrokenDest(t *testing.T) {
+	srcDir := t.TempDir()
+	makeLocalRepo(t, srcDir)
+
+	destDir := filepath.Join(t.TempDir(), "dest")
+	// Simulate a broken previous clone.
+	if err := os.MkdirAll(filepath.Join(destDir, ".git"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, "leftover.txt"), []byte("stale"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	g := &VcsGit{}
+	if g.IsCloned(destDir) {
+		t.Fatal("precondition: broken dest should report not-cloned")
+	}
+	if err := g.Clone(context.Background(), srcDir, destDir, ""); err != nil {
+		t.Fatalf("Clone over broken dest: %v", err)
+	}
+	if !g.IsCloned(destDir) {
+		t.Error("expected IsCloned=true after recovery clone")
+	}
+	// Stale leftover from the broken state must be gone.
+	if _, err := os.Stat(filepath.Join(destDir, "leftover.txt")); !os.IsNotExist(err) {
+		t.Errorf("leftover.txt should be removed (err=%v)", err)
+	}
+	// And the new content (README.md from makeLocalRepo) must be present.
+	if _, err := os.Stat(filepath.Join(destDir, "README.md")); err != nil {
+		t.Errorf("expected README.md from cloned source: %v", err)
 	}
 }
 
