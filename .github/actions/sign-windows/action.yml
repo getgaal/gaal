@@ -1,0 +1,56 @@
+name: Sign Windows binary (Authenticode)
+description: >
+  Signs a Windows PE executable with Authenticode using osslsigncode.
+  Runs on ubuntu-latest. Embeds a DigiCert RFC 3161 timestamp so the
+  signature remains valid after the certificate expires. SHA-256 digest
+  is used — SHA-1 is rejected by modern Windows.
+
+inputs:
+  binary:
+    description: Path to the .exe file to sign (modified in-place).
+    required: true
+  pfx-base64:
+    description: Base64-encoded PKCS#12 (.pfx) code-signing certificate.
+    required: true
+  pfx-password:
+    description: Password for the .pfx file.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install osslsigncode
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends osslsigncode
+        osslsigncode --version
+
+    - name: Sign binary
+      shell: bash
+      env:
+        PFX_BASE64:   ${{ inputs.pfx-base64 }}
+        PFX_PASSWORD: ${{ inputs.pfx-password }}
+      run: |
+        BINARY="${{ inputs.binary }}"
+        PFX="$RUNNER_TEMP/codesign.pfx"
+        trap 'rm -f "$PFX"' EXIT
+
+        echo "$PFX_BASE64" | base64 --decode > "$PFX"
+
+        osslsigncode sign \
+          -pkcs12 "$PFX" \
+          -pass   "$PFX_PASSWORD" \
+          -n      "gaal" \
+          -i      "https://github.com/getgaal/gaal" \
+          -ts     "http://timestamp.digicert.com" \
+          -h      sha256 \
+          -in     "$BINARY" \
+          -out    "${BINARY}.signed"
+
+        mv "${BINARY}.signed" "$BINARY"
+
+    - name: Verify signature
+      shell: bash
+      run: |
+        osslsigncode verify -in "${{ inputs.binary }}"
