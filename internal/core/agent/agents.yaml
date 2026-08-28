@@ -93,7 +93,10 @@ agents:
     project_skills_dir: .augment/skills
     global_skills_dir: ~/.augment/skills
     global_mcp_config_file: ~/.augment/settings.json
-    project_mcp_config_file: ""
+    # Repo-root .mcp.json (same shape/key as claude-code's); Augment can
+    # also read MCP entries embedded in a plugin's plugin.json, but that
+    # form isn't a single fixed path gaal can target. See agent-capabilities.md.
+    project_mcp_config_file: .mcp.json
     project_skills_search:
       - .augment/skills
       - .agents/skills
@@ -160,7 +163,11 @@ agents:
     project_skills_dir: ""
     global_skills_dir: ~/.codex/skills
     global_mcp_config_file: ~/.codex/config.toml
-    project_mcp_config_file: ""
+    # Codex reads .codex/config.toml at the project root as a real
+    # workspace-scoped MCP config, gated by its own "trusted project"
+    # prompt (unrelated to gaal) — same TOML [mcp_servers.*] shape as the
+    # global file, so tomlCodec in internal/mcp handles it unmodified.
+    project_mcp_config_file: .codex/config.toml
     project_skills_search: *cps
     global_skills_search:
       - ~/.codex/skills
@@ -283,8 +290,12 @@ agents:
     supports_generic_project: true
     project_skills_dir: ""
     global_skills_dir: ~/.config/opencode/skills
-    global_mcp_config_file: ~/.config/opencode/config.json
-    project_mcp_config_file: ""
+    # File is opencode.json (schema at https://opencode.ai/config.json),
+    # NOT config.json — verified against a real install. See agent-capabilities.md.
+    global_mcp_config_file: ~/.config/opencode/opencode.json
+    # Workspace-root opencode.json / opencode.jsonc; "project opencode.json"
+    # sits above global in opencode's own precedence order.
+    project_mcp_config_file: opencode.json
     project_skills_search: *cps
     global_skills_search:
       - ~/.config/opencode/skills
