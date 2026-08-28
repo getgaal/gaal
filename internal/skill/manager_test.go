@@ -396,6 +396,39 @@ func TestIsLocalPath(t *testing.T) {
 	}
 }
 
+func TestIsLocalPath_PrefixlessExistingDir(t *testing.T) {
+	// Regression: a source written as "./skills" in a gaal.yaml reaches
+	// resolveSource as "some/dir/skills" — Config.expandPaths rebases it
+	// onto the config file's directory and filepath.Join strips the
+	// leading "./". That result is shaped exactly like a GitHub shorthand
+	// ("owner/repo"), so every relative local source was being sent to the
+	// git clone path and failing with "repository not found", even though
+	// example.gaal.yaml documents "./path/to/skills" as supported.
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "outer", "skills")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// Use a relative, prefixless path from a known cwd so the shape
+	// matches what expandPaths produces.
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if !isLocalPath(filepath.Join("outer", "skills")) {
+		t.Error("prefixless path to an existing directory must be treated as local")
+	}
+	// A prefixless path that does NOT exist stays a GitHub shorthand.
+	if isLocalPath("owner/repo") {
+		t.Error("owner/repo must remain a GitHub shorthand when no such directory exists")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Manager.SourcePaths
 // ---------------------------------------------------------------------------
