@@ -7,7 +7,10 @@ LDFLAGS       := -ldflags "-X github.com/getgaal/gaal/cmd.Version=$(VERSION) -X 
 LDFLAGS_R     := -ldflags "-X github.com/getgaal/gaal/cmd.Version=$(VERSION) -X github.com/getgaal/gaal/cmd.BuildTime=$(BUILD_TIME) -s -w -buildid= -extldflags '-static'"
 
 # Sandbox directory — override with: make sandbox SANDBOX=/my/dir
-SANDBOX  ?= $(shell mktemp -d /tmp/gaal-test-XXXXXX)
+# Simply-expanded (:=) on purpose: with ?= the $(shell mktemp) re-ran at
+# every $(SANDBOX) reference, so the directory announced by the echo was
+# not the one sync actually wrote to.
+SANDBOX  := $(or $(SANDBOX),$(shell mktemp -d /tmp/gaal-test-XXXXXX))
 
 # Cross-compilation — override with: make build-cross GOOS=linux GOARCH=arm64
 GOOS      ?= $(shell go env GOOS)
@@ -39,17 +42,38 @@ run-service: build
 	./$(BIN) --service --interval 30s --config example.gaal.yaml
 
 ## sandbox: one-shot sync in an isolated /tmp directory (safe for testing)
-sandbox: build
+#
+# Runs testdata/sandbox.gaal.yaml, not example.gaal.yaml: the example is
+# documentation and uses illustrative placeholder URLs (github.com/example/…)
+# that deliberately do not resolve, so running it always exited non-zero.
+# The sandbox config is fully offline and self-contained, so this target is
+# a real smoke test that must exit 0.
+sandbox: build sandbox-seed
 	@echo "Sandbox directory: $(SANDBOX)"
-	./$(BIN) --config example.gaal.yaml --sandbox $(SANDBOX) --verbose sync
+	./$(BIN)-dev --config testdata/sandbox.gaal.yaml --sandbox $(SANDBOX) --verbose sync
 	@echo ""
 	@echo "All files written under: $(SANDBOX)"
-	@find $(SANDBOX) -maxdepth 4 | sort
+	@find $(SANDBOX) -maxdepth 6 | sort
+
+# sandbox-seed builds the stub sub-repos the sandbox config's
+# `roots: ["*"]` discovers: two directories carrying a .git marker, and one
+# without so the run also demonstrates that non-repo siblings are skipped.
+#
+# These are created here rather than committed as fixtures because git
+# refuses to track any path containing a .git component, so a
+# testdata/.../.git/ directory silently would not survive a clone — and the
+# sandbox would then quietly stop exercising discovery at all.
+sandbox-seed:
+	@mkdir -p $(SANDBOX)/workspace/service-a/.git
+	@mkdir -p $(SANDBOX)/workspace/service-b/.git
+	@mkdir -p $(SANDBOX)/workspace/not-a-repo
+	@echo "No VCS marker here - roots: [\"*\"] must skip this directory." \
+		> $(SANDBOX)/workspace/not-a-repo/README.md
 
 ## sandbox-service: service mode in sandbox (Ctrl-C to stop)
-sandbox-service: build
+sandbox-service: build sandbox-seed
 	@echo "Sandbox directory: $(SANDBOX)"
-	./$(BIN) --config example.gaal.yaml --sandbox $(SANDBOX) --verbose --service --interval 30s
+	./$(BIN)-dev --config testdata/sandbox.gaal.yaml --sandbox $(SANDBOX) --verbose --service --interval 30s
 
 ## sandbox-status: status report in sandbox
 sandbox-status: build
