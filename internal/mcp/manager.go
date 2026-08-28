@@ -55,14 +55,22 @@ type Status struct {
 type Manager struct {
 	mcps     []config.ConfigMcp
 	home     string // user home directory for ~/ expansion and agent path resolution
+	workDir  string // workspace root that project-scoped (relative) targets resolve against
 	stateDir string // gaal state root for snapshot writing
 	warnOnce sync.Once
 }
 
-// NewManager creates a new MCP Manager.
-func NewManager(mcps []config.ConfigMcp, home, stateDir string) *Manager {
-	slog.Debug("creating mcp manager", "entries", len(mcps), "home", home)
-	return &Manager{mcps: mcps, home: home, stateDir: stateDir}
+// NewManager creates a new MCP Manager. workDir is the workspace root that
+// project-scoped agent targets (e.g. codex's ".codex/config.toml",
+// claude-code's ".mcp.json") resolve relative to — the same role workDir
+// plays for skill.Manager and content.Manager. Before #278 this fell back
+// to the OS process's actual working directory, an implicit assumption
+// that happened to hold only because gaal is always invoked from the
+// intended workspace root; it is now resolved explicitly like every other
+// manager.
+func NewManager(mcps []config.ConfigMcp, home, workDir, stateDir string) *Manager {
+	slog.Debug("creating mcp manager", "entries", len(mcps), "home", home, "workDir", workDir)
+	return &Manager{mcps: mcps, home: home, workDir: workDir, stateDir: stateDir}
 }
 
 // resolvedMCPs expands each ConfigMcp into one or more concrete entries with
@@ -100,6 +108,9 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 				target, ok = agent.GlobalMCPConfigPath(agentName, m.home)
 			} else {
 				target, ok = agent.ProjectMCPConfigPath(agentName, m.home)
+				if ok {
+					target = joinWorkDirIfRelative(target, m.workDir)
+				}
 			}
 			if !ok || target == "" {
 				slog.Debug("mcp: agent has no mcp config for this scope, skipping",
@@ -113,6 +124,20 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 		}
 	}
 	return out
+}
+
+// joinWorkDirIfRelative resolves a project-scope target against workDir,
+// mirroring skill.Manager's and content.Manager's existing project-path
+// resolution. target is left unchanged when it is already absolute —
+// ProjectMCPConfigPath already expands a ~/-prefixed
+// ProjectMCPConfigFile to an absolute path before this runs, so only the
+// genuinely workspace-relative case (e.g. ".mcp.json", ".codex/config.toml")
+// needs joining here; an empty target (unsupported scope) is returned as-is.
+func joinWorkDirIfRelative(target, workDir string) string {
+	if target == "" || filepath.IsAbs(target) {
+		return target
+	}
+	return filepath.Join(workDir, target)
 }
 
 // emitConfigWarnings surfaces issues that depend on the user's MCP config
