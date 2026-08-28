@@ -909,7 +909,29 @@ func TestResolvedMCPs_AgentWithGlobalTrue_ResolvesTarget(t *testing.T) {
 }
 
 func TestResolvedMCPs_AgentWithGlobalFalse_SkipsWhenNoProjectMCP(t *testing.T) {
-	// codex has an empty project_mcp_config_file → should be skipped.
+	// agy has an empty project_mcp_config_file (project-local MCP is
+	// ignored by the CLI itself) → should be skipped.
+	home := "/home/testuser"
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "srv",
+			Global: false,
+			Agents: []string{"agy"},
+			Inline: &config.ConfigMcpItem{Command: "node"},
+		},
+	}
+	m := NewManager(mcps, home, "")
+	resolved := m.resolvedMCPs()
+	if len(resolved) != 0 {
+		t.Errorf("expected 0 resolved entries for agy project scope (empty), got %d", len(resolved))
+	}
+}
+
+func TestResolvedMCPs_CodexProjectScope_ResolvesToConfigTOML(t *testing.T) {
+	// codex's project scope writes to .codex/config.toml at the workspace
+	// root (the file Codex itself reads, gated by its own trusted-project
+	// prompt). Path is workspace-relative; the same tomlCodec that handles
+	// the global ~/.codex/config.toml handles this one unmodified.
 	home := "/home/testuser"
 	mcps := []config.ConfigMcp{
 		{
@@ -921,8 +943,11 @@ func TestResolvedMCPs_AgentWithGlobalFalse_SkipsWhenNoProjectMCP(t *testing.T) {
 	}
 	m := NewManager(mcps, home, "")
 	resolved := m.resolvedMCPs()
-	if len(resolved) != 0 {
-		t.Errorf("expected 0 resolved entries for codex project scope (empty), got %d", len(resolved))
+	if len(resolved) != 1 {
+		t.Fatalf("expected 1 resolved entry for codex project scope, got %d", len(resolved))
+	}
+	if resolved[0].Target != ".codex/config.toml" {
+		t.Errorf("expected target .codex/config.toml, got %q", resolved[0].Target)
 	}
 }
 
