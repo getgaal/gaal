@@ -99,16 +99,8 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 			agentNames = agent.Names()
 		}
 
-		// Roots only applies to project scope — a global entry has exactly
-		// one target (the agent's user-global config file) regardless of
-		// how many sub-repos exist under workDir.
-		roots := []string{""}
-		if !mc.Global && len(mc.Roots) > 0 {
-			roots = m.resolveRoots(mc.Roots)
-		}
-
 		for _, agentName := range agentNames {
-			for _, root := range roots {
+			for _, root := range m.roots(mc) {
 				var (
 					target string
 					ok     bool
@@ -136,40 +128,22 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 	return out
 }
 
-// resolveRoots expands a ConfigMcp.Roots list into the workspace-relative
-// sub-repo directories to fan a project-scope entry out across. An entry
-// naming "*" anywhere in the list is replaced by every immediate child of
-// workDir containing a VCS marker (see discover.ImmediateVCSChildren);
-// every other entry is kept as a literal workspace-relative root. Duplicate
-// roots (e.g. an explicit root that auto-discovery would also find) are
-// deduplicated, preserving first-seen order so config-declared roots sort
-// before discovered ones.
-func (m *Manager) resolveRoots(roots []string) []string {
-	slog.Debug("resolving mcp roots", "declared", roots, "workDir", m.workDir)
-	seen := make(map[string]struct{}, len(roots))
-	var out []string
-	add := func(r string) {
-		if _, ok := seen[r]; ok {
-			return
-		}
-		seen[r] = struct{}{}
-		out = append(out, r)
+// roots returns the effective root list to fan mc out across: mc.Roots
+// resolved via discover.ResolveRoots (explicit list, "*" auto-discovery, or
+// a mix), or [""] when mc declares no roots — the pre-roots: behaviour of
+// resolving once against workDir. Global entries always resolve to [""];
+// roots: only applies to project scope, since a global entry has exactly
+// one target (the agent's user-global config file) regardless of how many
+// sub-repos exist under workDir.
+//
+// Mirrors skill.Manager.roots and content.Manager.roots — all three
+// delegate to discover.ResolveRoots so "roots:" behaves identically
+// wherever it appears in a gaal.yaml.
+func (m *Manager) roots(mc config.ConfigMcp) []string {
+	if mc.Global || len(mc.Roots) == 0 {
+		return []string{""}
 	}
-	for _, r := range roots {
-		if r == "*" {
-			discovered, err := discover.ImmediateVCSChildren(m.workDir)
-			if err != nil {
-				slog.Warn("mcp: roots auto-discovery failed", "workDir", m.workDir, "err", err)
-				continue
-			}
-			for _, d := range discovered {
-				add(d)
-			}
-			continue
-		}
-		add(r)
-	}
-	return out
+	return discover.ResolveRoots(mc.Roots, m.workDir)
 }
 
 // joinWorkDirIfRelative resolves a project-scope target against workDir,

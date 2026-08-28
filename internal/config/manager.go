@@ -94,10 +94,15 @@ type ConfigRepo struct {
 
 // ConfigSkill defines a skill source to install.
 type ConfigSkill struct {
-	Source       string       `yaml:"source"                 json:"source"                 jsonschema:"description=Skill source: GitHub shorthand (owner/repo), HTTPS URL, or local path" validate:"required"`
-	Registry     string       `yaml:"registry,omitempty"     json:"registry,omitempty"     jsonschema:"description=Optional registry provenance for registry-installed skills (for example skills.sh)"`
-	Agents       []string     `yaml:"agents,omitempty"       json:"agents,omitempty"       jsonschema:"description=Target agent identifiers; use [\"*\"] to target all detected agents"`
-	Global       bool         `yaml:"global,omitempty"       json:"global,omitempty"       jsonschema:"description=When true the skill is installed globally under ~/.<agent>/skills/ instead of the project directory"`
+	Source   string   `yaml:"source"                 json:"source"                 jsonschema:"description=Skill source: GitHub shorthand (owner/repo), HTTPS URL, or local path" validate:"required"`
+	Registry string   `yaml:"registry,omitempty"     json:"registry,omitempty"     jsonschema:"description=Optional registry provenance for registry-installed skills (for example skills.sh)"`
+	Agents   []string `yaml:"agents,omitempty"       json:"agents,omitempty"       jsonschema:"description=Target agent identifiers; use [\"*\"] to target all detected agents"`
+	Global   bool     `yaml:"global,omitempty"       json:"global,omitempty"       jsonschema:"description=When true the skill is installed globally under ~/.<agent>/skills/ instead of the project directory"`
+	// Roots fans a project-scope (global: false) entry out across multiple
+	// workspace-relative sub-repo directories in one pass — see ConfigMcp.Roots
+	// for the full rationale (same field, same semantics, shared across
+	// skills/content/mcps). Ignored when global is true.
+	Roots        []string     `yaml:"roots,omitempty"        json:"roots,omitempty"        jsonschema:"description=Workspace-relative sub-repo directories to fan a project-scope entry out across; use [\"*\"] to auto-discover every immediate child directory with a VCS marker"`
 	TargetSubdir string       `yaml:"target_subdir,omitempty" json:"target_subdir,omitempty" jsonschema:"description=Optional subdirectory under the resolved agent skills directory where selected skills are installed"`
 	Select       []string     `yaml:"select,omitempty"       json:"select,omitempty"       jsonschema:"description=Specific skill names to include; empty list installs all skills from the source"`
 	Tools        []ConfigTool `yaml:"tools,omitempty"        json:"tools,omitempty"        jsonschema:"description=CLI tools required by this skill; gaal doctor reports any missing ones"                             validate:"dive"`
@@ -124,10 +129,18 @@ type ConfigContent struct {
 
 // ConfigContentTarget is one concrete destination fan-out for a content entry.
 type ConfigContentTarget struct {
-	Agents []string          `yaml:"agents,omitempty" json:"agents,omitempty" jsonschema:"description=Agent identifiers that receive this content"`
-	Scope  string            `yaml:"scope,omitempty" json:"scope,omitempty" jsonschema:"description=Destination scope,enum=project,enum=global"`
-	Root   string            `yaml:"root,omitempty" json:"root,omitempty" jsonschema:"description=Destination root,enum=agent,enum=workspace"`
-	Paths  map[string]string `yaml:"paths" json:"paths" jsonschema:"description=Source-relative to destination-relative path mappings" validate:"required"`
+	Agents []string `yaml:"agents,omitempty" json:"agents,omitempty" jsonschema:"description=Agent identifiers that receive this content"`
+	Scope  string   `yaml:"scope,omitempty" json:"scope,omitempty" jsonschema:"description=Destination scope,enum=project,enum=global"`
+	// Root (singular) selects WHICH root the destination is relative to —
+	// the agent's config directory or the workspace. Distinct from Roots
+	// (plural) below, which selects HOW MANY sub-repos to fan out across.
+	Root string `yaml:"root,omitempty" json:"root,omitempty" jsonschema:"description=Destination root,enum=agent,enum=workspace"`
+	// Roots fans a project-scope target out across multiple
+	// workspace-relative sub-repo directories in one pass — see
+	// ConfigMcp.Roots for the full rationale (same field, same semantics,
+	// shared across skills/content/mcps). Ignored for global-scope targets.
+	Roots []string          `yaml:"roots,omitempty" json:"roots,omitempty" jsonschema:"description=Workspace-relative sub-repo directories to fan a project-scope target out across; use [\"*\"] to auto-discover every immediate child directory with a VCS marker"`
+	Paths map[string]string `yaml:"paths" json:"paths" jsonschema:"description=Source-relative to destination-relative path mappings" validate:"required"`
 }
 
 // ConfigMcp defines an MCP server configuration entry.
@@ -750,7 +763,7 @@ func (c *Config) validateMCPItems() error {
 // []string so downstream code does not need to care.
 func (s *ConfigSkill) UnmarshalYAML(node *yaml.Node) error {
 	slog.Debug("decoding config skill", "line", node.Line, "kind", node.Kind)
-	if err := ioyaml.ValidateMappingKeys(node, "source", "registry", "agents", "global", "target_subdir", "select", "tools"); err != nil {
+	if err := ioyaml.ValidateMappingKeys(node, "source", "registry", "agents", "global", "roots", "target_subdir", "select", "tools"); err != nil {
 		return err
 	}
 	type rawSkill struct {
@@ -758,6 +771,7 @@ func (s *ConfigSkill) UnmarshalYAML(node *yaml.Node) error {
 		Registry     string       `yaml:"registry,omitempty"`
 		Agents       yaml.Node    `yaml:"agents,omitempty"`
 		Global       bool         `yaml:"global,omitempty"`
+		Roots        []string     `yaml:"roots,omitempty"`
 		TargetSubdir string       `yaml:"target_subdir,omitempty"`
 		Select       []string     `yaml:"select,omitempty"`
 		Tools        []ConfigTool `yaml:"tools,omitempty"`
@@ -770,6 +784,7 @@ func (s *ConfigSkill) UnmarshalYAML(node *yaml.Node) error {
 	s.Source = raw.Source
 	s.Registry = raw.Registry
 	s.Global = raw.Global
+	s.Roots = raw.Roots
 	s.TargetSubdir = raw.TargetSubdir
 	s.Select = raw.Select
 	s.Tools = raw.Tools

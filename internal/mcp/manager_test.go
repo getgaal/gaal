@@ -1386,15 +1386,30 @@ func TestResolvedMCPs_Roots_WildcardMixedWithExplicit_Deduplicates(t *testing.T)
 	}
 }
 
-func TestResolveRoots_WildcardDiscoveryFailure_LogsAndSkips(t *testing.T) {
+func TestRoots_WildcardAgainstMissingWorkDir_DegradesToNoRoots(t *testing.T) {
 	// A workDir that doesn't exist makes ImmediateVCSChildren return
 	// (nil, nil) — not an error — so "*" alone against a bad workDir
 	// degrades to zero discovered roots rather than failing the whole
-	// sync. This pins that resolveRoots doesn't propagate a hard error
-	// for the not-exist case.
+	// sync.
 	m := NewManager(nil, "/home/testuser", filepath.Join(t.TempDir(), "does-not-exist"), "")
-	got := m.resolveRoots([]string{"*"})
+	got := m.roots(config.ConfigMcp{Roots: []string{"*"}})
 	if len(got) != 0 {
 		t.Errorf("expected no roots for a missing workDir, got %v", got)
+	}
+}
+
+func TestRoots_GlobalEntry_IgnoresRoots(t *testing.T) {
+	m := NewManager(nil, "/home/testuser", t.TempDir(), "")
+	got := m.roots(config.ConfigMcp{Global: true, Roots: []string{"frontend", "api"}})
+	if len(got) != 1 || got[0] != "" {
+		t.Errorf("global entry roots = %v, want [\"\"]", got)
+	}
+}
+
+func TestRoots_NoRootsDeclared_ReturnsSingleEmptyRoot(t *testing.T) {
+	m := NewManager(nil, "/home/testuser", t.TempDir(), "")
+	got := m.roots(config.ConfigMcp{})
+	if len(got) != 1 || got[0] != "" {
+		t.Errorf("no-roots entry = %v, want [\"\"]", got)
 	}
 }
