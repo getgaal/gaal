@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/getgaal/gaal/internal/config"
@@ -258,5 +259,69 @@ func TestManagerStatus_Roots_ReportsSubRootPerEntry(t *testing.T) {
 		if !seen[want] {
 			t.Errorf("Status did not report SubRoot %q; got %v", want, seen)
 		}
+	}
+}
+
+func TestTargetRoot_AgentScope_JoinsSubRepoRoot(t *testing.T) {
+	// root: agent resolves relative to the agent's own config directory
+	// rather than the workspace. The sub-repo root must still be joined in
+	// for a project-scope target, so a roots: entry lands inside the right
+	// sub-repo (e.g. <workDir>/service-a/.claude) rather than collapsing
+	// every root onto <workDir>/.claude.
+	workDir := t.TempDir()
+	m := NewManager(nil, t.TempDir(), t.TempDir(), workDir, "", false)
+
+	target := config.ConfigContentTarget{
+		Agents: []string{"claude-code"},
+		Scope:  "project",
+		Root:   "agent",
+		Paths:  map[string]string{"AGENTS.md": "CLAUDE.md"},
+	}
+
+	got, err := m.targetRoot("claude-code", target, "service-a")
+	if err != nil {
+		t.Fatalf("targetRoot: %v", err)
+	}
+	want := filepath.Join(workDir, "service-a", ".claude")
+	if got != want {
+		t.Errorf("targetRoot = %q, want %q", got, want)
+	}
+
+	// With no sub-repo root the result is unchanged from before roots:
+	// existed.
+	gotNoRoot, err := m.targetRoot("claude-code", target, "")
+	if err != nil {
+		t.Fatalf("targetRoot (no root): %v", err)
+	}
+	if wantNoRoot := filepath.Join(workDir, ".claude"); gotNoRoot != wantNoRoot {
+		t.Errorf("targetRoot with empty root = %q, want %q", gotNoRoot, wantNoRoot)
+	}
+}
+
+func TestTargetRoot_UnknownAgent_Errors(t *testing.T) {
+	m := NewManager(nil, t.TempDir(), t.TempDir(), t.TempDir(), "", false)
+	target := config.ConfigContentTarget{Scope: "project", Root: "agent"}
+	if _, err := m.targetRoot("no-such-agent", target, ""); err == nil {
+		t.Error("expected an error for an unknown agent")
+	}
+}
+
+func TestTargetRoot_GlobalScope_IgnoresSubRepoRoot(t *testing.T) {
+	// A global-scope target resolves under the user's home directory, so
+	// the sub-repo root must not be spliced into the path.
+	home := t.TempDir()
+	workDir := t.TempDir()
+	m := NewManager(nil, t.TempDir(), home, workDir, "", false)
+
+	target := config.ConfigContentTarget{Scope: "global", Root: "agent"}
+	got, err := m.targetRoot("claude-code", target, "service-a")
+	if err != nil {
+		t.Fatalf("targetRoot: %v", err)
+	}
+	if strings.Contains(got, "service-a") {
+		t.Errorf("global target must not include the sub-repo root; got %q", got)
+	}
+	if !strings.HasPrefix(got, home) {
+		t.Errorf("global target should resolve under home %q; got %q", home, got)
 	}
 }
