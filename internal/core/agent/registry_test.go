@@ -241,6 +241,53 @@ func TestGenericProjectFlaggedAgents(t *testing.T) {
 	}
 }
 
+func TestCodexProjectMCPConfigFile(t *testing.T) {
+	// Codex reads .codex/config.toml at the project root as a real
+	// workspace-scoped MCP config, gated by its own "trusted project"
+	// prompt. Regression test for the mcp_project_unsupported gap.
+	info, ok := agent.Lookup("codex")
+	if !ok {
+		t.Fatal("agent \"codex\" not registered")
+	}
+	if info.ProjectMCPConfigFile != ".codex/config.toml" {
+		t.Errorf("codex ProjectMCPConfigFile: got %q, want .codex/config.toml", info.ProjectMCPConfigFile)
+	}
+	if _, ok := agent.ProjectMCPConfigPath("codex", "/home/testuser"); !ok {
+		t.Error("expected codex project MCP config path to resolve")
+	}
+}
+
+func TestAugmentProjectMCPConfigFile(t *testing.T) {
+	// Augment reads .mcp.json at the repo root, same shape/key as
+	// claude-code's. Regression test for the mcp_project_unsupported gap.
+	info, ok := agent.Lookup("augment")
+	if !ok {
+		t.Fatal("agent \"augment\" not registered")
+	}
+	if info.ProjectMCPConfigFile != ".mcp.json" {
+		t.Errorf("augment ProjectMCPConfigFile: got %q, want .mcp.json", info.ProjectMCPConfigFile)
+	}
+}
+
+func TestOpencodeMCPConfigFiles(t *testing.T) {
+	// opencode's config file is opencode.json (schema at
+	// https://opencode.ai/config.json), not config.json — the registry
+	// previously pointed global_mcp_config_file at a file that never
+	// existed on a real opencode install. Also verifies project scope
+	// (project opencode.json sits above global in opencode's own
+	// precedence order) now resolves.
+	info, ok := agent.Lookup("opencode")
+	if !ok {
+		t.Fatal("agent \"opencode\" not registered")
+	}
+	if info.GlobalMCPConfigFile != "~/.config/opencode/opencode.json" {
+		t.Errorf("opencode GlobalMCPConfigFile: got %q, want ~/.config/opencode/opencode.json", info.GlobalMCPConfigFile)
+	}
+	if info.ProjectMCPConfigFile != "opencode.json" {
+		t.Errorf("opencode ProjectMCPConfigFile: got %q, want opencode.json", info.ProjectMCPConfigFile)
+	}
+}
+
 func TestGenericGlobalFlaggedAgents(t *testing.T) {
 	// cline, warp, and agy delegate their global skills to the shared
 	// ~/.agents/skills convention.
