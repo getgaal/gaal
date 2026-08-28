@@ -169,3 +169,82 @@ func TestComputeRepoDrift_unknownVCSType(t *testing.T) {
 		t.Errorf("got %q, want DriftUnknown", got)
 	}
 }
+
+func TestImmediateVCSChildren_FindsOnlyDirectVCSChildren(t *testing.T) {
+	root := t.TempDir()
+
+	// Two real repo-like children (a plain .git dir is enough to trigger
+	// hasVCSMarker — no real git binary or history needed).
+	mustMkdirAll(t, filepath.Join(root, "frontend", ".git"))
+	mustMkdirAll(t, filepath.Join(root, "api", ".git"))
+
+	// A non-repo directory must be skipped.
+	mustMkdirAll(t, filepath.Join(root, "docs"))
+
+	// A VCS marker nested two levels down must NOT be treated as an
+	// immediate child — this only scans the direct children of root.
+	mustMkdirAll(t, filepath.Join(root, "docs", "nested-repo", ".git"))
+
+	// A skipDirs entry (node_modules) must be skipped even if it somehow
+	// contained a VCS marker.
+	mustMkdirAll(t, filepath.Join(root, "node_modules", ".git"))
+
+	got, err := ImmediateVCSChildren(root)
+	if err != nil {
+		t.Fatalf("ImmediateVCSChildren: %v", err)
+	}
+	want := []string{"api", "frontend"} // alphabetical
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("got[%d] = %q, want %q (full: %v)", i, got[i], w, got)
+		}
+	}
+}
+
+func TestImmediateVCSChildren_NoVCSChildren_ReturnsEmpty(t *testing.T) {
+	root := t.TempDir()
+	mustMkdirAll(t, filepath.Join(root, "not-a-repo"))
+
+	got, err := ImmediateVCSChildren(root)
+	if err != nil {
+		t.Fatalf("ImmediateVCSChildren: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected no VCS children, got %v", got)
+	}
+}
+
+func TestImmediateVCSChildren_MissingWorkDir_ReturnsEmptyNoError(t *testing.T) {
+	got, err := ImmediateVCSChildren(filepath.Join(t.TempDir(), "does-not-exist"))
+	if err != nil {
+		t.Fatalf("expected nil error for missing workDir, got %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil result, got %v", got)
+	}
+}
+
+func TestImmediateVCSChildren_RecognisesEveryVCSMarker(t *testing.T) {
+	root := t.TempDir()
+	for _, marker := range []string{".git", ".hg", ".svn", ".bzr"} {
+		mustMkdirAll(t, filepath.Join(root, marker+"-repo", marker))
+	}
+
+	got, err := ImmediateVCSChildren(root)
+	if err != nil {
+		t.Fatalf("ImmediateVCSChildren: %v", err)
+	}
+	if len(got) != 4 {
+		t.Errorf("expected 4 VCS children (one per marker type), got %d: %v", len(got), got)
+	}
+}
+
+func mustMkdirAll(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", path, err)
+	}
+}

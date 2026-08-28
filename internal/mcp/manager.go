@@ -99,29 +99,75 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 			agentNames = agent.Names()
 		}
 
+		// Roots only applies to project scope — a global entry has exactly
+		// one target (the agent's user-global config file) regardless of
+		// how many sub-repos exist under workDir.
+		roots := []string{""}
+		if !mc.Global && len(mc.Roots) > 0 {
+			roots = m.resolveRoots(mc.Roots)
+		}
+
 		for _, agentName := range agentNames {
-			var (
-				target string
-				ok     bool
-			)
-			if mc.Global {
-				target, ok = agent.GlobalMCPConfigPath(agentName, m.home)
-			} else {
-				target, ok = agent.ProjectMCPConfigPath(agentName, m.home)
-				if ok {
-					target = joinWorkDirIfRelative(target, m.workDir)
+			for _, root := range roots {
+				var (
+					target string
+					ok     bool
+				)
+				if mc.Global {
+					target, ok = agent.GlobalMCPConfigPath(agentName, m.home)
+				} else {
+					target, ok = agent.ProjectMCPConfigPath(agentName, m.home)
+					if ok {
+						target = joinWorkDirIfRelative(target, filepath.Join(m.workDir, root))
+					}
 				}
+				if !ok || target == "" {
+					slog.Debug("mcp: agent has no mcp config for this scope, skipping",
+						"name", mc.Name, "agent", agentName, "root", root, "global", mc.Global)
+					continue
+				}
+				resolved := mc
+				resolved.Target = target
+				slog.Debug("mcp: resolved target", "name", mc.Name, "agent", agentName, "root", root, "target", target, "global", mc.Global)
+				out = append(out, resolved)
 			}
-			if !ok || target == "" {
-				slog.Debug("mcp: agent has no mcp config for this scope, skipping",
-					"name", mc.Name, "agent", agentName, "global", mc.Global)
+		}
+	}
+	return out
+}
+
+// resolveRoots expands a ConfigMcp.Roots list into the workspace-relative
+// sub-repo directories to fan a project-scope entry out across. An entry
+// naming "*" anywhere in the list is replaced by every immediate child of
+// workDir containing a VCS marker (see discover.ImmediateVCSChildren);
+// every other entry is kept as a literal workspace-relative root. Duplicate
+// roots (e.g. an explicit root that auto-discovery would also find) are
+// deduplicated, preserving first-seen order so config-declared roots sort
+// before discovered ones.
+func (m *Manager) resolveRoots(roots []string) []string {
+	slog.Debug("resolving mcp roots", "declared", roots, "workDir", m.workDir)
+	seen := make(map[string]struct{}, len(roots))
+	var out []string
+	add := func(r string) {
+		if _, ok := seen[r]; ok {
+			return
+		}
+		seen[r] = struct{}{}
+		out = append(out, r)
+	}
+	for _, r := range roots {
+		if r == "*" {
+			discovered, err := discover.ImmediateVCSChildren(m.workDir)
+			if err != nil {
+				slog.Warn("mcp: roots auto-discovery failed", "workDir", m.workDir, "err", err)
 				continue
 			}
-			resolved := mc
-			resolved.Target = target
-			slog.Debug("mcp: resolved target", "name", mc.Name, "agent", agentName, "target", target, "global", mc.Global)
-			out = append(out, resolved)
+			for _, d := range discovered {
+				add(d)
+			}
+			continue
 		}
+		add(r)
 	}
 	return out
 }

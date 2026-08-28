@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/getgaal/gaal/internal/core/vcs"
@@ -128,4 +129,36 @@ func depthOf(rel string) int {
 		return 0
 	}
 	return strings.Count(rel, string(filepath.Separator)) + 1
+}
+
+// ImmediateVCSChildren returns the base names of every immediate child
+// directory of workDir that contains a VCS marker (.git, .hg, .svn, .bzr),
+// sorted alphabetically for deterministic output. It does not recurse —
+// only direct children of workDir are checked, matching the flat
+// umbrella-directory-of-repos layout (one directory holding many
+// independent repo clones as siblings) this is built for. skipDirs entries
+// (node_modules, vendor, …) are skipped like the rest of workspace
+// scanning. A workDir that does not exist or cannot be read returns an
+// empty, non-error result — callers that need to distinguish "no repos
+// found" from "workDir itself is missing" should stat workDir first.
+func ImmediateVCSChildren(workDir string) ([]string, error) {
+	slog.Debug("scanning for immediate VCS children", "workDir", workDir)
+	entries, err := os.ReadDir(workDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var children []string
+	for _, e := range entries {
+		if !e.IsDir() || skipDirs[e.Name()] {
+			continue
+		}
+		if hasVCSMarker(filepath.Join(workDir, e.Name())) {
+			children = append(children, e.Name())
+		}
+	}
+	sort.Strings(children)
+	return children, nil
 }

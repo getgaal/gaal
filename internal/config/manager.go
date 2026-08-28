@@ -144,7 +144,17 @@ type ConfigMcp struct {
 	// Global controls which registry path is used:
 	//   false (default) -> project_mcp_config_file (workspace-scoped)
 	//   true            -> global_mcp_config_file   (user-global)
-	Global bool           `yaml:"global,omitempty" json:"global,omitempty"  jsonschema:"description=When true the MCP is configured in the agent's global config file instead of the project-scoped one"`
+	Global bool `yaml:"global,omitempty" json:"global,omitempty"  jsonschema:"description=When true the MCP is configured in the agent's global config file instead of the project-scoped one"`
+	// Roots fans a project-scope (global: false) entry out across multiple
+	// workspace-relative sub-repo directories in one pass — e.g. an
+	// umbrella directory holding many independent repo clones, where each
+	// listed root gets its own resolved config file. Ignored when global
+	// is true (a global entry has exactly one target: the agent's
+	// user-global config file). ["*"] auto-discovers every immediate
+	// child directory containing a VCS marker (.git/.hg/.svn/.bzr),
+	// reusing the same detection internal/discover already uses for
+	// workspace scanning.
+	Roots  []string       `yaml:"roots,omitempty"  json:"roots,omitempty"   jsonschema:"description=Workspace-relative sub-repo directories to fan a project-scope entry out across; use [\"*\"] to auto-discover every immediate child directory with a VCS marker"`
 	Merge  *bool          `yaml:"merge,omitempty"  json:"merge,omitempty"   jsonschema:"description=Merge server entry into existing file rather than overwriting it (default: true when omitted)"`
 	Inline *ConfigMcpItem `yaml:"inline,omitempty" json:"inline,omitempty"  jsonschema:"description=Inline server definition (mutually exclusive with source)"                          validate:"omitempty"`
 }

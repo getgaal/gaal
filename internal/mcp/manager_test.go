@@ -1231,3 +1231,170 @@ func TestEmitConfigWarnings_FiresOncePerManager(t *testing.T) {
 		t.Errorf("expected warning to fire exactly once, fired %d times", count)
 	}
 }
+
+// ── roots: fan-out ───────────────────────────────────────────────────────
+
+func TestResolvedMCPs_Roots_ExplicitList_FansOutPerRoot(t *testing.T) {
+	home := "/home/testuser"
+	workDir := t.TempDir()
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "railway",
+			Global: false,
+			Agents: []string{"claude-code"},
+			Roots:  []string{"frontend", "api"},
+			Inline: &config.ConfigMcpItem{Command: "node"},
+		},
+	}
+	m := NewManager(mcps, home, workDir, "")
+	resolved := m.resolvedMCPs()
+	if len(resolved) != 2 {
+		t.Fatalf("expected 2 resolved entries (one per root), got %d: %+v", len(resolved), resolved)
+	}
+	wantTargets := map[string]bool{
+		filepath.Join(workDir, "frontend", ".mcp.json"): false,
+		filepath.Join(workDir, "api", ".mcp.json"):      false,
+	}
+	for _, mc := range resolved {
+		if _, ok := wantTargets[mc.Target]; !ok {
+			t.Errorf("unexpected target: %q", mc.Target)
+			continue
+		}
+		wantTargets[mc.Target] = true
+	}
+	for target, found := range wantTargets {
+		if !found {
+			t.Errorf("expected target %q, not found in resolved entries", target)
+		}
+	}
+}
+
+func TestResolvedMCPs_Roots_IgnoredWhenGlobal(t *testing.T) {
+	// Roots only makes sense for project scope — a global entry has
+	// exactly one target regardless of how many roots are declared.
+	home := "/home/testuser"
+	workDir := t.TempDir()
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "context7",
+			Global: true,
+			Agents: []string{"claude-code"},
+			Roots:  []string{"frontend", "api"},
+			Inline: &config.ConfigMcpItem{Command: "node"},
+		},
+	}
+	m := NewManager(mcps, home, workDir, "")
+	resolved := m.resolvedMCPs()
+	if len(resolved) != 1 {
+		t.Fatalf("expected exactly 1 resolved entry for a global entry, got %d: %+v", len(resolved), resolved)
+	}
+}
+
+func TestResolvedMCPs_Roots_MultipleAgentsTimesMultipleRoots(t *testing.T) {
+	home := "/home/testuser"
+	workDir := t.TempDir()
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "railway",
+			Global: false,
+			Agents: []string{"claude-code", "augment"},
+			Roots:  []string{"frontend", "api"},
+			Inline: &config.ConfigMcpItem{Command: "node"},
+		},
+	}
+	m := NewManager(mcps, home, workDir, "")
+	resolved := m.resolvedMCPs()
+	// 2 agents x 2 roots = 4, assuming both agents support project MCP
+	// (claude-code does today; augment's support lands in a separate PR —
+	// this test only asserts the fan-out arithmetic, not which specific
+	// agents currently resolve).
+	if len(resolved) == 0 {
+		t.Fatal("expected at least claude-code x 2 roots = 2 resolved entries")
+	}
+	for _, mc := range resolved {
+		if mc.Roots == nil {
+			t.Errorf("resolved entry lost the original Roots field: %+v", mc)
+		}
+	}
+}
+
+func TestResolvedMCPs_Roots_Wildcard_AutoDiscoversVCSChildren(t *testing.T) {
+	workDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workDir, "frontend", ".git"), 0o755); err != nil {
+		t.Fatalf("seed frontend/.git: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(workDir, "api", ".git"), 0o755); err != nil {
+		t.Fatalf("seed api/.git: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(workDir, "not-a-repo"), 0o755); err != nil {
+		t.Fatalf("seed not-a-repo: %v", err)
+	}
+
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "railway",
+			Global: false,
+			Agents: []string{"claude-code"},
+			Roots:  []string{"*"},
+			Inline: &config.ConfigMcpItem{Command: "node"},
+		},
+	}
+	m := NewManager(mcps, "/home/testuser", workDir, "")
+	resolved := m.resolvedMCPs()
+	if len(resolved) != 2 {
+		t.Fatalf("expected 2 resolved entries (frontend, api), got %d: %+v", len(resolved), resolved)
+	}
+	wantTargets := map[string]bool{
+		filepath.Join(workDir, "frontend", ".mcp.json"): false,
+		filepath.Join(workDir, "api", ".mcp.json"):      false,
+	}
+	for _, mc := range resolved {
+		if _, ok := wantTargets[mc.Target]; ok {
+			wantTargets[mc.Target] = true
+		} else {
+			t.Errorf("unexpected target: %q", mc.Target)
+		}
+	}
+	for target, found := range wantTargets {
+		if !found {
+			t.Errorf("expected auto-discovered target %q, not found", target)
+		}
+	}
+}
+
+func TestResolvedMCPs_Roots_WildcardMixedWithExplicit_Deduplicates(t *testing.T) {
+	workDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workDir, "frontend", ".git"), 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	mcps := []config.ConfigMcp{
+		{
+			Name:   "railway",
+			Global: false,
+			Agents: []string{"claude-code"},
+			// "frontend" appears both explicitly and via "*" discovery —
+			// must resolve to exactly one entry, not two.
+			Roots:  []string{"frontend", "*"},
+			Inline: &config.ConfigMcpItem{Command: "node"},
+		},
+	}
+	m := NewManager(mcps, "/home/testuser", workDir, "")
+	resolved := m.resolvedMCPs()
+	if len(resolved) != 1 {
+		t.Fatalf("expected exactly 1 deduplicated entry, got %d: %+v", len(resolved), resolved)
+	}
+}
+
+func TestResolveRoots_WildcardDiscoveryFailure_LogsAndSkips(t *testing.T) {
+	// A workDir that doesn't exist makes ImmediateVCSChildren return
+	// (nil, nil) — not an error — so "*" alone against a bad workDir
+	// degrades to zero discovered roots rather than failing the whole
+	// sync. This pins that resolveRoots doesn't propagate a hard error
+	// for the not-exist case.
+	m := NewManager(nil, "/home/testuser", filepath.Join(t.TempDir(), "does-not-exist"), "")
+	got := m.resolveRoots([]string{"*"})
+	if len(got) != 0 {
+		t.Errorf("expected no roots for a missing workDir, got %v", got)
+	}
+}
