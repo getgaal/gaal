@@ -33,9 +33,15 @@ type Status struct {
 	Source string
 	Agent  string
 	Scope  string
-	Root   string
-	Paths  []PathStatus
-	Err    error
+	// Root is the destination root KIND ("agent" or "workspace") — see
+	// ConfigContentTarget.Root. Distinct from SubRoot below.
+	Root string
+	// SubRoot is the workspace-relative sub-repo directory this status is
+	// for ("" when the target declares no roots:) — see
+	// ConfigContentTarget.Roots.
+	SubRoot string
+	Paths   []PathStatus
+	Err     error
 }
 
 type Manager struct {
@@ -81,20 +87,22 @@ func (m *Manager) syncOne(ctx context.Context, entry config.ConfigContent) error
 
 	var errs []error
 	for _, target := range expandTargets(entry) {
-		for _, agentName := range m.resolveAgents(target) {
-			root, err := m.targetRoot(agentName, target)
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
-			for _, mapping := range sortedMappings(target.Paths) {
-				src := filepath.Join(sourceRoot, filepath.FromSlash(strings.TrimSuffix(mapping.Source, "/")))
-				dst := filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(mapping.Dest, "/")))
-				if err := copyPath(src, dst); err != nil {
-					errs = append(errs, fmt.Errorf("%s -> %s: %w", mapping.Source, dst, err))
+		for _, subRoot := range m.roots(target) {
+			for _, agentName := range m.resolveAgents(target) {
+				root, err := m.targetRoot(agentName, target, subRoot)
+				if err != nil {
+					errs = append(errs, err)
 					continue
 				}
-				m.writeContentSnapshot(dst)
+				for _, mapping := range sortedMappings(target.Paths) {
+					src := filepath.Join(sourceRoot, filepath.FromSlash(strings.TrimSuffix(mapping.Source, "/")))
+					dst := filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(mapping.Dest, "/")))
+					if err := copyPath(src, dst); err != nil {
+						errs = append(errs, fmt.Errorf("%s -> %s: %w", mapping.Source, dst, err))
+						continue
+					}
+					m.writeContentSnapshot(dst)
+				}
 			}
 		}
 	}
@@ -106,37 +114,39 @@ func (m *Manager) statusOne(ctx context.Context, entry config.ConfigContent) []S
 	sourceRoot, err := cachedSourcePath(m.cacheDir, entry.Source)
 	var out []Status
 	for _, target := range expandTargets(entry) {
-		for _, agentName := range m.resolveAgents(target) {
-			st := Status{Source: entry.Source, Agent: agentName, Scope: targetScope(target), Root: targetRootKind(target)}
-			root, rootErr := m.targetRoot(agentName, target)
-			if err != nil || sourceRoot == "" {
-				st.Err = fmt.Errorf("source not cached yet")
-				out = append(out, st)
-				continue
-			}
-			if rootErr != nil {
-				st.Err = rootErr
-				out = append(out, st)
-				continue
-			}
-			for _, mapping := range sortedMappings(target.Paths) {
-				src := filepath.Join(sourceRoot, filepath.FromSlash(strings.TrimSuffix(mapping.Source, "/")))
-				dst := filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(mapping.Dest, "/")))
-				ps := PathStatus{Source: mapping.Source, Target: dst}
-				if _, statErr := os.Stat(dst); statErr != nil {
-					if os.IsNotExist(statErr) {
+		for _, subRoot := range m.roots(target) {
+			for _, agentName := range m.resolveAgents(target) {
+				st := Status{Source: entry.Source, Agent: agentName, Scope: targetScope(target), Root: targetRootKind(target), SubRoot: subRoot}
+				root, rootErr := m.targetRoot(agentName, target, subRoot)
+				if err != nil || sourceRoot == "" {
+					st.Err = fmt.Errorf("source not cached yet")
+					out = append(out, st)
+					continue
+				}
+				if rootErr != nil {
+					st.Err = rootErr
+					out = append(out, st)
+					continue
+				}
+				for _, mapping := range sortedMappings(target.Paths) {
+					src := filepath.Join(sourceRoot, filepath.FromSlash(strings.TrimSuffix(mapping.Source, "/")))
+					dst := filepath.Join(root, filepath.FromSlash(strings.TrimSuffix(mapping.Dest, "/")))
+					ps := PathStatus{Source: mapping.Source, Target: dst}
+					if _, statErr := os.Stat(dst); statErr != nil {
+						if os.IsNotExist(statErr) {
+							st.Paths = append(st.Paths, ps)
+							continue
+						}
+						ps.Error = statErr.Error()
 						st.Paths = append(st.Paths, ps)
 						continue
 					}
-					ps.Error = statErr.Error()
+					ps.Present = true
+					ps.Dirty = pathModified(src, dst)
 					st.Paths = append(st.Paths, ps)
-					continue
 				}
-				ps.Present = true
-				ps.Dirty = pathModified(src, dst)
-				st.Paths = append(st.Paths, ps)
+				out = append(out, st)
 			}
-			out = append(out, st)
 		}
 	}
 	return out
@@ -183,7 +193,10 @@ func (m *Manager) resolveAgents(target config.ConfigContentTarget) []string {
 		}
 		var found []string
 		for _, name := range agent.Names() {
-			if _, err := m.targetRoot(name, target); err == nil {
+			// Root-independent existence check — this only asks whether the
+			// agent resolves at all, not where, so the sub-repo root is
+			// irrelevant here.
+			if _, err := m.targetRoot(name, target, ""); err == nil {
 				found = append(found, name)
 			}
 		}
@@ -192,10 +205,26 @@ func (m *Manager) resolveAgents(target config.ConfigContentTarget) []string {
 	return target.Agents
 }
 
-func (m *Manager) targetRoot(agentName string, target config.ConfigContentTarget) (string, error) {
-	slog.Debug("resolving content target root", "agent", agentName, "scope", target.Scope, "root", target.Root)
+// roots returns the effective root list to fan target out across:
+// target.Roots resolved via discover.ResolveRoots (explicit list, "*"
+// auto-discovery, or a mix), or [""] when the target declares no roots —
+// the pre-roots: behaviour of resolving once against workDir. Global-scope
+// targets always resolve to [""]; roots: only applies to project scope.
+func (m *Manager) roots(target config.ConfigContentTarget) []string {
+	if targetScope(target) == "global" || len(target.Roots) == 0 {
+		return []string{""}
+	}
+	return discover.ResolveRoots(target.Roots, m.workDir)
+}
+
+// targetRoot resolves the absolute destination root for one agent, one
+// target, and one sub-repo root. root is a workspace-relative directory
+// from target.Roots (see roots()); pass "" when the target declares none,
+// which resolves against workDir exactly as before roots: existed.
+func (m *Manager) targetRoot(agentName string, target config.ConfigContentTarget, root string) (string, error) {
+	slog.Debug("resolving content target root", "agent", agentName, "scope", target.Scope, "root", target.Root, "subRepoRoot", root)
 	if targetRootKind(target) == "workspace" {
-		return m.workDir, nil
+		return filepath.Join(m.workDir, root), nil
 	}
 	global := targetScope(target) == "global"
 	dir, ok := agent.SkillDir(agentName, global, m.home)
@@ -203,7 +232,7 @@ func (m *Manager) targetRoot(agentName string, target config.ConfigContentTarget
 		return "", fmt.Errorf("unknown agent %q", agentName)
 	}
 	if !global && !filepath.IsAbs(dir) {
-		dir = filepath.Join(m.workDir, dir)
+		dir = filepath.Join(m.workDir, root, dir)
 	}
 	return filepath.Dir(dir), nil
 }

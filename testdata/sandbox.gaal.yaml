@@ -1,0 +1,75 @@
+# sandbox.gaal.yaml — the config `make sandbox` runs.
+#
+# example.gaal.yaml is DOCUMENTATION: it shows every field, using
+# illustrative placeholders (github.com/example/..., example.com/...) that
+# deliberately do not resolve. Running it always fails, which made
+# `make sandbox` useless as a smoke test.
+#
+# This file is the executable counterpart: everything here is real,
+# offline, and self-contained, so `make sandbox` exits 0 on any machine
+# with no network access and no credentials. Keep it that way — if you add
+# an entry, it must resolve from this repository alone.
+
+schema: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# skills — installed from a local directory inside this repo, so no network
+# or credentials are involved.
+# ─────────────────────────────────────────────────────────────────────────────
+skills:
+  - source: ./sandbox-skills
+    agents: ["claude-code", "codex"]
+    global: true
+
+  # roots: fans a project-scope entry across several sub-repos in one pass.
+  # ["*"] auto-discovers every immediate child directory holding a VCS
+  # marker; make sandbox-seed creates two such stub repos plus a
+  # non-repo directory that must be skipped.
+  - source: ./sandbox-skills
+    agents: ["claude-code"]
+    global: false
+    roots: ["*"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# content — a plain file copy, again sourced from inside this repo.
+# ─────────────────────────────────────────────────────────────────────────────
+content:
+  - source: ./sandbox-content
+    targets:
+      - agents: ["claude-code"]
+        scope: project
+        root: workspace
+        paths:
+          AGENTS.md: CLAUDE.md
+
+# ─────────────────────────────────────────────────────────────────────────────
+# mcps — inline definitions only. No entry uses `source:` (which would need
+# network), and the HTTP entry is never contacted at sync time: gaal only
+# writes the config, it does not dial the server.
+# ─────────────────────────────────────────────────────────────────────────────
+mcps:
+  - name: sandbox-stdio
+    agents: ["claude-code", "codex"]
+    global: true
+    inline:
+      command: echo
+      args: ["sandbox stdio server"]
+
+  - name: sandbox-http
+    agents: ["claude-code"]
+    global: true
+    inline:
+      type: http
+      url: https://mcp.example.invalid/mcp
+      headers:
+        X-Sandbox-Token:
+          env: SANDBOX_TOKEN
+
+# ─────────────────────────────────────────────────────────────────────────────
+# hooks — echo only, so the sandbox stays side-effect free.
+# ─────────────────────────────────────────────────────────────────────────────
+hooks:
+  post-sync:
+    - name: "sandbox post-sync marker"
+      command: echo
+      args: ["post-sync hook ran"]

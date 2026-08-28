@@ -55,14 +55,22 @@ type Status struct {
 type Manager struct {
 	mcps     []config.ConfigMcp
 	home     string // user home directory for ~/ expansion and agent path resolution
+	workDir  string // workspace root that project-scoped (relative) targets resolve against
 	stateDir string // gaal state root for snapshot writing
 	warnOnce sync.Once
 }
 
-// NewManager creates a new MCP Manager.
-func NewManager(mcps []config.ConfigMcp, home, stateDir string) *Manager {
-	slog.Debug("creating mcp manager", "entries", len(mcps), "home", home)
-	return &Manager{mcps: mcps, home: home, stateDir: stateDir}
+// NewManager creates a new MCP Manager. workDir is the workspace root that
+// project-scoped agent targets (e.g. codex's ".codex/config.toml",
+// claude-code's ".mcp.json") resolve relative to — the same role workDir
+// plays for skill.Manager and content.Manager. Before #278 this fell back
+// to the OS process's actual working directory, an implicit assumption
+// that happened to hold only because gaal is always invoked from the
+// intended workspace root; it is now resolved explicitly like every other
+// manager.
+func NewManager(mcps []config.ConfigMcp, home, workDir, stateDir string) *Manager {
+	slog.Debug("creating mcp manager", "entries", len(mcps), "home", home, "workDir", workDir)
+	return &Manager{mcps: mcps, home: home, workDir: workDir, stateDir: stateDir}
 }
 
 // resolvedMCPs expands each ConfigMcp into one or more concrete entries with
@@ -92,27 +100,64 @@ func (m *Manager) resolvedMCPs() []config.ConfigMcp {
 		}
 
 		for _, agentName := range agentNames {
-			var (
-				target string
-				ok     bool
-			)
-			if mc.Global {
-				target, ok = agent.GlobalMCPConfigPath(agentName, m.home)
-			} else {
-				target, ok = agent.ProjectMCPConfigPath(agentName, m.home)
+			for _, root := range m.roots(mc) {
+				var (
+					target string
+					ok     bool
+				)
+				if mc.Global {
+					target, ok = agent.GlobalMCPConfigPath(agentName, m.home)
+				} else {
+					target, ok = agent.ProjectMCPConfigPath(agentName, m.home)
+					if ok {
+						target = joinWorkDirIfRelative(target, filepath.Join(m.workDir, root))
+					}
+				}
+				if !ok || target == "" {
+					slog.Debug("mcp: agent has no mcp config for this scope, skipping",
+						"name", mc.Name, "agent", agentName, "root", root, "global", mc.Global)
+					continue
+				}
+				resolved := mc
+				resolved.Target = target
+				slog.Debug("mcp: resolved target", "name", mc.Name, "agent", agentName, "root", root, "target", target, "global", mc.Global)
+				out = append(out, resolved)
 			}
-			if !ok || target == "" {
-				slog.Debug("mcp: agent has no mcp config for this scope, skipping",
-					"name", mc.Name, "agent", agentName, "global", mc.Global)
-				continue
-			}
-			resolved := mc
-			resolved.Target = target
-			slog.Debug("mcp: resolved target", "name", mc.Name, "agent", agentName, "target", target, "global", mc.Global)
-			out = append(out, resolved)
 		}
 	}
 	return out
+}
+
+// roots returns the effective root list to fan mc out across: mc.Roots
+// resolved via discover.ResolveRoots (explicit list, "*" auto-discovery, or
+// a mix), or [""] when mc declares no roots — the pre-roots: behaviour of
+// resolving once against workDir. Global entries always resolve to [""];
+// roots: only applies to project scope, since a global entry has exactly
+// one target (the agent's user-global config file) regardless of how many
+// sub-repos exist under workDir.
+//
+// Mirrors skill.Manager.roots and content.Manager.roots — all three
+// delegate to discover.ResolveRoots so "roots:" behaves identically
+// wherever it appears in a gaal.yaml.
+func (m *Manager) roots(mc config.ConfigMcp) []string {
+	if mc.Global || len(mc.Roots) == 0 {
+		return []string{""}
+	}
+	return discover.ResolveRoots(mc.Roots, m.workDir)
+}
+
+// joinWorkDirIfRelative resolves a project-scope target against workDir,
+// mirroring skill.Manager's and content.Manager's existing project-path
+// resolution. target is left unchanged when it is already absolute —
+// ProjectMCPConfigPath already expands a ~/-prefixed
+// ProjectMCPConfigFile to an absolute path before this runs, so only the
+// genuinely workspace-relative case (e.g. ".mcp.json", ".codex/config.toml")
+// needs joining here; an empty target (unsupported scope) is returned as-is.
+func joinWorkDirIfRelative(target, workDir string) string {
+	if target == "" || filepath.IsAbs(target) {
+		return target
+	}
+	return filepath.Join(workDir, target)
 }
 
 // emitConfigWarnings surfaces issues that depend on the user's MCP config

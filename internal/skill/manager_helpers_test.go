@@ -333,3 +333,156 @@ func TestManager_Sync_CloneError(t *testing.T) {
 		t.Fatal("expected error when git clone fails (unreachable host)")
 	}
 }
+
+// ── roots: fan-out ───────────────────────────────────────────────────────
+
+// seedSkillSource creates a source dir containing one skill and returns it.
+func seedSkillSource(t *testing.T, name string) string {
+	t.Helper()
+	sourceDir := t.TempDir()
+	skillDir := filepath.Join(sourceDir, name)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir source skill: %v", err)
+	}
+	body := "---\nname: " + name + "\n---\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	return sourceDir
+}
+
+func TestManager_Sync_Roots_ExplicitList_InstallsIntoEachRoot(t *testing.T) {
+	sourceDir := seedSkillSource(t, "cool-skill")
+	workDir := t.TempDir()
+	// Two sub-repos, each with the agent's own config dir present so sync
+	// treats them as installed targets.
+	for _, sub := range []string{"frontend", "api"} {
+		if err := os.MkdirAll(filepath.Join(workDir, sub, ".claude"), 0o755); err != nil {
+			t.Fatalf("seed %s: %v", sub, err)
+		}
+	}
+
+	skills := []config.ConfigSkill{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false, Roots: []string{"frontend", "api"}},
+	}
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "", false)
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	for _, sub := range []string{"frontend", "api"} {
+		dest := filepath.Join(workDir, sub, ".claude", "skills", "cool-skill")
+		if _, err := os.Stat(dest); err != nil {
+			t.Errorf("expected skill installed at %q: %v", dest, err)
+		}
+	}
+	// The umbrella root itself must NOT receive an install — only the
+	// declared sub-repos do.
+	if _, err := os.Stat(filepath.Join(workDir, ".claude", "skills", "cool-skill")); err == nil {
+		t.Error("skill was installed at the umbrella root; roots: should target only the declared sub-repos")
+	}
+}
+
+func TestManager_Sync_Roots_Wildcard_InstallsIntoEveryVCSChild(t *testing.T) {
+	sourceDir := seedSkillSource(t, "cool-skill")
+	workDir := t.TempDir()
+	// Two real repo-like sub-repos, plus one non-repo directory that must
+	// be skipped by "*" discovery.
+	for _, sub := range []string{"frontend", "api"} {
+		if err := os.MkdirAll(filepath.Join(workDir, sub, ".git"), 0o755); err != nil {
+			t.Fatalf("seed %s/.git: %v", sub, err)
+		}
+		if err := os.MkdirAll(filepath.Join(workDir, sub, ".claude"), 0o755); err != nil {
+			t.Fatalf("seed %s/.claude: %v", sub, err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(workDir, "not-a-repo", ".claude"), 0o755); err != nil {
+		t.Fatalf("seed not-a-repo: %v", err)
+	}
+
+	skills := []config.ConfigSkill{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false, Roots: []string{"*"}},
+	}
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "", false)
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	for _, sub := range []string{"frontend", "api"} {
+		dest := filepath.Join(workDir, sub, ".claude", "skills", "cool-skill")
+		if _, err := os.Stat(dest); err != nil {
+			t.Errorf("expected skill installed at %q: %v", dest, err)
+		}
+	}
+	// not-a-repo has an agent dir but no VCS marker — "*" must skip it.
+	if _, err := os.Stat(filepath.Join(workDir, "not-a-repo", ".claude", "skills", "cool-skill")); err == nil {
+		t.Error("skill installed into a non-VCS directory; roots: [\"*\"] must only match VCS children")
+	}
+}
+
+func TestManager_Sync_NoRoots_UnchangedBehaviour(t *testing.T) {
+	// Regression guard: an entry with no roots: must install exactly where
+	// it did before the field existed — directly under workDir.
+	sourceDir := seedSkillSource(t, "cool-skill")
+	workDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workDir, ".claude"), 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	skills := []config.ConfigSkill{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false},
+	}
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "", false)
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	dest := filepath.Join(workDir, ".claude", "skills", "cool-skill")
+	if _, err := os.Stat(dest); err != nil {
+		t.Errorf("expected skill installed at %q: %v", dest, err)
+	}
+}
+
+func TestManager_Roots_IgnoredForGlobalEntries(t *testing.T) {
+	// A global entry resolves to exactly one target regardless of roots:.
+	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir(), "", false)
+	got := m.roots(config.ConfigSkill{Global: true, Roots: []string{"frontend", "api"}})
+	if len(got) != 1 || got[0] != "" {
+		t.Errorf("global entry roots = %v, want [\"\"]", got)
+	}
+}
+
+func TestManager_Roots_EmptyRootsList_ReturnsSingleEmptyRoot(t *testing.T) {
+	m := NewManager(nil, t.TempDir(), "/home/user", t.TempDir(), "", false)
+	got := m.roots(config.ConfigSkill{Global: false})
+	if len(got) != 1 || got[0] != "" {
+		t.Errorf("no-roots entry = %v, want [\"\"]", got)
+	}
+}
+
+func TestManager_Status_Roots_ReportsPerRoot(t *testing.T) {
+	sourceDir := seedSkillSource(t, "cool-skill")
+	workDir := t.TempDir()
+	for _, sub := range []string{"frontend", "api"} {
+		if err := os.MkdirAll(filepath.Join(workDir, sub, ".claude"), 0o755); err != nil {
+			t.Fatalf("seed %s: %v", sub, err)
+		}
+	}
+	skills := []config.ConfigSkill{
+		{Source: sourceDir, Agents: []string{"claude-code"}, Global: false, Roots: []string{"frontend", "api"}},
+	}
+	m := NewManager(skills, t.TempDir(), "/home/user", workDir, "", false)
+	if err := m.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	statuses := m.Status(context.Background())
+	seenRoots := map[string]bool{}
+	for _, st := range statuses {
+		seenRoots[st.Root] = true
+	}
+	for _, want := range []string{"frontend", "api"} {
+		if !seenRoots[want] {
+			t.Errorf("Status did not report root %q; got roots %v", want, seenRoots)
+		}
+	}
+}

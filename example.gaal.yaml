@@ -51,6 +51,8 @@ repositories:
 # global: true  → install to ~/.<agent>/skills/  (user-wide)
 #         false → install to ./<agent-dir>/skills/ (project-local, default)
 # select: specific skill names to install (empty = all skills in the repo)
+# roots:  fan a project-scope entry out across several sub-repos in one pass
+#         (see the "roots" note below the mcps section). Ignored when global.
 # ─────────────────────────────────────────────────────────────────────────────
 skills:
   # Install all skills from vercel-labs/agent-skills to all detected agents.
@@ -159,6 +161,48 @@ mcps:
           env: CF_ACCESS_CLIENT_SECRET
 
 # ─────────────────────────────────────────────────────────────────────────────
+# roots — fanning project-scope entries across several sub-repos
+#
+# `roots:` applies to skills, content targets, and mcps alike, and only to
+# PROJECT scope (global: true entries have exactly one destination, so roots
+# is ignored there).
+#
+# It exists for the "umbrella directory" layout: one parent directory
+# holding many independent repo clones as siblings, e.g.
+#
+#   ~/src/my-org/
+#     ├── frontend/     (its own git repo)
+#     ├── api/          (its own git repo)
+#     └── workers/      (its own git repo)
+#
+# Without roots, a project-scope entry resolves against exactly one
+# directory — whichever one `gaal sync` was invoked from — so covering every
+# sub-repo meant one gaal.yaml per sub-repo, each repeating the same entry.
+#
+# List the sub-repos explicitly:
+#
+#   mcps:
+#     - name: railway
+#       agents: ["claude-code", "codex"]
+#       global: false
+#       roots: ["frontend", "api", "workers"]
+#       inline:
+#         url: https://mcp.railway.com
+#
+# …or use ["*"] to auto-discover every immediate child directory that
+# contains a VCS marker (.git/.hg/.svn/.bzr) — "not-a-repo/" and
+# node_modules/ are skipped:
+#
+#   skills:
+#     - source: ./company-skills
+#       agents: ["*"]
+#       global: false
+#       roots: ["*"]
+#
+# Explicit entries and "*" can be mixed in one list; duplicates collapse.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
 # tools
 #
 # CLI executables your workspace expects to find on PATH. gaal does not
@@ -216,18 +260,25 @@ tools:
 # ─────────────────────────────────────────────────────────────────────────────
 hooks:
   pre-sync:
+    # NOTE: continue_on_error keeps the REMAINING hooks running; it does not
+    # make a failing hook non-fatal to the sync itself. A pre-sync hook that
+    # fails still aborts the sync.
     - name: "snapshot working copies"
-      command: ./scripts/backup.sh
+      command: echo
+      args: ["would back up working copies here"]
       os: [linux, darwin]
       timeout: 1m
       continue_on_error: true
 
   post-sync:
-    # Keep ~/.claude in sync with the dotclaude working copy after gaal
-    # has updated everything else. Runs on every OS.
-    - name: "pull dotclaude into ~/.claude"
-      command: git
-      args: ["-C", "~/.claude", "pull"]
+    # Keep a dotfiles working copy in sync after gaal has updated everything
+    # else. Shown as an echo so `make sandbox` stays side-effect free — the
+    # real form is:
+    #   command: git
+    #   args: ["-C", "~/dotfiles", "pull"]
+    - name: "pull dotfiles working copy"
+      command: echo
+      args: ["would run: git -C ~/dotfiles pull"]
 
     # Reload an MCP-using agent only when the MCP config actually changed.
     - name: "kick claude-code on mcp changes"

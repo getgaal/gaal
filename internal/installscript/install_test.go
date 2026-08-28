@@ -103,14 +103,27 @@ func detectHostGOOS(t *testing.T) string {
 	}
 }
 
-// detectHostGOARCH returns the current arch as "amd64" or "arm64".
+// detectHostGOARCH returns the current arch as "amd64" or "arm64", matching
+// install.sh's own detect_arch(), which shells out to `uname -m` rather
+// than reading a compile-time value. runtime.GOARCH reflects the
+// architecture this test binary was BUILT for, not the host CPU — the two
+// diverge whenever an amd64 Go toolchain runs under Rosetta on Apple
+// Silicon (or any other emulated-arch setup), which made this test flake
+// with a 404 against a release asset the fake server never registered.
 func detectHostGOARCH(t *testing.T) string {
 	t.Helper()
-	switch runtime.GOARCH {
-	case "amd64", "arm64":
-		return runtime.GOARCH
+	out, err := exec.Command("uname", "-m").Output()
+	if err != nil {
+		t.Skipf("uname -m unavailable: %v", err)
+		return ""
+	}
+	switch unameM := strings.TrimSpace(string(out)); unameM {
+	case "x86_64", "amd64":
+		return "amd64"
+	case "aarch64", "arm64":
+		return "arm64"
 	default:
-		t.Skipf("install.sh only supports amd64 and arm64; host is %s", runtime.GOARCH)
+		t.Skipf("install.sh only supports amd64 and arm64; host uname -m is %s", unameM)
 		return ""
 	}
 }

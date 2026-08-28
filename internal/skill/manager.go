@@ -74,6 +74,7 @@ type Status struct {
 	Source       string
 	AgentName    string
 	Global       bool
+	Root         string // workspace-relative sub-repo root this status is for ("" when the entry declares no roots:)
 	TargetSubdir string
 	Installed    []string // names of installed skills
 	Missing      []string // names of skills not yet installed
@@ -206,49 +207,59 @@ func (m *Manager) syncOne(ctx context.Context, sc config.ConfigSkill) error {
 	agents := m.syncAgents(sc)
 	slog.DebugContext(ctx, "resolved sync agents", "source", sc.Source, "agents", agents)
 
-	// 5. Install each skill to each agent. Per-agent and per-skill errors are
-	//    accumulated so a single failure (e.g. one agent's dir is read-only)
-	//    does not skip every later install.
+	// 5. Install each skill to each agent, to each resolved root (a single
+	//    "" root when sc declares none — the pre-roots: behaviour). Errors
+	//    are accumulated so a single failure (e.g. one agent's dir is
+	//    read-only, or one root doesn't exist) does not skip every later
+	//    install.
 	var errs []error
-	for _, agent := range agents {
-		skillsDir, ok, err := m.targetSkillsDir(agent, sc)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("resolving skills dir for agent %q: %w", agent, err))
-			continue
-		}
-		if !ok {
-			slog.Warn("unknown agent, skipping", "agent", agent)
-			continue
-		}
-
-		// Create the skills directory if it does not exist yet.
-		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
-			errs = append(errs, fmt.Errorf("creating skills dir for agent %q: %w", agent, err))
-			continue
-		}
-
-		for _, sk := range selected {
-			dest := filepath.Join(skillsDir, filepath.Base(sk.Dir))
-			if err := installSkill(sk.Dir, dest); err != nil {
-				errs = append(errs, fmt.Errorf("installing skill %q to agent %q: %w", sk.Name, agent, err))
+	for _, root := range m.roots(sc) {
+		for _, agent := range agents {
+			skillsDir, ok, err := m.targetSkillsDir(agent, sc, root)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("resolving skills dir for agent %q root %q: %w", agent, root, err))
 				continue
 			}
-			slog.Debug("installed skill", "name", sk.Name, "agent", agent, "dest", dest)
-			m.writeSkillSnapshot(dest)
+			if !ok {
+				slog.Warn("unknown agent, skipping", "agent", agent)
+				continue
+			}
+
+			// Create the skills directory if it does not exist yet.
+			if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+				errs = append(errs, fmt.Errorf("creating skills dir for agent %q root %q: %w", agent, root, err))
+				continue
+			}
+
+			for _, sk := range selected {
+				dest := filepath.Join(skillsDir, filepath.Base(sk.Dir))
+				if err := installSkill(sk.Dir, dest); err != nil {
+					errs = append(errs, fmt.Errorf("installing skill %q to agent %q root %q: %w", sk.Name, agent, root, err))
+					continue
+				}
+				slog.Debug("installed skill", "name", sk.Name, "agent", agent, "root", root, "dest", dest)
+				m.writeSkillSnapshot(dest)
+			}
 		}
 	}
 
 	return errors.Join(errs...)
 }
 
-func (m *Manager) targetSkillsDir(agentName string, sc config.ConfigSkill) (string, bool, error) {
-	slog.Debug("resolving target skills dir", "agent", agentName, "global", sc.Global, "targetSubdir", sc.TargetSubdir)
+// targetSkillsDir resolves the absolute skills directory for one agent, one
+// config entry, and one root. root is a workspace-relative sub-repo
+// directory from sc.Roots (see roots() and discover.ResolveRoots); pass ""
+// when the entry declares no roots, which resolves against workDir exactly
+// as before roots: existed. Global entries ignore root entirely — a global
+// entry has exactly one target regardless of how many roots are declared.
+func (m *Manager) targetSkillsDir(agentName string, sc config.ConfigSkill, root string) (string, bool, error) {
+	slog.Debug("resolving target skills dir", "agent", agentName, "global", sc.Global, "root", root, "targetSubdir", sc.TargetSubdir)
 	skillsDir, ok := SkillDir(agentName, sc.Global, m.home)
 	if !ok {
 		return "", false, nil
 	}
 	if !sc.Global && !filepath.IsAbs(skillsDir) {
-		skillsDir = filepath.Join(m.workDir, skillsDir)
+		skillsDir = filepath.Join(m.workDir, root, skillsDir)
 	}
 	if sc.TargetSubdir != "" {
 		slashed := strings.ReplaceAll(sc.TargetSubdir, `\`, "/")
@@ -347,6 +358,18 @@ func (m *Manager) syncAgents(sc config.ConfigSkill) []string {
 	return sc.Agents
 }
 
+// roots returns the effective root list to fan sc out across: sc.Roots
+// resolved via discover.ResolveRoots (explicit list, "*" auto-discovery, or
+// a mix), or [""] when sc declares no roots — the pre-roots: behaviour of
+// resolving once against workDir. Global entries always resolve to [""];
+// roots: only applies to project scope (see targetSkillsDir).
+func (m *Manager) roots(sc config.ConfigSkill) []string {
+	if sc.Global || len(sc.Roots) == 0 {
+		return []string{""}
+	}
+	return discover.ResolveRoots(sc.Roots, m.workDir)
+}
+
 // isAgentInstalled reports whether the directory that would own the agent's
 // skills on this machine already exists. This is the single "installed?"
 // signal used by sync: we never create agent-owned directories as a side
@@ -376,50 +399,52 @@ func (m *Manager) Status(ctx context.Context) []Status {
 
 	for _, sc := range m.skills {
 		agents := m.resolveAgents(sc)
-		for _, agent := range agents {
-			st := Status{Source: sc.Source, AgentName: agent, Global: sc.Global, TargetSubdir: sc.TargetSubdir}
+		for _, root := range m.roots(sc) {
+			for _, agent := range agents {
+				st := Status{Source: sc.Source, AgentName: agent, Global: sc.Global, Root: root, TargetSubdir: sc.TargetSubdir}
 
-			skillsDir, ok, err := m.targetSkillsDir(agent, sc)
-			if err != nil {
-				st.Err = err
-				statuses = append(statuses, st)
-				continue
-			}
-			if !ok {
-				st.Err = fmt.Errorf("unknown agent %q", agent)
-				statuses = append(statuses, st)
-				continue
-			}
-
-			// Resolve local source (may not be downloaded yet).
-			sourceDir, err := cachedSourcePath(m.cacheDir, sc.Source)
-			if err != nil || sourceDir == "" {
-				st.Err = fmt.Errorf("source not cached yet")
-				statuses = append(statuses, st)
-				continue
-			}
-
-			available, _ := discoverSkills(sourceDir)
-			selected := filterSkills(available, sc.Select)
-			if len(selected) == 0 && len(sc.Select) > 0 {
-				st.Missing = append(st.Missing, sc.Select...)
-				statuses = append(statuses, st)
-				continue
-			}
-
-			for _, sk := range selected {
-				dest := filepath.Join(skillsDir, filepath.Base(sk.Dir))
-				if _, err := os.Stat(dest); err == nil {
-					st.Installed = append(st.Installed, sk.Name)
-					if skillDirModified(sk.Dir, dest) {
-						st.Modified = append(st.Modified, sk.Name)
-					}
-				} else {
-					st.Missing = append(st.Missing, sk.Name)
+				skillsDir, ok, err := m.targetSkillsDir(agent, sc, root)
+				if err != nil {
+					st.Err = err
+					statuses = append(statuses, st)
+					continue
 				}
-			}
+				if !ok {
+					st.Err = fmt.Errorf("unknown agent %q", agent)
+					statuses = append(statuses, st)
+					continue
+				}
 
-			statuses = append(statuses, st)
+				// Resolve local source (may not be downloaded yet).
+				sourceDir, err := cachedSourcePath(m.cacheDir, sc.Source)
+				if err != nil || sourceDir == "" {
+					st.Err = fmt.Errorf("source not cached yet")
+					statuses = append(statuses, st)
+					continue
+				}
+
+				available, _ := discoverSkills(sourceDir)
+				selected := filterSkills(available, sc.Select)
+				if len(selected) == 0 && len(sc.Select) > 0 {
+					st.Missing = append(st.Missing, sc.Select...)
+					statuses = append(statuses, st)
+					continue
+				}
+
+				for _, sk := range selected {
+					dest := filepath.Join(skillsDir, filepath.Base(sk.Dir))
+					if _, err := os.Stat(dest); err == nil {
+						st.Installed = append(st.Installed, sk.Name)
+						if skillDirModified(sk.Dir, dest) {
+							st.Modified = append(st.Modified, sk.Name)
+						}
+					} else {
+						st.Missing = append(st.Missing, sk.Name)
+					}
+				}
+
+				statuses = append(statuses, st)
+			}
 		}
 	}
 
@@ -752,10 +777,23 @@ func isLocalPath(source string) bool {
 	if len(source) >= 3 && source[1] == ':' && (source[2] == '\\' || source[2] == '/') {
 		return true
 	}
-	return strings.HasPrefix(source, "/") || // POSIX absolute on Windows host
+	if strings.HasPrefix(source, "/") || // POSIX absolute on Windows host
 		strings.HasPrefix(source, "./") || strings.HasPrefix(source, `.\`) || // current-dir relative
 		strings.HasPrefix(source, "../") || strings.HasPrefix(source, `..\`) || // parent relative
-		strings.HasPrefix(source, "~/") || strings.HasPrefix(source, `~\`) // home-dir relative
+		strings.HasPrefix(source, "~/") || strings.HasPrefix(source, `~\`) { // home-dir relative
+		return true
+	}
+	// A relative source declared as "./skills" in a gaal.yaml reaches here
+	// as "some/dir/skills": Config.expandPaths rebases it onto the config
+	// file's directory, and filepath.Join always strips the leading "./".
+	// The result is indistinguishable by prefix from a GitHub shorthand
+	// ("owner/repo"), so every relative local source was being treated as
+	// a remote clone target. Fall back to asking the filesystem: an
+	// existing directory is a local source, whatever its shape.
+	if info, err := os.Stat(source); err == nil && info.IsDir() {
+		return true
+	}
+	return false
 }
 
 // toCloneURL converts a GitHub shorthand (owner/repo) or any URL to a clone URL.
@@ -820,16 +858,18 @@ func (m *Manager) Prune(ctx context.Context) error {
 		}
 		selected := filterSkills(available, sc.Select)
 
-		for _, agent := range m.syncAgents(sc) {
-			skillsDir, ok, err := m.targetSkillsDir(agent, sc)
-			if err != nil || !ok {
-				continue
-			}
-			if expected[skillsDir] == nil {
-				expected[skillsDir] = make(map[string]struct{})
-			}
-			for _, sk := range selected {
-				expected[skillsDir][filepath.Base(sk.Dir)] = struct{}{}
+		for _, root := range m.roots(sc) {
+			for _, agent := range m.syncAgents(sc) {
+				skillsDir, ok, err := m.targetSkillsDir(agent, sc, root)
+				if err != nil || !ok {
+					continue
+				}
+				if expected[skillsDir] == nil {
+					expected[skillsDir] = make(map[string]struct{})
+				}
+				for _, sk := range selected {
+					expected[skillsDir][filepath.Base(sk.Dir)] = struct{}{}
+				}
 			}
 		}
 	}
