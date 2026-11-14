@@ -129,6 +129,63 @@ skills:
 	}
 }
 
+func TestLoad_SkillAgents_YAMLAnchor(t *testing.T) {
+	// A config with many entries that must stay in lockstep wants to declare
+	// its agent list once and alias it everywhere else. YAML anchors are the
+	// standard way to do that, and gaal's own
+	// internal/core/agent/agents.yaml uses them, so a gaal.yaml should
+	// accept them too.
+	//
+	// gopkg.in/yaml.v3 resolves aliases transparently for ordinary struct
+	// fields, but ConfigSkill has a custom UnmarshalYAML that inspects the
+	// raw node: decodeAgents saw a yaml.AliasNode, fell through to its
+	// default branch, and failed with "expected a string or list of
+	// strings".
+	//
+	// The anchor is declared on its first real use rather than in a
+	// separate holder key, so strict decoding (KnownFields(true)) stays
+	// fully in force — no extra top-level key is introduced.
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    agents: &default_agents ["claude-code", "codex"]
+  - source: owner/other
+    agents: *default_agents
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Skills) != 2 {
+		t.Fatalf("expected 2 skills, got %d", len(cfg.Skills))
+	}
+	for i, sk := range cfg.Skills {
+		if len(sk.Agents) != 2 || sk.Agents[0] != "claude-code" || sk.Agents[1] != "codex" {
+			t.Errorf("skills[%d] agents = %v, want [claude-code codex]", i, sk.Agents)
+		}
+	}
+}
+
+func TestLoad_SkillAgents_YAMLAnchorScalar(t *testing.T) {
+	// The scalar form (agents: "*") must survive aliasing too.
+	p := writeYAML(t, `
+skills:
+  - source: owner/repo
+    agents: &wildcard "*"
+  - source: owner/other
+    agents: *wildcard
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	for i, sk := range cfg.Skills {
+		if len(sk.Agents) != 1 || sk.Agents[0] != "*" {
+			t.Errorf("skills[%d] agents = %v, want [\"*\"]", i, sk.Agents)
+		}
+	}
+}
+
 func TestLoad_SkillTargetSubdir(t *testing.T) {
 	p := writeYAML(t, `
 skills:

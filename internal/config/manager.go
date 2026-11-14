@@ -779,6 +779,15 @@ func decodeAgents(n *yaml.Node) ([]string, error) {
 		slog.Debug("decoding agents field", "line", 0, "kind", 0)
 		return nil, nil
 	}
+	// Resolve YAML aliases (agents: *my_anchor) to the node they point at.
+	// Anchors let a config define its agent list once and reference it from
+	// every entry, which matters most in a file with many entries that must
+	// stay in lockstep. gaal's own internal/core/agent/agents.yaml uses the
+	// same feature, so users can reasonably expect it here.
+	for n.Kind == yaml.AliasNode && n.Alias != nil {
+		slog.Debug("resolving yaml alias for agents field", "line", n.Line, "anchor", n.Value)
+		n = n.Alias
+	}
 	slog.Debug("decoding agents field", "line", n.Line, "kind", n.Kind)
 	switch n.Kind {
 	case yaml.ScalarNode:
