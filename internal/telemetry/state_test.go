@@ -9,6 +9,12 @@ import (
 
 func boolPtr(b bool) *bool { return &b }
 
+func cleanEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("GAAL_TELEMETRY", "")
+	t.Setenv("DO_NOT_TRACK", "")
+}
+
 func TestResolveStateEnvGaalTelemetryDisabled(t *testing.T) {
 	t.Setenv("GAAL_TELEMETRY", "0")
 	s := resolveState(nil)
@@ -46,6 +52,7 @@ func TestResolveStateEnvDoNotTrack(t *testing.T) {
 }
 
 func TestResolveStateConfigTrue(t *testing.T) {
+	cleanEnv(t)
 	s := resolveState(boolPtr(true))
 	if !s.Enabled {
 		t.Error("expected Enabled=true")
@@ -56,6 +63,7 @@ func TestResolveStateConfigTrue(t *testing.T) {
 }
 
 func TestResolveStateConfigFalse(t *testing.T) {
+	cleanEnv(t)
 	s := resolveState(boolPtr(false))
 	if s.Enabled {
 		t.Error("expected Enabled=false")
@@ -66,6 +74,7 @@ func TestResolveStateConfigFalse(t *testing.T) {
 }
 
 func TestResolveStateUnconfigured(t *testing.T) {
+	cleanEnv(t)
 	s := resolveState(nil)
 	if s.Enabled {
 		t.Error("expected Enabled=false")
@@ -174,6 +183,7 @@ func TestStatusDisabledEnv(t *testing.T) {
 }
 
 func TestStatusUnconfigured(t *testing.T) {
+	cleanEnv(t)
 	status, source := Status(nil)
 	if status != "not configured" {
 		t.Fatalf("expected not configured, got %q", status)

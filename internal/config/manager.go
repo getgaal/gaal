@@ -772,6 +772,23 @@ func (s *ConfigSkill) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// resolveAlias follows YAML alias nodes to the target node they reference.
+// Anchors let a config define values once and reference them across entries,
+// which matters most in a file with many entries that must stay in lockstep.
+// gaal's own internal/core/agent/agents.yaml uses the same feature.
+func resolveAlias(n *yaml.Node) *yaml.Node {
+	if n == nil {
+		slog.Debug("resolving yaml alias: nil node")
+		return nil
+	}
+	slog.Debug("resolving yaml alias", "line", n.Line, "kind", n.Kind)
+	for hops := 0; n.Kind == yaml.AliasNode && n.Alias != nil && hops < 100; hops++ {
+		slog.Debug("resolving yaml alias for agents field", "line", n.Line, "anchor", n.Value)
+		n = n.Alias
+	}
+	return n
+}
+
 // decodeAgents normalises the agents node into []string. See
 // ConfigSkill.UnmarshalYAML for accepted shapes.
 func decodeAgents(n *yaml.Node) ([]string, error) {
@@ -779,6 +796,7 @@ func decodeAgents(n *yaml.Node) ([]string, error) {
 		slog.Debug("decoding agents field", "line", 0, "kind", 0)
 		return nil, nil
 	}
+	n = resolveAlias(n)
 	slog.Debug("decoding agents field", "line", n.Line, "kind", n.Kind)
 	switch n.Kind {
 	case yaml.ScalarNode:
@@ -786,11 +804,13 @@ func decodeAgents(n *yaml.Node) ([]string, error) {
 	case yaml.SequenceNode:
 		out := make([]string, 0, len(n.Content))
 		for _, item := range n.Content {
+			item = resolveAlias(item)
 			switch item.Kind {
 			case yaml.ScalarNode:
 				out = append(out, item.Value)
 			case yaml.SequenceNode:
 				for _, inner := range item.Content {
+					inner = resolveAlias(inner)
 					if inner.Kind != yaml.ScalarNode {
 						return nil, fmt.Errorf("line %d: nesting deeper than one level is not supported", inner.Line)
 					}
