@@ -145,24 +145,112 @@ func TestLoad_SkillAgents_YAMLAnchor(t *testing.T) {
 	// The anchor is declared on its first real use rather than in a
 	// separate holder key, so strict decoding (KnownFields(true)) stays
 	// fully in force — no extra top-level key is introduced.
-	p := writeYAML(t, `
+	tests := []struct {
+		name       string
+		yaml       string
+		wantAgents [][]string
+	}{
+		{
+			name: "sequence alias",
+			yaml: `
 skills:
   - source: owner/repo
     agents: &default_agents ["claude-code", "codex"]
   - source: owner/other
     agents: *default_agents
-`)
-	cfg, err := Load(p)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+`,
+			wantAgents: [][]string{
+				{"claude-code", "codex"},
+				{"claude-code", "codex"},
+			},
+		},
+		{
+			name: "scalar alias",
+			yaml: `
+skills:
+  - source: owner/repo
+    agents: &wildcard "*"
+  - source: owner/other
+    agents: *wildcard
+`,
+			wantAgents: [][]string{
+				{"*"},
+				{"*"},
+			},
+		},
+		{
+			name: "sequence item alias",
+			yaml: `
+skills:
+  - source: owner/repo
+    agents:
+      - &agent1 "claude-code"
+      - &agent2 "codex"
+  - source: owner/other
+    agents:
+      - *agent1
+      - *agent2
+`,
+			wantAgents: [][]string{
+				{"claude-code", "codex"},
+				{"claude-code", "codex"},
+			},
+		},
+		{
+			name: "nested sequence alias",
+			yaml: `
+skills:
+  - source: owner/repo
+    agents: &default_agents ["claude-code", "codex"]
+  - source: owner/other
+    agents:
+      - *default_agents
+`,
+			wantAgents: [][]string{
+				{"claude-code", "codex"},
+				{"claude-code", "codex"},
+			},
+		},
+		{
+			name: "alias chain",
+			yaml: `
+skills:
+  - source: owner/repo
+    agents: &step1 ["claude-code"]
+  - source: owner/mid
+    agents: &step2 [*step1]
+  - source: owner/final
+    agents: *step2
+`,
+			wantAgents: [][]string{
+				{"claude-code"},
+				{"claude-code"},
+				{"claude-code"},
+			},
+		},
 	}
-	if len(cfg.Skills) != 2 {
-		t.Fatalf("expected 2 skills, got %d", len(cfg.Skills))
-	}
-	for i, sk := range cfg.Skills {
-		if len(sk.Agents) != 2 || sk.Agents[0] != "claude-code" || sk.Agents[1] != "codex" {
-			t.Errorf("skills[%d] agents = %v, want [claude-code codex]", i, sk.Agents)
-		}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := writeYAML(t, tt.yaml)
+			cfg, err := Load(p)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if len(cfg.Skills) != len(tt.wantAgents) {
+				t.Fatalf("expected %d skills, got %d", len(tt.wantAgents), len(cfg.Skills))
+			}
+			for i, sk := range cfg.Skills {
+				if len(sk.Agents) != len(tt.wantAgents[i]) {
+					t.Fatalf("skills[%d] agents length = %d, want %d", i, len(sk.Agents), len(tt.wantAgents[i]))
+				}
+				for j, a := range sk.Agents {
+					if a != tt.wantAgents[i][j] {
+						t.Errorf("skills[%d] agents[%d] = %q, want %q", i, j, a, tt.wantAgents[i][j])
+					}
+				}
+			}
+		})
 	}
 }
 

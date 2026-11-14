@@ -202,6 +202,8 @@ func TestInit_DeferPersistDoesNotWriteFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", home+"/.config")
+	t.Setenv("GAAL_TELEMETRY", "")
+	t.Setenv("DO_NOT_TRACK", "")
 
 	// Use consent=false to avoid spawning a real HTTP goroutine.
 	promptFn := func() (bool, error) { return false, nil }
@@ -235,6 +237,8 @@ func TestFlushConsent_WritesPendingConsent(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", configBase)
 	t.Setenv("APPDATA", configBase)
+	t.Setenv("GAAL_TELEMETRY", "")
+	t.Setenv("DO_NOT_TRACK", "")
 
 	// Use consent=false to avoid spawning a real HTTP goroutine.
 	promptFn := func() (bool, error) { return false, nil }
